@@ -26,15 +26,19 @@ class SheetSyncEngine:
         }
 
     async def initialize(self):
-        """Initialize Google Sheets client using CSV reader."""
+        """Initialize Google Sheets client with gspread service account."""
         try:
+            from engines.gsheet_writer import GSheetWriter
+            self.writer = GSheetWriter()
+            self.writer.initialize()
             from engines.csv_reader import sync_all_sheets
             self._sync_all_sheets = sync_all_sheets
-            logger.info("Google Sheets CSV reader initialized (real sync enabled)")
-            self.sheets_client = "csv_reader"
+            logger.info("Google Sheets fully initialized (gspread + CSV reader)")
+            self.sheets_client = "gspread"
         except Exception as e:
             logger.error(f"Failed to initialize Google Sheets client: {e}")
-            raise
+            self.writer = None
+            self.sheets_client = None
 
     async def sync_all_data(self) -> Dict[str, Any]:
         """Perform full bidirectional sync of all data."""
