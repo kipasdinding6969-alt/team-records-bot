@@ -16,6 +16,7 @@ jobs:
       TG_PHONE: "+0000000000"
       SHEETS_ID: "test"
       DB_PATH: "/tmp/ci_test.db"
+      ACTIONS_RUNNER_ENVIRONMENT_DISCOVERY: "disabled"
     steps:
       - uses: actions/checkout@v4
 
