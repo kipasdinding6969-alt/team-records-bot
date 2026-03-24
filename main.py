@@ -14,6 +14,7 @@ from models import BotTask, ReportTemplate
 from engines.report_engine import report_engine
 from engines.reminder_engine import reminder_engine
 from engines.sheet_sync import sheet_sync_engine
+from engines.chart_engine import chart_engine
 
 # Import all handlers
 from handlers.registration import REGISTRATION_COMMANDS, REGISTRATION_CALLBACKS, REGISTRATION_CONVERSATIONS
@@ -22,6 +23,11 @@ from handlers.dashboard import DASHBOARD_COMMANDS, DASHBOARD_CALLBACKS, DASHBOAR
 from handlers.finance import FINANCE_COMMANDS, FINANCE_CALLBACKS, FINANCE_CONVERSATIONS
 from handlers.performance import PERFORMANCE_COMMANDS, PERFORMANCE_CALLBACKS, PERFORMANCE_CONVERSATIONS
 from handlers.reminders import REMINDERS_COMMANDS, REMINDERS_CALLBACKS, REMINDERS_CONVERSATIONS
+
+# Import new chart and UI handlers
+from handlers.menu import MENU_COMMANDS, MENU_CALLBACKS, MENU_CONVERSATIONS
+from handlers.analytics import ANALYTICS_COMMANDS, ANALYTICS_CALLBACKS, ANALYTICS_CONVERSATIONS
+from handlers.help_guide import HELP_COMMANDS, HELP_CALLBACKS, HELP_CONVERSATIONS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -116,6 +122,10 @@ class RalphLoop:
         all_commands.update(FINANCE_COMMANDS)
         all_commands.update(PERFORMANCE_COMMANDS)
         all_commands.update(REMINDERS_COMMANDS)
+        # Add new handlers
+        all_commands.update(MENU_COMMANDS)
+        all_commands.update(ANALYTICS_COMMANDS)
+        all_commands.update(HELP_COMMANDS)
 
         # Merge all callback handlers
         all_callbacks = {}
@@ -125,6 +135,10 @@ class RalphLoop:
         all_callbacks.update(FINANCE_CALLBACKS)
         all_callbacks.update(PERFORMANCE_CALLBACKS)
         all_callbacks.update(REMINDERS_CALLBACKS)
+        # Add new handlers
+        all_callbacks.update(MENU_CALLBACKS)
+        all_callbacks.update(ANALYTICS_CALLBACKS)
+        all_callbacks.update(HELP_CALLBACKS)
 
         # Merge all conversation handlers
         all_conversations = {}
@@ -134,6 +148,10 @@ class RalphLoop:
         all_conversations.update(FINANCE_CONVERSATIONS)
         all_conversations.update(PERFORMANCE_CONVERSATIONS)
         all_conversations.update(REMINDERS_CONVERSATIONS)
+        # Add new handlers
+        all_conversations.update(MENU_CONVERSATIONS)
+        all_conversations.update(ANALYTICS_CONVERSATIONS)
+        all_conversations.update(HELP_CONVERSATIONS)
 
         self.command_handlers = all_commands
         self.callback_handlers = all_callbacks
@@ -300,9 +318,13 @@ class RalphLoop:
 
 可用命令 / Available Commands:
 • /start - 注册账户 / Register account
+• /menu - 主菜单 / Main menu
 • /report - 提交客户记录 / Submit client record
 • /status - 查看个人统计 / View personal stats
 • /clients - 查看客户列表 / View client list
+• /analytics - 数据分析图表 / Data analytics charts
+• /charts - 图表分析 / Chart analysis
+• /help - 帮助中心 / Help center
 
 管理命令 / Admin Commands:
 • /dashboard - 团队概览 / Team dashboard
