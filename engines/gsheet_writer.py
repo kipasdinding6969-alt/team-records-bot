@@ -1,13 +1,26 @@
 """Real Google Sheets writer using gspread service account."""
 import logging
+import os
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import gspread
 
 logger = logging.getLogger(__name__)
 
-SPREADSHEET_ID = "1rkgRG95lxUgeplceekMY3Z_NZIBKxjTKNwLSpw04xgQ"
-SERVICE_ACCOUNT_FILE = "service_account.json"
+# Load configuration from environment with fallback
+def get_spreadsheet_id():
+    """Get spreadsheet ID from environment or config."""
+    spreadsheet_id = os.getenv("SHEETS_ID")
+    if not spreadsheet_id:
+        try:
+            from config import config
+            return config.google_sheets.spreadsheet_id
+        except ImportError:
+            pass
+    return spreadsheet_id
+
+SPREADSHEET_ID = get_spreadsheet_id()
+SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "service_account.json")
 
 # Sheet name → GID mapping (from real API)
 SHEET_MAP = {
@@ -218,6 +231,7 @@ class GSheetWriter:
                     'gid': ws.id,
                 }
                 stats['total_records'] += non_empty
-            except:
-                stats['sheets'][ws.title] = {'error': True}
+            except Exception as e:
+                logger.error(f"Failed to get stats for sheet '{ws.title}': {e}")
+                stats['sheets'][ws.title] = {'error': True, 'error_message': str(e)}
         return stats

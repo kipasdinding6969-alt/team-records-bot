@@ -71,7 +71,7 @@ Welcome to Team Records Bot!
     )
 
     # Set conversation state
-    telegram_handler.set_conversation_state(user_id, {
+    await telegram_handler.set_conversation_state(user_id, {
         'step': 'role_selection',
         'user_info': {
             'user_id': user_id,
@@ -90,7 +90,7 @@ async def handle_registration_callback(task_data: Dict[str, Any]):
     callback_data = task_data['callback_data']
     message_id = task_data['message_id']
 
-    state = telegram_handler.get_conversation_state(user_id)
+    state = await telegram_handler.get_conversation_state(user_id)
     if not state or state.get('step') != 'role_selection':
         return
 
@@ -99,7 +99,7 @@ async def handle_registration_callback(task_data: Dict[str, Any]):
     # Update state with selected role
     state['selected_role'] = role
     state['step'] = 'frontdesk_name' if role == 'frontdesk' else 'phone_number'
-    telegram_handler.set_conversation_state(user_id, state)
+    await telegram_handler.set_conversation_state(user_id, state)
 
     if role == 'frontdesk':
         # Ask for frontdesk name
@@ -153,7 +153,7 @@ Please re-enter your frontdesk name:
     # Update state and ask for phone number
     state['frontdesk_name'] = frontdesk_name
     state['step'] = 'phone_number'
-    telegram_handler.set_conversation_state(user_id, state)
+    await telegram_handler.set_conversation_state(user_id, state)
 
     text = """
 请输入您的手机号码：
@@ -193,7 +193,7 @@ Invalid phone number format. Please enter a valid phone number.
         await database.create_team_member(member)
 
         # Clear conversation state
-        telegram_handler.clear_conversation_state(user_id)
+        await telegram_handler.clear_conversation_state(user_id)
 
         # Send success message
         success_text = f"""
@@ -386,6 +386,22 @@ Deactivation failed, please try again later.
         await telegram_handler.send_message(chat_id, error_text)
 
 
+async def handle_cancel_deactivate(task_data: Dict[str, Any]):
+    """Handle cancel deactivation callback."""
+    await telegram_handler.send_message(
+        task_data['chat_id'],
+        "操作已取消。 / Operation cancelled."
+    )
+
+
+async def handle_cancel_update(task_data: Dict[str, Any]):
+    """Handle cancel update callback."""
+    await telegram_handler.send_message(
+        task_data['chat_id'],
+        "更新已取消。 / Update cancelled."
+    )
+
+
 # Command mapping for registration module
 REGISTRATION_COMMANDS = {
     'start': handle_start_command,
@@ -399,12 +415,8 @@ REGISTRATION_CALLBACKS = {
     'update_profile': handle_update_profile_callback,
     'deactivate_account': handle_update_profile_callback,
     'confirm_deactivate': handle_deactivate_account,
-    'cancel_deactivate': lambda task_data: telegram_handler.send_message(
-        task_data['chat_id'], "操作已取消。 / Operation cancelled."
-    ),
-    'cancel_update': lambda task_data: telegram_handler.send_message(
-        task_data['chat_id'], "更新已取消。 / Update cancelled."
-    )
+    'cancel_deactivate': handle_cancel_deactivate,
+    'cancel_update': handle_cancel_update
 }
 
 REGISTRATION_CONVERSATIONS = {

@@ -3,7 +3,7 @@ import asyncio
 import aiosqlite
 import sqlite3
 from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import json
 import logging
 
@@ -23,6 +23,9 @@ class Database:
     def __init__(self, db_path: str = None):
         self.db_path = db_path or config.database.db_path
         self._connection_pool = {}
+        self._pool_size = 10
+        self._current_connections = 0
+        self._max_connections = 20
 
     def get_connection(self):
         """Get database connection context manager."""
@@ -227,6 +230,16 @@ class Database:
             )
         """)
 
+        # Conversation states table (for persistent conversation management)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_states (
+                user_id INTEGER PRIMARY KEY,
+                state_data TEXT,  -- JSON data
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # Create indexes for better performance
         await db.execute("CREATE INDEX IF NOT EXISTS idx_client_records_frontdesk ON client_records(frontdesk)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_client_records_date ON client_records(date)")
@@ -235,11 +248,17 @@ class Database:
         await db.execute("CREATE INDEX IF NOT EXISTS idx_team_members_user_id ON team_members(user_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_reminders_scheduled ON reminders(scheduled_time, is_sent)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_bot_tasks_status ON bot_tasks(status, priority)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_conversation_states_user_id ON conversation_states(user_id)")
 
     # Client Records CRUD
     async def create_client_record(self, record: ClientRecord) -> int:
         """Create a new client record."""
+        # Basic validation without importing validators to avoid circular dependency
+        if not record.date or not record.frontdesk or not record.client_number or not record.account_id:
+            raise ValueError("Required fields missing: date, frontdesk, client_number, account_id are required")
+
         async with self.get_connection() as db:
+            # SQLite with aiosqlite handles transactions automatically in context manager
             cursor = await db.execute("""
                 INSERT INTO client_records (
                     row_num, date, phone_remark, frontdesk, category, recruiter,
@@ -267,26 +286,28 @@ class Database:
 
     async def update_client_record_status(self, record_id: int, first_day: str = None, second_day: str = None):
         """Update client record status."""
-        updates = []
+        if first_day is None and second_day is None:
+            return
+
+        # Build safe, parameterized query
+        set_clauses = []
         params = []
 
         if first_day is not None:
-            updates.append("first_day = ?")
+            set_clauses.append("first_day = ?")
             params.append(first_day)
         if second_day is not None:
-            updates.append("second_day = ?")
+            set_clauses.append("second_day = ?")
             params.append(second_day)
 
-        if not updates:
-            return
-
-        updates.append("updated_at = CURRENT_TIMESTAMP")
+        set_clauses.append("updated_at = CURRENT_TIMESTAMP")
         params.append(record_id)
 
+        # Use parameterized query - no f-strings
+        query = "UPDATE client_records SET " + ", ".join(set_clauses) + " WHERE id = ?"
+
         async with self.get_connection() as db:
-            await db.execute(f"""
-                UPDATE client_records SET {', '.join(updates)} WHERE id = ?
-            """, params)
+            await db.execute(query, params)
             await db.commit()
 
     # Performance Records CRUD
@@ -561,12 +582,76 @@ class Database:
 
     async def cleanup_old_tasks(self, days_old: int = 7):
         """Clean up old completed tasks."""
+        if days_old <= 0:
+            raise ValueError("days_old must be positive")
+
         async with self.get_connection() as db:
+            # Use parameterized query to prevent SQL injection
+            cutoff_date = datetime.now() - timedelta(days=days_old)
             await db.execute("""
                 DELETE FROM bot_tasks
                 WHERE status IN ('completed', 'failed')
-                AND updated_at < datetime('now', '-{} days')
-            """.format(days_old))
+                AND updated_at < ?
+            """, (cutoff_date.isoformat(),))
+            await db.commit()
+
+    # Conversation state management
+    async def set_conversation_state(self, user_id: int, state_data: Dict[str, Any]):
+        """Set conversation state for a user."""
+        # Validate state data structure
+        if not isinstance(state_data, dict):
+            raise ValueError("Conversation state must be a dictionary")
+
+        # Ensure JSON serializable
+        try:
+            json_data = json.dumps(state_data, ensure_ascii=False)
+            if len(json_data) > 10000:  # Limit to 10KB
+                raise ValueError("Conversation state too large")
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Conversation state not JSON serializable: {e}")
+
+        async with self.get_connection() as db:
+            await db.execute("""
+                INSERT OR REPLACE INTO conversation_states
+                (user_id, state_data, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+            """, (user_id, json_data))
+            await db.commit()
+
+    async def get_conversation_state(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Get conversation state for a user."""
+        async with self.get_connection() as db:
+            cursor = await db.execute("""
+                SELECT state_data FROM conversation_states WHERE user_id = ?
+            """, (user_id,))
+            row = await cursor.fetchone()
+            if row and row[0]:
+                try:
+                    return json.loads(row[0])
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse conversation state for user {user_id}: {e}")
+                    return None
+            return None
+
+    async def clear_conversation_state(self, user_id: int):
+        """Clear conversation state for a user."""
+        async with self.get_connection() as db:
+            await db.execute("""
+                DELETE FROM conversation_states WHERE user_id = ?
+            """, (user_id,))
+            await db.commit()
+
+    async def cleanup_old_conversation_states(self, hours_old: int = 24):
+        """Clean up old conversation states."""
+        if hours_old <= 0:
+            raise ValueError("hours_old must be positive")
+
+        async with self.get_connection() as db:
+            cutoff_time = datetime.now() - timedelta(hours=hours_old)
+            await db.execute("""
+                DELETE FROM conversation_states
+                WHERE updated_at < ?
+            """, (cutoff_time.isoformat(),))
             await db.commit()
 
     async def get_stats(self) -> Dict[str, int]:
@@ -574,7 +659,7 @@ class Database:
         stats = {}
         async with self.get_connection() as db:
             for table in ["client_records", "performance_records", "financial_records",
-                         "team_members", "reminders", "bot_tasks"]:
+                         "team_members", "reminders", "bot_tasks", "conversation_states"]:
                 cursor = await db.execute(f"SELECT COUNT(*) FROM {table}")
                 count = await cursor.fetchone()
                 stats[table] = count[0]

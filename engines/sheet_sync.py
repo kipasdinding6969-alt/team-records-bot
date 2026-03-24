@@ -94,61 +94,126 @@ class SheetSyncEngine:
         results = {'read': 0, 'written': 0, 'errors': []}
 
         try:
-            # Process each of the 11 client record sheets
-            for gid in config.google_sheets.client_records_gids:
-                try:
-                    # Read from Google Sheets
-                    sheet_data = await self._read_client_sheet(gid)
-                    if sheet_data:
-                        # Process and store in database
-                        processed = await self._process_client_sheet_data(sheet_data, gid)
-                        results['read'] += processed
+            # Process client record sheets in smaller batches
+            batch_size = config.bot.sheets_batch_size
+            gids = config.google_sheets.client_records_gids
 
-                    # Write local changes back to sheets
-                    written = await self._write_client_changes_to_sheet(gid)
-                    results['written'] += written
+            for i in range(0, len(gids), batch_size):
+                batch_gids = gids[i:i + batch_size]
+                batch_tasks = []
+
+                # Create tasks for parallel processing
+                for gid in batch_gids:
+                    batch_tasks.append(self._sync_single_client_sheet(gid))
+
+                # Execute batch in parallel
+                try:
+                    batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+
+                    for j, result in enumerate(batch_results):
+                        if isinstance(result, Exception):
+                            error_msg = f"Failed to sync client sheet {batch_gids[j]}: {result}"
+                            logger.error(error_msg)
+                            results['errors'].append(error_msg)
+                        else:
+                            results['read'] += result.get('read', 0)
+                            results['written'] += result.get('written', 0)
+                            if result.get('errors'):
+                                results['errors'].extend(result['errors'])
 
                 except Exception as e:
-                    error_msg = f"Failed to sync client sheet {gid}: {e}"
+                    error_msg = f"Failed to process batch {i//batch_size + 1}: {e}"
                     logger.error(error_msg)
                     results['errors'].append(error_msg)
 
-                # Small delay to respect rate limits
-                await asyncio.sleep(0.5)
+                # Delay between batches for rate limiting
+                if i + batch_size < len(gids):
+                    await asyncio.sleep(config.bot.sheets_batch_delay)
 
         except Exception as e:
             results['errors'].append(f"Client records sync failed: {e}")
 
         return results
 
+    async def _sync_single_client_sheet(self, gid: int) -> Dict[str, Any]:
+        """Sync a single client sheet."""
+        result = {'read': 0, 'written': 0, 'errors': []}
+
+        try:
+            # Read from Google Sheets
+            sheet_data = await self._read_client_sheet(gid)
+            if sheet_data:
+                # Process and store in database
+                processed = await self._process_client_sheet_data(sheet_data, gid)
+                result['read'] += processed
+
+            # Write local changes back to sheets
+            written = await self._write_client_changes_to_sheet(gid)
+            result['written'] += written
+
+        except Exception as e:
+            error_msg = f"Failed to sync client sheet {gid}: {e}"
+            logger.error(error_msg)
+            result['errors'].append(error_msg)
+
+        return result
+
     async def _read_client_sheet(self, gid: int) -> Optional[List[Dict[str, Any]]]:
         """Read client data from a specific Google Sheet."""
+        if not self.writer or not self.writer.gc:
+            logger.error("Google Sheets client not initialized")
+            return None
+
         try:
-            # In a real implementation, this would use Google Sheets API
-            # For now, simulate reading some data
             logger.info(f"Reading client sheet {gid}")
 
-            # Simulated sheet data structure
-            simulated_data = [
-                {
-                    'row_num': 1,
-                    'date': '3月15日',
-                    'phone_remark': '65 IPHONE SE',
-                    'frontdesk': '阿YIM',
-                    'category': '飞机筛选',
-                    'recruiter': '小王',
-                    'frontdesk_number': '+86123456789',
-                    'frontdesk_username': '@test_user',
-                    'client_number': '+86987654321',
-                    'account_id': 'ACC123456',
-                    'first_day': '注册',
-                    'second_day': '注册',
-                    'client_condition': '培训中'
-                }
-                # In real implementation, this would contain actual sheet data
-            ]
+            # Find the worksheet by GID
+            worksheet = None
+            for ws in self.writer.spreadsheet.worksheets():
+                if ws.id == gid:
+                    worksheet = ws
+                    break
 
-            return simulated_data
+            if not worksheet:
+                logger.error(f"Worksheet with GID {gid} not found")
+                return None
+
+            # Get all values from the worksheet
+            rows = worksheet.get_all_values()
+            if len(rows) < 3:  # Need at least header + data
+                logger.warning(f"Sheet {gid} has no data rows")
+                return []
+
+            # Parse the data (skip first 2 header rows)
+            sheet_data = []
+            for i, row in enumerate(rows[2:], start=1):
+                if len(row) < 13 or not row[1].strip():
+                    continue
+                if row[1].strip() in ('DATE', '日期', 'X月X日'):
+                    continue
+
+                try:
+                    sheet_data.append({
+                        'row_num': i,
+                        'date': row[1].strip(),
+                        'phone_remark': row[2].strip(),
+                        'frontdesk': row[3].strip(),
+                        'category': row[4].strip(),
+                        'recruiter': row[5].strip(),
+                        'frontdesk_number': row[6].strip(),
+                        'frontdesk_username': row[7].strip(),
+                        'client_number': row[8].strip(),
+                        'account_id': row[9].strip(),
+                        'first_day': row[10].strip(),
+                        'second_day': row[11].strip(),
+                        'client_condition': row[12].strip() if len(row) > 12 else ''
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to parse row {i} in sheet {gid}: {e}")
+                    continue
+
+            logger.info(f"Read {len(sheet_data)} records from sheet {gid}")
+            return sheet_data
 
         except Exception as e:
             logger.error(f"Failed to read client sheet {gid}: {e}")
@@ -269,6 +334,10 @@ class SheetSyncEngine:
 
     async def _write_client_changes_to_sheet(self, gid: int) -> int:
         """Write local client changes back to Google Sheets."""
+        if not self.writer or not self.writer.gc:
+            logger.error("Google Sheets client not initialized")
+            return 0
+
         try:
             # Get records that have been updated locally but not synced
             async with database.get_connection() as db:
@@ -281,11 +350,56 @@ class SheetSyncEngine:
             if not updated_records:
                 return 0
 
-            # In real implementation, this would write to Google Sheets
             logger.info(f"Writing {len(updated_records)} client records to sheet {gid}")
 
-            # Simulate successful write
-            return len(updated_records)
+            # Find the worksheet by GID
+            worksheet = None
+            for ws in self.writer.spreadsheet.worksheets():
+                if ws.id == gid:
+                    worksheet = ws
+                    break
+
+            if not worksheet:
+                logger.error(f"Worksheet with GID {gid} not found")
+                return 0
+
+            # Update each record in the sheet
+            written_count = 0
+            for record in updated_records:
+                try:
+                    # Find the row in the sheet by matching client_number and account_id
+                    rows = worksheet.get_all_values()
+                    target_row = None
+
+                    for i, row in enumerate(rows[2:], start=3):  # Start from row 3 (0-based + 2 headers + 1 for 1-based)
+                        if len(row) >= 10 and row[8] == record.client_number and row[9] == record.account_id:
+                            target_row = i
+                            break
+
+                    if target_row:
+                        # Update the status columns (K and L are columns 11 and 12)
+                        updates = []
+                        if record.first_day:
+                            updates.append({'range': f'K{target_row}', 'values': [[record.first_day]]})
+                        if record.second_day:
+                            updates.append({'range': f'L{target_row}', 'values': [[record.second_day]]})
+                        if record.client_condition:
+                            updates.append({'range': f'M{target_row}', 'values': [[record.client_condition]]})
+
+                        for update in updates:
+                            worksheet.update(update['range'], update['values'])
+
+                        written_count += 1
+                        logger.debug(f"Updated record {record.client_number} in row {target_row}")
+
+                except Exception as e:
+                    logger.error(f"Failed to update record {record.client_number}: {e}")
+                    continue
+
+                # Add delay to respect rate limits
+                await asyncio.sleep(config.bot.sheets_rate_limit_delay)
+
+            return written_count
 
         except Exception as e:
             logger.error(f"Failed to write client changes to sheet {gid}: {e}")
@@ -529,7 +643,17 @@ class SheetSyncEngine:
 
     async def _export_table_data(self, table_name: str) -> List[Dict[str, Any]]:
         """Export data from a specific table."""
+        # Whitelist valid table names to prevent SQL injection
+        valid_tables = {
+            'client_records', 'financial_records', 'performance_records',
+            'team_members', 'reminders', 'bot_tasks'
+        }
+
+        if table_name not in valid_tables:
+            raise ValueError(f"Invalid table name: {table_name}")
+
         async with database.get_connection() as db:
+            # Safe to use f-string now that we've validated the table name
             cursor = await db.execute(f"SELECT * FROM {table_name}")
             rows = await cursor.fetchall()
 

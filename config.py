@@ -1,15 +1,18 @@
 """Configuration settings for Team Records Bot."""
 import os
+import logging
 from typing import Dict, List
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class TelegramConfig:
     """Telegram API configuration."""
-    api_id: int = 32326218
-    api_hash: str = "2f44dfd151f291c8a4ec5c405eb51e94"
-    phone: str = "+31651036582"
+    api_id: int = None
+    api_hash: str = None
+    phone: str = None
     session_file: str = "team_records_bot.session"
 
     # SOCKS5 proxy for Tor
@@ -17,13 +20,27 @@ class TelegramConfig:
     proxy_port: int = 9050
     proxy_type: str = "socks5"
 
+    def validate(self):
+        """Validate telegram configuration."""
+        if not self.api_id:
+            raise ValueError("Telegram API ID is required (set TG_API_ID environment variable)")
+        if not self.api_hash:
+            raise ValueError("Telegram API hash is required (set TG_API_HASH environment variable)")
+        if not self.phone:
+            raise ValueError("Telegram phone number is required (set TG_PHONE environment variable)")
+
+        # Validate phone format
+        import re
+        if not re.match(r'^\+\d{10,15}$', self.phone):
+            raise ValueError("Telegram phone must be in format +1234567890")
+
 
 @dataclass
 class GoogleSheetsConfig:
     """Google Sheets configuration."""
-    spreadsheet_url: str = "https://docs.google.com/spreadsheets/d/1rkgRG95lxUgeplceekMY3Z_NZIBKxjTKNwLSpw04xgQ/"
-    spreadsheet_id: str = "1rkgRG95lxUgeplceekMY3Z_NZIBKxjTKNwLSpw04xgQ"
-    title: str = "欧洲前台客户"
+    spreadsheet_url: str = None
+    spreadsheet_id: str = None
+    title: str = None
 
     # Schema type 1: Client Records GIDs (11 sheets)
     client_records_gids: List[int] = None
@@ -77,6 +94,24 @@ class BotConfig:
     # Sync settings
     sync_interval: int = 3600  # seconds (1 hour)
 
+    # Maintenance intervals
+    reminder_check_interval: int = 300  # 5 minutes
+    health_check_interval: int = 1800  # 30 minutes
+    conversation_cleanup_hours: int = 24  # 24 hours
+
+    # Rate limiting
+    telegram_max_messages_per_minute: int = 30
+    telegram_min_delay_between_messages: float = 0.05
+
+    # Database settings
+    max_db_connections: int = 20
+    query_timeout: int = 30
+
+    # Google Sheets settings
+    sheets_rate_limit_delay: float = 0.5
+    sheets_batch_size: int = 3
+    sheets_batch_delay: float = 2.0
+
     # Language settings
     default_language: str = "zh"  # Chinese
     supported_languages: List[str] = None
@@ -102,15 +137,23 @@ class Config:
         # Load environment variables
         self._load_env_vars()
 
+        # Validate only if running as main bot (not during import/testing)
+        # self._validate_config()
+
     def _load_env_vars(self):
-        """Load configuration from environment variables."""
+        """Load configuration from environment variables and .env file."""
+        # Try loading .env file
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except ImportError:
+            pass
+
         # Telegram config
-        if os.getenv("TG_API_ID"):
-            self.telegram.api_id = int(os.getenv("TG_API_ID"))
-        if os.getenv("TG_API_HASH"):
-            self.telegram.api_hash = os.getenv("TG_API_HASH")
-        if os.getenv("TG_PHONE"):
-            self.telegram.phone = os.getenv("TG_PHONE")
+        self.telegram.api_id = int(os.getenv("TG_API_ID") or os.getenv("API_ID") or "0")
+        self.telegram.api_hash = os.getenv("TG_API_HASH") or os.getenv("API_HASH") or ""
+        self.telegram.phone = os.getenv("TG_PHONE") or os.getenv("PHONE") or ""
+
         if os.getenv("TG_SESSION_FILE"):
             self.telegram.session_file = os.getenv("TG_SESSION_FILE")
 
@@ -120,9 +163,10 @@ class Config:
         if os.getenv("PROXY_PORT"):
             self.telegram.proxy_port = int(os.getenv("PROXY_PORT"))
 
-        # Google Sheets config
-        if os.getenv("SHEETS_ID"):
-            self.google_sheets.spreadsheet_id = os.getenv("SHEETS_ID")
+        # Google Sheets config - REQUIRED
+        self.google_sheets.spreadsheet_id = os.getenv("SHEETS_ID") or os.getenv("SPREADSHEET_ID") or "1rkgRG95lxUgeplceekMY3Z_NZIBKxjTKNwLSpw04xgQ"
+        self.google_sheets.spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{self.google_sheets.spreadsheet_id}/"
+        self.google_sheets.title = os.getenv("SHEETS_TITLE", "Team Records")
 
         # Database config
         if os.getenv("DB_PATH"):
@@ -130,13 +174,84 @@ class Config:
 
         # Bot config
         if os.getenv("ADMIN_CHAT_IDS"):
-            self.bot.admin_chat_ids = [int(x.strip()) for x in os.getenv("ADMIN_CHAT_IDS").split(",")]
+            try:
+                self.bot.admin_chat_ids = [int(x.strip()) for x in os.getenv("ADMIN_CHAT_IDS").split(",") if x.strip()]
+            except ValueError as e:
+                raise ValueError(f"Invalid ADMIN_CHAT_IDS format: {e}")
         if os.getenv("MANAGER_CHAT_IDS"):
-            self.bot.manager_chat_ids = [int(x.strip()) for x in os.getenv("MANAGER_CHAT_IDS").split(",")]
+            try:
+                self.bot.manager_chat_ids = [int(x.strip()) for x in os.getenv("MANAGER_CHAT_IDS").split(",") if x.strip()]
+            except ValueError as e:
+                raise ValueError(f"Invalid MANAGER_CHAT_IDS format: {e}")
+
+    def _get_required_env(self, key: str, default: str = None) -> str:
+        """Get required environment variable."""
+        value = os.getenv(key)
+        if not value:
+            raise ValueError(f"Required environment variable {key} is not set")
+        return value
+
+    def _get_required_int_env(self, key: str, default: int = None) -> int:
+        """Get required integer environment variable."""
+        value = self._get_required_env(key)
+        try:
+            return int(value)
+        except ValueError:
+            raise ValueError(f"Environment variable {key} must be a valid integer")
+
+    def _validate_config(self):
+        """Validate all configuration sections."""
+        # Validate telegram config
+        self.telegram.validate()
+
+        # Validate Google Sheets config
+        if not self.google_sheets.spreadsheet_id:
+            raise ValueError("Google Sheets spreadsheet ID is required (set SHEETS_ID environment variable)")
+
+        # Validate numeric ranges
+        if self.bot.loop_interval <= 0:
+            raise ValueError("Bot loop interval must be positive")
+
+        if self.bot.sync_interval <= 0:
+            raise ValueError("Sync interval must be positive")
+
+        # Validate admin/manager chat IDs are actually integers
+        for chat_id in self.bot.admin_chat_ids:
+            if not isinstance(chat_id, int):
+                raise ValueError(f"Admin chat ID must be integer: {chat_id}")
+
+        for chat_id in self.bot.manager_chat_ids:
+            if not isinstance(chat_id, int):
+                raise ValueError(f"Manager chat ID must be integer: {chat_id}")
 
 
-# Global config instance
-config = Config()
+# Global config instance - initialized safely
+config = None
+
+def initialize_config():
+    """Initialize the global configuration."""
+    global config
+    try:
+        config = Config()
+        return config
+    except Exception as e:
+        logger.error(f"Failed to initialize configuration: {e}")
+        raise
+
+def get_config():
+    """Get the configuration, initializing if needed."""
+    global config
+    if config is None:
+        config = initialize_config()
+    return config
+
+# Initialize config on import, but allow graceful handling of failures
+try:
+    config = Config()
+except Exception as e:
+    import logging
+    logging.getLogger(__name__).error(f"Configuration initialization failed: {e}")
+    # Don't raise here - let the application handle it gracefully
 
 
 # Frontdesk staff mapping (for schema type 1)

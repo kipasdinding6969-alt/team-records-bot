@@ -82,7 +82,8 @@ class RalphLoop:
             logger.info("Telegram handler initialized")
 
             # Initialize engines
-            await report_engine.initialize() if hasattr(report_engine, 'initialize') else None
+            if hasattr(report_engine, 'initialize'):
+                await report_engine.initialize()
             await sheet_sync_engine.initialize()
             logger.info("Engines initialized")
 
@@ -385,7 +386,7 @@ class RalphLoop:
                 # Clear conversation state for unknown steps
                 user_id = data.get('user_id')
                 if user_id:
-                    telegram_handler.clear_conversation_state(user_id)
+                    await telegram_handler.clear_conversation_state(user_id)
                 return True
 
         except Exception as e:
@@ -495,7 +496,7 @@ class RalphLoop:
         current_time = datetime.now()
 
         # Check for scheduled maintenance operations
-        if not self.last_reminder_check or (current_time - self.last_reminder_check).total_seconds() > 300:  # 5 minutes
+        if not self.last_reminder_check or (current_time - self.last_reminder_check).total_seconds() > config.bot.reminder_check_interval:
             # Check for pending reminders
             pending_reminders = await database.get_pending_reminders(current_time)
             if pending_reminders:
@@ -519,7 +520,7 @@ class RalphLoop:
             await database.create_task(sync_task)
             self.last_sync = current_time
 
-        if not self.last_health_check or (current_time - self.last_health_check).total_seconds() > 1800:  # 30 minutes
+        if not self.last_health_check or (current_time - self.last_health_check).total_seconds() > config.bot.health_check_interval:
             # Schedule health check
             health_task = BotTask(
                 task_type='maintenance',
@@ -605,6 +606,69 @@ class RalphLoop:
         }
 
         return status
+
+    async def health_check(self) -> Dict[str, Any]:
+        """Comprehensive health check for monitoring."""
+        health = {
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'checks': {},
+            'version': '1.0.0'
+        }
+
+        # Check database
+        try:
+            stats = await database.get_stats()
+            health['checks']['database'] = {
+                'status': 'healthy',
+                'tables': len(stats),
+                'records': sum(stats.values())
+            }
+        except Exception as e:
+            health['checks']['database'] = {
+                'status': 'unhealthy',
+                'error': str(e)
+            }
+            health['status'] = 'degraded'
+
+        # Check Telegram connection
+        try:
+            telegram_healthy = await telegram_handler.health_check()
+            health['checks']['telegram'] = {
+                'status': 'healthy' if telegram_healthy else 'unhealthy',
+                'connected': telegram_healthy
+            }
+            if not telegram_healthy:
+                health['status'] = 'degraded'
+        except Exception as e:
+            health['checks']['telegram'] = {
+                'status': 'unhealthy',
+                'error': str(e)
+            }
+            health['status'] = 'degraded'
+
+        # Check Google Sheets sync
+        try:
+            sync_status = await sheet_sync_engine.get_sync_status()
+            health['checks']['sheets_sync'] = {
+                'status': 'healthy' if sync_status.get('connection_status') == 'connected' else 'degraded',
+                'last_sync': sync_status.get('last_sync'),
+                'records_synced': sync_status.get('records_synced', 0)
+            }
+        except Exception as e:
+            health['checks']['sheets_sync'] = {
+                'status': 'unhealthy',
+                'error': str(e)
+            }
+
+        # Overall status
+        check_statuses = [check['status'] for check in health['checks'].values()]
+        if 'unhealthy' in check_statuses:
+            health['status'] = 'unhealthy'
+        elif 'degraded' in check_statuses:
+            health['status'] = 'degraded'
+
+        return health
 
 
 # Global ralph loop instance

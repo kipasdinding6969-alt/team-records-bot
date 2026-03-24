@@ -1,9 +1,11 @@
 """Telegram handler using Telethon client."""
 import asyncio
 import logging
+import time
 from typing import Dict, Callable, Any, Optional, List
 import re
 import socks
+from collections import deque
 
 from telethon import TelegramClient, events, Button
 from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError
@@ -22,8 +24,13 @@ class TelegramHandler:
     def __init__(self):
         self.client: Optional[TelegramClient] = None
         self.handlers: Dict[str, Callable] = {}
-        self.conversation_states: Dict[int, Dict[str, Any]] = {}
+        self.conversation_states: Dict[int, Dict[str, Any]] = {}  # Deprecated, using database now
         self.is_authenticated = False
+
+        # Rate limiting
+        self.message_timestamps = deque()
+        self.max_messages_per_minute = config.bot.telegram_max_messages_per_minute
+        self.min_delay_between_messages = config.bot.telegram_min_delay_between_messages
 
     async def initialize(self):
         """Initialize Telegram client with proxy and authentication."""
@@ -189,10 +196,41 @@ class TelegramHandler:
             )
             await database.create_team_member(new_member)
 
+    async def _rate_limit_check(self):
+        """Check and enforce rate limiting."""
+        current_time = time.time()
+
+        # Remove timestamps older than 1 minute to prevent memory leak
+        while self.message_timestamps and current_time - self.message_timestamps[0] > 60:
+            self.message_timestamps.popleft()
+
+        # Enforce minimum delay first (always applies)
+        if self.message_timestamps and current_time - self.message_timestamps[-1] < self.min_delay_between_messages:
+            sleep_time = self.min_delay_between_messages - (current_time - self.message_timestamps[-1])
+            await asyncio.sleep(sleep_time)
+            current_time = time.time()
+
+        # Check if we're hitting rate limit (but avoid recursion)
+        if len(self.message_timestamps) >= self.max_messages_per_minute:
+            if self.message_timestamps:
+                sleep_time = 60 - (current_time - self.message_timestamps[0]) + 1
+                logger.warning(f"Rate limit reached, sleeping for {sleep_time:.2f} seconds")
+                await asyncio.sleep(max(sleep_time, 0))
+                current_time = time.time()
+
+                # Clean up old timestamps again after sleep
+                while self.message_timestamps and current_time - self.message_timestamps[0] > 60:
+                    self.message_timestamps.popleft()
+
+        # Record this message timestamp
+        self.message_timestamps.append(current_time)
+
     # Message sending methods
     async def send_message(self, chat_id: int, text: str, parse_mode: str = None,
                           reply_markup: Any = None, disable_web_page_preview: bool = True):
-        """Send a text message."""
+        """Send a text message with rate limiting."""
+        await self._rate_limit_check()
+
         try:
             await self.client.send_message(
                 chat_id,
@@ -203,6 +241,7 @@ class TelegramHandler:
             )
         except Exception as e:
             logger.error(f"Failed to send message to {chat_id}: {e}")
+            raise
 
     async def send_photo(self, chat_id: int, photo, caption: str = None,
                         reply_markup: Any = None):
@@ -279,19 +318,18 @@ class TelegramHandler:
             logger.error(f"Failed to check permissions for {user_id} in {chat_id}: {e}")
             return {}
 
-    # Conversation state management
-    def set_conversation_state(self, user_id: int, state: Dict[str, Any]):
+    # Conversation state management - now database-backed
+    async def set_conversation_state(self, user_id: int, state: Dict[str, Any]):
         """Set conversation state for a user."""
-        self.conversation_states[user_id] = state
+        await database.set_conversation_state(user_id, state)
 
-    def get_conversation_state(self, user_id: int) -> Optional[Dict[str, Any]]:
+    async def get_conversation_state(self, user_id: int) -> Optional[Dict[str, Any]]:
         """Get conversation state for a user."""
-        return self.conversation_states.get(user_id)
+        return await database.get_conversation_state(user_id)
 
-    def clear_conversation_state(self, user_id: int):
+    async def clear_conversation_state(self, user_id: int):
         """Clear conversation state for a user."""
-        if user_id in self.conversation_states:
-            del self.conversation_states[user_id]
+        await database.clear_conversation_state(user_id)
 
     # Keyboard helpers
     @staticmethod

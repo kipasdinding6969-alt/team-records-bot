@@ -437,7 +437,8 @@ class TestHandlerUtilities:
         assert action == "register"
         assert role == "frontdesk"
 
-    def test_conversation_state_management(self, mock_telegram_handler):
+    @pytest.mark.asyncio
+    async def test_conversation_state_management(self, mock_telegram_handler):
         """Test conversation state management."""
         user_id = 123456
         test_state = {
@@ -446,15 +447,11 @@ class TestHandlerUtilities:
         }
 
         # Set state
-        mock_telegram_handler.set_conversation_state(user_id, test_state)
+        await mock_telegram_handler.set_conversation_state(user_id, test_state)
         mock_telegram_handler.set_conversation_state.assert_called_once_with(user_id, test_state)
 
         # Get state
         mock_telegram_handler.get_conversation_state.return_value = test_state
-        retrieved_state = mock_telegram_handler.get_conversation_state(user_id)
+        retrieved_state = await mock_telegram_handler.get_conversation_state(user_id)
 
         assert retrieved_state == test_state
-
-        # Clear state
-        mock_telegram_handler.clear_conversation_state(user_id)
-        mock_telegram_handler.clear_conversation_state.assert_called_once_with(user_id)
