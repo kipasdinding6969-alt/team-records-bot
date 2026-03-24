@@ -22,9 +22,11 @@ jobs:
       - name: Setup Python
         run: |
           python3 --version
-          python3 -m venv /tmp/ci-venv
-          /tmp/ci-venv/bin/pip install -q -r requirements.txt
-          /tmp/ci-venv/bin/pip install -q pytest pytest-asyncio pytest-mock flake8
+          export PATH="/home/baiwan/.local/bin:$PATH"
+          rm -rf /tmp/ci-venv
+          uv venv /tmp/ci-venv
+          uv pip install --python /tmp/ci-venv/bin/python -r requirements.txt
+          uv pip install --python /tmp/ci-venv/bin/python pytest pytest-asyncio pytest-mock flake8
 
       - name: Lint (flake8)
         run: |
