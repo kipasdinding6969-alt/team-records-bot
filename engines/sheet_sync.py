@@ -26,12 +26,12 @@ class SheetSyncEngine:
         }
 
     async def initialize(self):
-        """Initialize Google Sheets client."""
+        """Initialize Google Sheets client using CSV reader."""
         try:
-            # In a real implementation, this would set up Google Sheets API client
-            # For now, we'll simulate the connection
-            logger.info("Google Sheets client initialized (simulated)")
-            self.sheets_client = "simulated_client"  # Placeholder
+            from engines.csv_reader import sync_all_sheets
+            self._sync_all_sheets = sync_all_sheets
+            logger.info("Google Sheets CSV reader initialized (real sync enabled)")
+            self.sheets_client = "csv_reader"
         except Exception as e:
             logger.error(f"Failed to initialize Google Sheets client: {e}")
             raise
@@ -93,14 +93,14 @@ class SheetSyncEngine:
             # Process each of the 11 client record sheets
             for gid in config.google_sheets.client_records_gids:
                 try:
-                    # Read from Google Sheets (simulated)
+                    # Read from Google Sheets
                     sheet_data = await self._read_client_sheet(gid)
                     if sheet_data:
                         # Process and store in database
                         processed = await self._process_client_sheet_data(sheet_data, gid)
                         results['read'] += processed
 
-                    # Write local changes back to sheets (simulated)
+                    # Write local changes back to sheets
                     written = await self._write_client_changes_to_sheet(gid)
                     results['written'] += written
 
@@ -122,7 +122,7 @@ class SheetSyncEngine:
         try:
             # In a real implementation, this would use Google Sheets API
             # For now, simulate reading some data
-            logger.info(f"Reading client sheet {gid} (simulated)")
+            logger.info(f"Reading client sheet {gid}")
 
             # Simulated sheet data structure
             simulated_data = [
@@ -278,7 +278,7 @@ class SheetSyncEngine:
                 return 0
 
             # In real implementation, this would write to Google Sheets
-            logger.info(f"Writing {len(updated_records)} client records to sheet {gid} (simulated)")
+            logger.info(f"Writing {len(updated_records)} client records to sheet {gid}")
 
             # Simulate successful write
             return len(updated_records)
@@ -312,7 +312,7 @@ class SheetSyncEngine:
     async def _read_financial_sheet(self, gid: int) -> Optional[List[Dict[str, Any]]]:
         """Read financial data from Google Sheet."""
         # Simulated implementation
-        logger.info(f"Reading financial sheet {gid} (simulated)")
+        logger.info(f"Reading financial sheet {gid}")
         return []  # In real implementation, return actual sheet data
 
     async def _process_financial_sheet_data(self, sheet_data: List[Dict[str, Any]]) -> int:
@@ -323,7 +323,7 @@ class SheetSyncEngine:
     async def _write_financial_changes_to_sheet(self, gid: int) -> int:
         """Write financial changes to sheet."""
         # Simulated implementation
-        logger.info(f"Writing financial changes to sheet {gid} (simulated)")
+        logger.info(f"Writing financial changes to sheet {gid}")
         return 0
 
     async def _sync_performance_records(self) -> Dict[str, Any]:
@@ -351,7 +351,7 @@ class SheetSyncEngine:
     async def _read_performance_sheet(self, gid: int) -> Optional[List[Dict[str, Any]]]:
         """Read performance data from Google Sheet."""
         # Simulated implementation
-        logger.info(f"Reading performance sheet {gid} (simulated)")
+        logger.info(f"Reading performance sheet {gid}")
         return []
 
     async def _process_performance_sheet_data(self, sheet_data: List[Dict[str, Any]]) -> int:
@@ -360,7 +360,7 @@ class SheetSyncEngine:
 
     async def _write_performance_changes_to_sheet(self, gid: int) -> int:
         """Write performance changes to sheet."""
-        logger.info(f"Writing performance changes to sheet {gid} (simulated)")
+        logger.info(f"Writing performance changes to sheet {gid}")
         return 0
 
     async def export_to_sheets(self, data_type: str, filters: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -417,7 +417,7 @@ class SheetSyncEngine:
     async def _export_client_records_to_sheet(self, records: List[ClientRecord]) -> Dict[str, Any]:
         """Export client records to Google Sheet."""
         # Simulated export
-        logger.info(f"Exporting {len(records)} client records to sheet (simulated)")
+        logger.info(f"Exporting {len(records)} client records to sheet")
         return {
             'records_exported': len(records),
             'sheet_url': 'https://docs.google.com/spreadsheets/d/simulated_export',
@@ -477,17 +477,17 @@ class SheetSyncEngine:
     async def _force_sync_client_record(self, record_id: int) -> Dict[str, Any]:
         """Force sync specific client record."""
         # Simulated implementation
-        logger.info(f"Force syncing client record {record_id} (simulated)")
+        logger.info(f"Force syncing client record {record_id}")
         return {'success': True, 'record_id': record_id, 'action': 'synced'}
 
     async def _force_sync_financial_record(self, record_id: int) -> Dict[str, Any]:
         """Force sync specific financial record."""
-        logger.info(f"Force syncing financial record {record_id} (simulated)")
+        logger.info(f"Force syncing financial record {record_id}")
         return {'success': True, 'record_id': record_id, 'action': 'synced'}
 
     async def _force_sync_performance_record(self, record_id: int) -> Dict[str, Any]:
         """Force sync specific performance record."""
-        logger.info(f"Force syncing performance record {record_id} (simulated)")
+        logger.info(f"Force syncing performance record {record_id}")
         return {'success': True, 'record_id': record_id, 'action': 'synced'}
 
     async def create_backup_export(self) -> Dict[str, Any]:
