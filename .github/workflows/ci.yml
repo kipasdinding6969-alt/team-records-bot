@@ -88,10 +88,11 @@ jobs:
           /tmp/ci-venv/bin/python -m pytest tests/ -v --tb=short -x
 
       - name: Docker Build Test
+        continue-on-error: true
         run: |
           if [ -f Dockerfile ]; then
             echo "=== DOCKER BUILD ==="
-            docker build -t team-records-bot-test . && echo "✅ Docker build OK" || echo "⚠️ Docker build failed"
+            docker build -t team-records-bot-test . && echo "✅ Docker build OK" || echo "⚠️ Docker build failed (non-blocking)"
           else
             echo "No Dockerfile — skipping"
           fi
