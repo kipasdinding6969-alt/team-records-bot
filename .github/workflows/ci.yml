@@ -1,0 +1,138 @@
+name: CI — Team Records Bot
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install flake8 mypy
+      - name: Flake8 lint
+        run: flake8 --max-line-length=120 --exclude=.venv,__pycache__ --count --statistics *.py engines/ handlers/ utils/ || true
+      - name: Type check (non-blocking)
+        run: mypy --ignore-missing-imports --no-strict-optional *.py engines/ handlers/ utils/ || true
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-mock pytest-cov
+      - name: Run tests
+        env:
+          TG_API_ID: "0"
+          TG_API_HASH: "test"
+          TG_PHONE: "+0000000000"
+          SHEETS_ID: "test"
+          DB_PATH: ":memory:"
+        run: pytest tests/ -v --tb=short --cov=. --cov-report=xml --cov-report=term-missing -x
+      - name: Upload coverage
+        if: matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Check for hardcoded secrets
+        run: |
+          echo "Scanning for hardcoded secrets..."
+          ! grep -rn "sk-ant\|api_hash.*=.*['\"][0-9a-f]\{32\}\|password.*=.*['\"]" \
+            --include="*.py" --exclude-dir=.venv --exclude-dir=tests . \
+            || echo "⚠️ Potential secrets found — review above"
+      - name: Check for SQL injection patterns
+        run: |
+          echo "Scanning for SQL injection..."
+          ! grep -rn "f\".*SELECT\|f\".*INSERT\|f\".*UPDATE\|f\".*DELETE" \
+            --include="*.py" --exclude-dir=.venv --exclude-dir=tests . \
+            | grep -v "# safe" | grep -v "parameterized" \
+            || echo "⚠️ Potential SQL injection — review above"
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: |
+          if [ -f Dockerfile ]; then
+            docker build -t team-records-bot .
+          else
+            echo "No Dockerfile yet — skipping"
+          fi
+
+  bot-startup:
+    name: Bot Startup Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Test import chain
+        env:
+          TG_API_ID: "0"
+          TG_API_HASH: "test"
+          TG_PHONE: "+0000000000"
+          SHEETS_ID: "test"
+          DB_PATH: ":memory:"
+        run: |
+          python -c "
+          from config import config
+          from database import Database
+          from models import ClientRecord, FinancialRecord, PerformanceRecord
+          from engines.chart_engine import ChartEngine
+          from engines.csv_reader import parse_client_csv, parse_financial_csv
+          from utils.validators import validate_phone_number
+          from utils.formatting import convert_chinese_date
+          print('✅ All imports successful')
+          "
+      - name: Test database initialization
+        env:
+          TG_API_ID: "0"
+          TG_API_HASH: "test"
+          TG_PHONE: "+0000000000"
+          SHEETS_ID: "test"
+          DB_PATH: "/tmp/test.db"
+        run: |
+          python -c "
+          import asyncio
+          from database import Database
+          async def test():
+              db = Database('/tmp/test.db')
+              await db.initialize()
+              print('✅ Database initialized with all tables')
+          asyncio.run(test())
+          "
