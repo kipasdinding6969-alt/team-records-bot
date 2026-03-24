@@ -654,7 +654,7 @@ class SheetSyncEngine:
 
         async with database.get_connection() as db:
             # Safe to use f-string now that we've validated the table name
-            cursor = await db.execute(f"SELECT * FROM {table_name}")
+            cursor = await db.execute(f"SELECT * FROM {table_name}")  # safe: validated against whitelist above
             rows = await cursor.fetchall()
 
             # Convert to dict format

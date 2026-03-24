@@ -73,7 +73,7 @@ async def handle_start_report_wizard(task_data: Dict[str, Any]):
         'record_data': {}
     }
 
-    telegram_handler.set_conversation_state(user_id, wizard_state)
+    await telegram_handler.set_conversation_state(user_id, wizard_state)
 
     # Ask for date
     date_text = f"""
@@ -140,7 +140,7 @@ Invalid date format. Please use format: X月X日 (e.g., 3月15日)
     # Save date and move to next step
     state['record_data']['date'] = date_input
     state['step'] = 'phone_remark'
-    telegram_handler.set_conversation_state(user_id, state)
+    await telegram_handler.set_conversation_state(user_id, state)
 
     next_text = """
 📱 **步骤 2/11: 手机编辑 / Step 2/11: Phone Remark**
@@ -156,7 +156,7 @@ async def handle_phone_remark_input(user_id: int, chat_id: int, phone_remark: st
     """Handle phone remark input."""
     state['record_data']['phone_remark'] = phone_remark
     state['step'] = 'category'
-    telegram_handler.set_conversation_state(user_id, state)
+    await telegram_handler.set_conversation_state(user_id, state)
 
     # Show category options
     category_text = """
@@ -195,7 +195,7 @@ async def handle_category_selection(user_id: int, chat_id: int, category: str, s
 
     state['record_data']['category'] = chinese_category
     state['step'] = 'recruiter'
-    telegram_handler.set_conversation_state(user_id, state)
+    await telegram_handler.set_conversation_state(user_id, state)
 
     recruiter_text = """
 👤 **步骤 4/11: 招聘人员 / Step 4/11: Recruiter**
@@ -211,7 +211,7 @@ async def handle_recruiter_input(user_id: int, chat_id: int, recruiter: str, sta
     """Handle recruiter input."""
     state['record_data']['recruiter'] = recruiter
     state['step'] = 'frontdesk_username'
-    telegram_handler.set_conversation_state(user_id, state)
+    await telegram_handler.set_conversation_state(user_id, state)
 
     # Auto-fill frontdesk info from member data
     member = state['member']
@@ -241,7 +241,7 @@ async def handle_frontdesk_username_input(user_id: int, chat_id: int, username: 
 
     state['record_data']['frontdesk_username'] = username
     state['step'] = 'client_number'
-    telegram_handler.set_conversation_state(user_id, state)
+    await telegram_handler.set_conversation_state(user_id, state)
 
     client_number_text = """
 📞 **步骤 6/11: 客户号 / Step 6/11: Client Number**
@@ -265,7 +265,7 @@ Invalid phone number format. Please re-enter.
 
     state['record_data']['client_number'] = client_number
     state['step'] = 'account_id'
-    telegram_handler.set_conversation_state(user_id, state)
+    await telegram_handler.set_conversation_state(user_id, state)
 
     account_id_text = """
 🆔 **步骤 7/11: 账户ID / Step 7/11: Account ID**
@@ -281,7 +281,7 @@ async def handle_account_id_input(user_id: int, chat_id: int, account_id: str, s
     """Handle account ID input."""
     state['record_data']['account_id'] = account_id
     state['step'] = 'first_day_status'
-    telegram_handler.set_conversation_state(user_id, state)
+    await telegram_handler.set_conversation_state(user_id, state)
 
     first_day_text = """
 📊 **步骤 8/11: 第一天状态 / Step 8/11: First Day Status**
@@ -308,7 +308,7 @@ async def handle_day_status_callback(task_data: Dict[str, Any]):
     chat_id = task_data['chat_id']
     callback_data = task_data['callback_data']
 
-    state = telegram_handler.get_conversation_state(user_id)
+    state = await telegram_handler.get_conversation_state(user_id)
     if not state:
         return
 
@@ -322,7 +322,7 @@ async def handle_day_status_callback(task_data: Dict[str, Any]):
             state['record_data']['first_day'] = '待定'
 
         state['step'] = 'second_day_status'
-        telegram_handler.set_conversation_state(user_id, state)
+        await telegram_handler.set_conversation_state(user_id, state)
 
         second_day_text = """
 📊 **步骤 9/11: 第二天状态 / Step 9/11: Second Day Status**
@@ -352,7 +352,7 @@ Please select second day status:
             state['record_data']['second_day'] = '待定'
 
         state['step'] = 'client_condition'
-        telegram_handler.set_conversation_state(user_id, state)
+        await telegram_handler.set_conversation_state(user_id, state)
 
         condition_text = """
 📝 **步骤 10/11: 客户情况 / Step 10/11: Client Condition**
@@ -424,7 +424,7 @@ async def handle_confirm_submit_record(task_data: Dict[str, Any]):
     user_id = task_data['user_id']
     chat_id = task_data['chat_id']
 
-    state = telegram_handler.get_conversation_state(user_id)
+    state = await telegram_handler.get_conversation_state(user_id)
     if not state:
         return
 
@@ -454,7 +454,7 @@ async def handle_confirm_submit_record(task_data: Dict[str, Any]):
         await create_follow_up_reminders(record_id, user_id, record_data)
 
         # Clear conversation state
-        telegram_handler.clear_conversation_state(user_id)
+        await telegram_handler.clear_conversation_state(user_id)
 
         success_text = f"""
 ✅ **记录提交成功！/ Record Submitted Successfully!**

@@ -111,14 +111,33 @@ def parse_financial_csv(csv_text: str) -> List[Dict[str, Any]]:
         if not date_val or date_val in ('', 'X月XX日', '日期'):
             continue
         
-        # Parse dollar amounts
+        # Parse dollar amounts with validation
         def parse_money(s):
-            s = s.strip().replace('$', '').replace(',', '')
+            if not isinstance(s, str):
+                return 0.0
+            s = s.strip()
             if not s or s == '-':
                 return 0.0
+
+            # Only allow specific currency symbols
+            allowed_symbols = ['$', '¥', '€', '£']
+            cleaned = s
+            for symbol in allowed_symbols:
+                cleaned = cleaned.replace(symbol, '')
+            cleaned = cleaned.replace(',', '').replace(' ', '')
+
+            if not cleaned:
+                return 0.0
+
             try:
-                return float(s)
+                value = float(cleaned)
+                # Sanity check for reasonable financial amounts
+                if abs(value) > 10_000_000:  # 10M limit
+                    logger.warning(f"Unusually large financial amount: {value}")
+                    return 0.0
+                return value
             except ValueError:
+                logger.warning(f"Invalid money format: {s}")
                 return 0.0
         
         records.append({
@@ -169,15 +188,34 @@ def parse_performance_csv(csv_text: str) -> List[Dict[str, Any]]:
             continue
         
         def safe_float(s):
+            if not isinstance(s, str):
+                return 0.0
             s = s.strip().replace('%', '')
+            if not s:
+                return 0.0
             try:
-                return float(s)
+                value = float(s)
+                # Sanity check for percentages and rates
+                if abs(value) > 1000:  # 1000% limit
+                    logger.warning(f"Unusually large percentage/rate: {value}")
+                    return 0.0
+                return value
             except (ValueError, TypeError):
                 return 0.0
-        
+
         def safe_int(s):
+            if not isinstance(s, str):
+                return 0
+            s = s.strip()
+            if not s:
+                return 0
             try:
-                return int(float(s.strip()))
+                value = int(float(s))
+                # Sanity check for count values
+                if abs(value) > 100_000:  # 100K limit
+                    logger.warning(f"Unusually large count value: {value}")
+                    return 0
+                return value
             except (ValueError, TypeError):
                 return 0
         
@@ -267,16 +305,27 @@ async def sync_all_sheets() -> Dict[str, Any]:
         'timestamp': datetime.now().isoformat(),
     }
     
-    # Client sheets (Type 1)
+    # Client sheets (Type 1) with retry logic
     for gid in CLIENT_SHEET_GIDS:
-        csv_text = await fetch_sheet_csv(gid)
+        retries = 3
+        csv_text = None
+        for attempt in range(retries):
+            csv_text = await fetch_sheet_csv(gid)
+            if csv_text:
+                break
+            if attempt < retries - 1:
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+
         if csv_text:
-            records = parse_client_csv(csv_text)
-            results['client_records'].extend(records)
-            logger.info(f"Sheet gid={gid}: {len(records)} client records")
+            try:
+                records = parse_client_csv(csv_text)
+                results['client_records'].extend(records)
+                logger.info(f"Sheet gid={gid}: {len(records)} client records")
+            except Exception as e:
+                results['errors'].append(f"Failed to parse client sheet gid={gid}: {e}")
         else:
-            results['errors'].append(f"Failed to fetch client sheet gid={gid}")
-        await asyncio.sleep(0.5)  # Rate limit
+            results['errors'].append(f"Failed to fetch client sheet gid={gid} after {retries} attempts")
+        await asyncio.sleep(1.0)  # Increased rate limit
     
     # Financial (Type 3)
     csv_text = await fetch_sheet_csv(FINANCIAL_GID)

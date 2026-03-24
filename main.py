@@ -73,6 +73,10 @@ class RalphLoop:
         try:
             logger.info("Initializing Team Records Bot...")
 
+            # Validate configuration first
+            await self._validate_configuration()
+            logger.info("Configuration validated")
+
             # Initialize database
             await database.initialize()
             logger.info("Database initialized")
@@ -103,6 +107,39 @@ class RalphLoop:
             logger.error(f"Failed to initialize bot: {e}")
             logger.error(traceback.format_exc())
             raise
+
+    async def _validate_configuration(self):
+        """Validate all configuration requirements."""
+        errors = []
+
+        # Validate Telegram configuration
+        if not config.telegram.api_id or not config.telegram.api_hash or not config.telegram.phone:
+            errors.append("Missing required Telegram configuration (TG_API_ID, TG_API_HASH, TG_PHONE)")
+
+        # Validate Google Sheets configuration
+        if not config.google_sheets.spreadsheet_id:
+            errors.append("Missing required Google Sheets spreadsheet ID (SHEETS_ID)")
+
+        # Validate database configuration
+        if not config.database.db_path:
+            errors.append("Missing database path configuration")
+
+        # Test database connection
+        try:
+            async with database.get_connection() as db:
+                await db.execute("SELECT 1")
+        except Exception as e:
+            errors.append(f"Database connection failed: {e}")
+
+        # Test Telegram configuration
+        try:
+            config.telegram.validate()
+        except Exception as e:
+            errors.append(f"Telegram configuration invalid: {e}")
+
+        if errors:
+            error_msg = "Configuration validation failed:\n" + "\n".join(f"- {error}" for error in errors)
+            raise ValueError(error_msg)
 
     def _setup_signal_handlers(self):
         """Set up signal handlers for graceful shutdown."""
@@ -307,9 +344,14 @@ class RalphLoop:
             handler = self.command_handlers.get(command)
 
             if handler:
-                await handler(data)
-                self.metrics['messages_handled'] += 1
-                return True
+                # Add timeout protection for command handlers
+                try:
+                    await asyncio.wait_for(handler(data), timeout=30.0)
+                    self.metrics['messages_handled'] += 1
+                    return True
+                except asyncio.TimeoutError:
+                    logger.error(f"Command handler timeout for: {command}")
+                    return False
             else:
                 # Unknown command - send help message
                 chat_id = data.get('chat_id')
@@ -361,8 +403,12 @@ class RalphLoop:
                             break
 
             if handler:
-                await handler(data)
-                return True
+                try:
+                    await asyncio.wait_for(handler(data), timeout=30.0)
+                    return True
+                except asyncio.TimeoutError:
+                    logger.error(f"Callback handler timeout for: {callback_data}")
+                    return False
             else:
                 logger.warning(f"No handler found for callback: {callback_data}")
                 return True  # Don't fail the task for unknown callbacks
@@ -380,8 +426,12 @@ class RalphLoop:
             handler = self.conversation_handlers.get(step)
 
             if handler:
-                await handler(data)
-                return True
+                try:
+                    await asyncio.wait_for(handler(data), timeout=30.0)
+                    return True
+                except asyncio.TimeoutError:
+                    logger.error(f"Conversation handler timeout for step: {step}")
+                    return False
             else:
                 # Clear conversation state for unknown steps
                 user_id = data.get('user_id')
@@ -454,7 +504,21 @@ class RalphLoop:
             if sync_type == 'full':
                 results = await sheet_sync_engine.sync_all_data()
                 self.metrics['sync_operations'] += 1
-                return results.get('summary', {}).get('success', False)
+
+                # Check for errors in sync results
+                summary = results.get('summary', {})
+                success = summary.get('success', False)
+                error_count = summary.get('total_errors', 0)
+
+                if not success:
+                    logger.error(f"Sheet sync failed: {results.get('error', 'Unknown error')}")
+                    return False
+
+                if error_count > 0:
+                    # Log partial failure but don't fail the task completely
+                    logger.warning(f"Sheet sync completed with {error_count} errors")
+
+                return True
             elif sync_type == 'export':
                 data_type = task.data.get('data_type')
                 filters = task.data.get('filters', {})
@@ -563,19 +627,53 @@ class RalphLoop:
         return is_time
 
     async def shutdown(self):
-        """Perform graceful shutdown."""
+        """Perform graceful shutdown with transaction safety."""
         try:
             logger.info("Starting graceful shutdown...")
 
-            # Mark any processing tasks as pending for retry on restart
-            async with database.get_connection() as db:
-                await db.execute("""
-                    UPDATE bot_tasks SET status = 'pending' WHERE status = 'processing'
-                """)
-                await db.commit()
+            # Stop accepting new tasks first
+            self.running = False
 
-            # Disconnect Telegram client
-            await telegram_handler.disconnect()
+            # Wait for current tasks to complete (with timeout)
+            await asyncio.sleep(2.0)  # Give current tasks time to finish
+
+            # Mark any processing tasks as pending for retry on restart
+            try:
+                async with database.get_connection() as db:
+                    # Use a transaction for safety
+                    await db.execute("BEGIN TRANSACTION")
+
+                    # Get count of tasks being reset
+                    cursor = await db.execute("""
+                        SELECT COUNT(*) FROM bot_tasks WHERE status = 'processing'
+                    """)
+                    count = (await cursor.fetchone())[0]
+
+                    if count > 0:
+                        await db.execute("""
+                            UPDATE bot_tasks SET status = 'pending', updated_at = CURRENT_TIMESTAMP
+                            WHERE status = 'processing'
+                        """)
+                        logger.info(f"Reset {count} processing tasks to pending")
+
+                    await db.execute("COMMIT")
+
+            except Exception as e:
+                logger.error(f"Error resetting tasks during shutdown: {e}")
+                # Continue with shutdown even if task reset fails
+
+            # Disconnect Telegram client safely
+            try:
+                await telegram_handler.disconnect()
+                logger.info("Telegram client disconnected")
+            except Exception as e:
+                logger.error(f"Error disconnecting Telegram: {e}")
+
+            # Clear any remaining conversation states
+            try:
+                await database.cleanup_old_conversation_states(hours_old=0)  # Clear all
+            except Exception as e:
+                logger.error(f"Error clearing conversation states: {e}")
 
             # Log final metrics
             uptime = datetime.now() - self.metrics['uptime_start']
@@ -586,6 +684,7 @@ class RalphLoop:
 
         except Exception as e:
             logger.error(f"Error during shutdown: {e}")
+            # Don't re-raise to ensure shutdown completes
 
     async def get_status(self) -> Dict[str, Any]:
         """Get current bot status and metrics."""

@@ -24,7 +24,7 @@ class TelegramHandler:
     def __init__(self):
         self.client: Optional[TelegramClient] = None
         self.handlers: Dict[str, Callable] = {}
-        self.conversation_states: Dict[int, Dict[str, Any]] = {}  # Deprecated, using database now
+        # Removed: using database-only conversation states
         self.is_authenticated = False
 
         # Rate limiting
@@ -134,15 +134,16 @@ class TelegramHandler:
         chat_id = event.chat_id
         message = event.message.text
 
-        # Check if user has an active conversation state
-        if user.id in self.conversation_states:
+        # Check if user has an active conversation state in database
+        conversation_state = await self.get_conversation_state(user.id)
+        if conversation_state:
             # Create task for conversation handling
             task_data = {
                 'event_type': 'conversation',
                 'message': message,
                 'user_id': user.id,
                 'chat_id': chat_id,
-                'state': self.conversation_states[user.id]
+                'state': conversation_state
             }
 
             task = BotTask(
@@ -197,33 +198,40 @@ class TelegramHandler:
             await database.create_team_member(new_member)
 
     async def _rate_limit_check(self):
-        """Check and enforce rate limiting."""
-        current_time = time.time()
+        """Check and enforce rate limiting with thread safety."""
+        # Use a lock to prevent race conditions in rate limiting
+        import threading
+        if not hasattr(self, '_rate_limit_lock'):
+            self._rate_limit_lock = threading.Lock()
 
-        # Remove timestamps older than 1 minute to prevent memory leak
-        while self.message_timestamps and current_time - self.message_timestamps[0] > 60:
-            self.message_timestamps.popleft()
-
-        # Enforce minimum delay first (always applies)
-        if self.message_timestamps and current_time - self.message_timestamps[-1] < self.min_delay_between_messages:
-            sleep_time = self.min_delay_between_messages - (current_time - self.message_timestamps[-1])
-            await asyncio.sleep(sleep_time)
+        with self._rate_limit_lock:
             current_time = time.time()
 
-        # Check if we're hitting rate limit (but avoid recursion)
-        if len(self.message_timestamps) >= self.max_messages_per_minute:
-            if self.message_timestamps:
-                sleep_time = 60 - (current_time - self.message_timestamps[0]) + 1
-                logger.warning(f"Rate limit reached, sleeping for {sleep_time:.2f} seconds")
-                await asyncio.sleep(max(sleep_time, 0))
-                current_time = time.time()
+            # Remove timestamps older than 1 minute to prevent memory leak
+            while self.message_timestamps and current_time - self.message_timestamps[0] > 60:
+                self.message_timestamps.popleft()
 
-                # Clean up old timestamps again after sleep
-                while self.message_timestamps and current_time - self.message_timestamps[0] > 60:
-                    self.message_timestamps.popleft()
+            # Enforce minimum delay first (always applies)
+            if self.message_timestamps and current_time - self.message_timestamps[-1] < self.min_delay_between_messages:
+                sleep_time = self.min_delay_between_messages - (current_time - self.message_timestamps[-1])
+                should_sleep = sleep_time
+            else:
+                should_sleep = 0
 
-        # Record this message timestamp
-        self.message_timestamps.append(current_time)
+            # Check if we're hitting rate limit
+            if len(self.message_timestamps) >= self.max_messages_per_minute:
+                if self.message_timestamps:
+                    rate_limit_sleep = 60 - (current_time - self.message_timestamps[0]) + 1
+                    should_sleep = max(should_sleep, rate_limit_sleep)
+
+            # Record this message timestamp before sleeping
+            self.message_timestamps.append(current_time)
+
+        # Sleep outside the lock to avoid blocking other threads
+        if should_sleep > 0:
+            if should_sleep > self.min_delay_between_messages:
+                logger.warning(f"Rate limit reached, sleeping for {should_sleep:.2f} seconds")
+            await asyncio.sleep(max(should_sleep, 0))
 
     # Message sending methods
     async def send_message(self, chat_id: int, text: str, parse_mode: str = None,

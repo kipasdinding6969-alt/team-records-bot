@@ -2,12 +2,20 @@
 import asyncio
 from telethon import TelegramClient
 
-API_ID = 32326218
-API_HASH = "2f44dfd151f291c8a4ec5c405eb51e94"
-PHONE = "+31651036582"
+import os
+API_ID = int(os.getenv("TG_API_ID", "0"))
+API_HASH = os.getenv("TG_API_HASH", "")
+PHONE = os.getenv("TG_PHONE", "")
 SESSION_FILE = "team_records_bot"
 
 async def main():
+    if not API_ID or not API_HASH or not PHONE:
+        print("❌ Error: Missing required environment variables:")
+        print("- TG_API_ID: Telegram API ID")
+        print("- TG_API_HASH: Telegram API Hash")
+        print("- TG_PHONE: Phone number (+1234567890)")
+        return
+
     client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
     await client.connect()
     

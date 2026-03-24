@@ -6,6 +6,19 @@ from dataclasses import asdict
 
 from models import ClientRecord, FinancialRecord, PerformanceRecord, TeamMember
 
+__all__ = [
+    'format_user_info', 'format_client_record', 'format_financial_record',
+    'format_performance_record', 'format_dashboard_stats', 'format_daily_summary',
+    'format_team_assessment', 'format_reminder', 'format_currency',
+    'format_percentage', 'format_number_with_percentage', 'format_date_chinese',
+    'format_datetime_chinese', 'format_table_row', 'format_report_header',
+    'format_performance_stats', 'convert_chinese_date', 'format_duration',
+    'format_file_size', 'format_phone_number', 'truncate_text',
+    'format_boolean_chinese', 'format_status_emoji', 'format_priority_emoji',
+    'format_list_with_numbers', 'format_error_message', 'format_success_message',
+    'validate_gsheet_data', 'format_validation_error'
+]
+
 
 def format_user_info(user_info: Dict[str, Any]) -> str:
     """Format user information for display."""

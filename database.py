@@ -7,6 +7,8 @@ from datetime import datetime, date, timedelta
 import json
 import logging
 
+__all__ = ['Database', 'database']
+
 from models import (
     ClientRecord, PerformanceRecord, FinancialRecord,
     DailySummaryRecord, TeamWeeklyRecord, TeamMember,
@@ -253,9 +255,24 @@ class Database:
     # Client Records CRUD
     async def create_client_record(self, record: ClientRecord) -> int:
         """Create a new client record."""
-        # Basic validation without importing validators to avoid circular dependency
-        if not record.date or not record.frontdesk or not record.client_number or not record.account_id:
-            raise ValueError("Required fields missing: date, frontdesk, client_number, account_id are required")
+        # Enhanced validation for all required fields
+        required_fields = {
+            'date': record.date,
+            'frontdesk': record.frontdesk,
+            'client_number': record.client_number,
+            'account_id': record.account_id,
+            'phone_remark': record.phone_remark,
+            'category': record.category,
+            'recruiter': record.recruiter,
+            'frontdesk_number': record.frontdesk_number,
+            'frontdesk_username': record.frontdesk_username,
+            'first_day': record.first_day,
+            'second_day': record.second_day
+        }
+
+        missing_fields = [field for field, value in required_fields.items() if not value or not str(value).strip()]
+        if missing_fields:
+            raise ValueError(f"Required fields missing: {', '.join(missing_fields)}")
 
         async with self.get_connection() as db:
             # SQLite with aiosqlite handles transactions automatically in context manager
@@ -493,15 +510,29 @@ class Database:
     # Helper methods for converting rows to models
     def _row_to_client_record(self, row) -> ClientRecord:
         """Convert database row to ClientRecord."""
-        if not row:
+        if not row or len(row) < 16:
             return None
-        return ClientRecord(
-            row_num=row[1], date=row[2], phone_remark=row[3], frontdesk=row[4],
-            category=row[5], recruiter=row[6], frontdesk_number=row[7],
-            frontdesk_username=row[8], client_number=row[9], account_id=row[10],
-            first_day=row[11], second_day=row[12], client_condition=row[13],
-            sheet_gid=row[14], block_number=row[15]
-        )
+        try:
+            return ClientRecord(
+                row_num=row[1] if row[1] is not None else 0,
+                date=row[2] if row[2] is not None else "",
+                phone_remark=row[3] if row[3] is not None else "",
+                frontdesk=row[4] if row[4] is not None else "",
+                category=row[5] if row[5] is not None else "",
+                recruiter=row[6] if row[6] is not None else "",
+                frontdesk_number=row[7] if row[7] is not None else "",
+                frontdesk_username=row[8] if row[8] is not None else "",
+                client_number=row[9] if row[9] is not None else "",
+                account_id=row[10] if row[10] is not None else "",
+                first_day=row[11] if row[11] is not None else "",
+                second_day=row[12] if row[12] is not None else "",
+                client_condition=row[13] if row[13] is not None else "",
+                sheet_gid=row[14] if row[14] is not None else None,
+                block_number=row[15] if row[15] is not None else 1
+            )
+        except (IndexError, TypeError) as e:
+            logger.error(f"Failed to convert row to ClientRecord: {e}")
+            return None
 
     def _row_to_performance_record(self, row) -> PerformanceRecord:
         """Convert database row to PerformanceRecord."""
@@ -533,13 +564,23 @@ class Database:
 
     def _row_to_team_member(self, row) -> TeamMember:
         """Convert database row to TeamMember."""
-        if not row:
+        if not row or len(row) < 10:
             return None
-        return TeamMember(
-            user_id=row[1], chat_id=row[2], username=row[3], first_name=row[4],
-            last_name=row[5], phone_number=row[6], frontdesk_name=row[7],
-            role=row[8], is_active=bool(row[9])
-        )
+        try:
+            return TeamMember(
+                user_id=row[1] if row[1] is not None else 0,
+                chat_id=row[2] if row[2] is not None else 0,
+                username=row[3] if row[3] is not None else None,
+                first_name=row[4] if row[4] is not None else "",
+                last_name=row[5] if row[5] is not None else None,
+                phone_number=row[6] if row[6] is not None else None,
+                frontdesk_name=row[7] if row[7] is not None else None,
+                role=row[8] if row[8] is not None else "unregistered",
+                is_active=bool(row[9]) if row[9] is not None else True
+            )
+        except (IndexError, TypeError) as e:
+            logger.error(f"Failed to convert row to TeamMember: {e}")
+            return None
 
     def _row_to_reminder(self, row) -> Reminder:
         """Convert database row to Reminder."""
@@ -584,6 +625,8 @@ class Database:
         """Clean up old completed tasks."""
         if days_old <= 0:
             raise ValueError("days_old must be positive")
+        if days_old > 365:
+            raise ValueError("days_old must not exceed 365 days to prevent accidental data loss")
 
         async with self.get_connection() as db:
             # Use parameterized query to prevent SQL injection
@@ -601,6 +644,16 @@ class Database:
         # Validate state data structure
         if not isinstance(state_data, dict):
             raise ValueError("Conversation state must be a dictionary")
+
+        # Check for required structure and reasonable limits
+        if len(state_data) > 50:  # Limit number of keys
+            raise ValueError("Conversation state has too many keys")
+
+        # Validate content structure
+        allowed_keys = {'step', 'user_info', 'record_data', 'selected_role', 'frontdesk_name', 'member'}
+        if not all(key in allowed_keys for key in state_data.keys()):
+            invalid_keys = set(state_data.keys()) - allowed_keys
+            raise ValueError(f"Invalid conversation state keys: {invalid_keys}")
 
         # Ensure JSON serializable
         try:
@@ -645,6 +698,8 @@ class Database:
         """Clean up old conversation states."""
         if hours_old <= 0:
             raise ValueError("hours_old must be positive")
+        if hours_old > 8760:  # 365 days
+            raise ValueError("hours_old must not exceed 8760 hours (1 year) to prevent accidental data loss")
 
         async with self.get_connection() as db:
             cutoff_time = datetime.now() - timedelta(hours=hours_old)
@@ -658,9 +713,10 @@ class Database:
         """Get database statistics."""
         stats = {}
         async with self.get_connection() as db:
-            for table in ["client_records", "performance_records", "financial_records",
-                         "team_members", "reminders", "bot_tasks", "conversation_states"]:
-                cursor = await db.execute(f"SELECT COUNT(*) FROM {table}")
+            ALLOWED_TABLES = {"client_records", "performance_records", "financial_records",
+                             "team_members", "reminders", "bot_tasks", "conversation_states"}
+            for table in ALLOWED_TABLES:
+                cursor = await db.execute(f"SELECT COUNT(*) FROM {table}")  # safe: table from whitelist
                 count = await cursor.fetchone()
                 stats[table] = count[0]
         return stats

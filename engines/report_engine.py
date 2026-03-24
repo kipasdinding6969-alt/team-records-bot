@@ -488,11 +488,11 @@ class ReportEngine:
         if frontdesk:
             records = await database.get_client_records_by_frontdesk(frontdesk)
         else:
-            # All records
+            # All records with reasonable limit
             async with database.get_connection() as db:
-                cursor = await db.execute("SELECT * FROM client_records ORDER BY created_at DESC LIMIT 1000")
+                cursor = await db.execute("SELECT * FROM client_records ORDER BY created_at DESC LIMIT 5000")
                 rows = await cursor.fetchall()
-                records = [database._row_to_client_record(row) for row in rows]
+                records = [database._row_to_client_record(row) for row in rows if row]
 
         # Group by status
         status_counts = {
