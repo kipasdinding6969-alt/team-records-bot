@@ -8,6 +8,7 @@ Type=simple
 User=baiwan
 Group=baiwan
 WorkingDirectory=/home/baiwan/team-records-bot
+EnvironmentFile=/home/baiwan/team-records-bot/.env
 ExecStartPre=/usr/bin/docker start tor-proxy
 ExecStart=/home/baiwan/team-records-bot/.venv/bin/python main.py
 Restart=on-failure

@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  tor-proxy:
+    image: dperson/torproxy
+    container_name: tor-proxy
+    restart: unless-stopped
+    ports:
+      - "9050:9050"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "--socks5", "localhost:9050", "https://check.torproject.org/"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  team-records-bot:
+    build: .
+    container_name: team-records-bot
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      tor-proxy:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./service_account.json:/app/service_account.json:ro
+    environment:
+      - PROXY_HOST=tor-proxy
+      - PROXY_PORT=9050
+    networks:
+      - bot-network
+
+networks:
+  bot-network:
+    driver: bridge
