@@ -6,6 +6,7 @@ from typing import Dict, Callable, Any, Optional, List
 import re
 import socks
 from collections import deque
+from datetime import datetime, timedelta
 
 from telethon import TelegramClient, events, Button
 from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError
@@ -22,7 +23,8 @@ class TelegramHandler:
     """Handles Telegram client operations and message routing."""
 
     def __init__(self):
-        self.client: Optional[TelegramClient] = None
+        self.client: Optional[TelegramClient] = None  # User client (existing session)
+        self.bot_client: Optional[TelegramClient] = None  # Bot client (NEW for interactive messages)
         self.handlers: Dict[str, Callable] = {}
         # Removed: using database-only conversation states
         self.is_authenticated = False
@@ -33,13 +35,13 @@ class TelegramHandler:
         self.min_delay_between_messages = config.bot.telegram_min_delay_between_messages
 
     async def initialize(self):
-        """Initialize Telegram client with proxy and authentication."""
+        """Initialize Telegram clients with proxy and authentication."""
         # Setup SOCKS5 proxy for Tor
         proxy = None
         if config.telegram.proxy_host and config.telegram.proxy_port:
             proxy = (socks.SOCKS5, config.telegram.proxy_host, config.telegram.proxy_port)
 
-        # Create Telegram client
+        # Create user client (existing session)
         self.client = TelegramClient(
             config.telegram.session_file,
             config.telegram.api_id,
@@ -49,26 +51,50 @@ class TelegramHandler:
 
         try:
             await self.client.start(phone=config.telegram.phone)
-            self.is_authenticated = True
-            logger.info("Telegram client initialized successfully")
+            logger.info("Telegram user client initialized successfully")
 
-            # Set up event handlers
-            self._setup_event_handlers()
+            # Create bot client if bot token is available
+            if config.telegram.bot_token:
+                bot_session_file = config.telegram.session_file.replace('.session', '_api.session')
+                self.bot_client = TelegramClient(
+                    bot_session_file,
+                    config.telegram.api_id,
+                    config.telegram.api_hash,
+                    proxy=proxy
+                )
+
+                await self.bot_client.start(bot_token=config.telegram.bot_token)
+                logger.info("Telegram bot client initialized successfully")
+
+                # Set up event handlers on bot client (for interactive messages)
+                self._setup_event_handlers()
+            else:
+                logger.warning("No bot token provided - running in user-only mode")
+                # Fallback to user client for events
+                self._setup_event_handlers()
+
+            self.is_authenticated = True
 
         except Exception as e:
-            logger.error(f"Failed to initialize Telegram client: {e}")
+            logger.error(f"Failed to initialize Telegram client(s): {e}")
             raise
 
     async def disconnect(self):
-        """Disconnect Telegram client."""
+        """Disconnect Telegram clients."""
         if self.client and self.client.is_connected():
             await self.client.disconnect()
-            logger.info("Telegram client disconnected")
+            logger.info("Telegram user client disconnected")
+
+        if self.bot_client and self.bot_client.is_connected():
+            await self.bot_client.disconnect()
+            logger.info("Telegram bot client disconnected")
 
     def _setup_event_handlers(self):
-        """Set up Telethon event handlers."""
+        """Set up Telethon event handlers on the appropriate client."""
+        # Use bot client for interactive messages if available, otherwise fallback to user client
+        event_client = self.bot_client if self.bot_client else self.client
 
-        @self.client.on(events.NewMessage(pattern=r'^/\w+'))
+        @event_client.on(events.NewMessage(pattern=r'^/\w+'))
         async def command_handler(event):
             """Handle bot commands."""
             try:
@@ -77,7 +103,7 @@ class TelegramHandler:
                 logger.error(f"Error handling command: {e}")
                 await self._send_error_message(event.chat_id, "Sorry, something went wrong.")
 
-        @self.client.on(events.NewMessage(func=lambda e: not e.text.startswith('/')))
+        @event_client.on(events.NewMessage(func=lambda e: not e.text.startswith('/')))
         async def message_handler(event):
             """Handle non-command messages (for conversations)."""
             try:
@@ -85,7 +111,7 @@ class TelegramHandler:
             except Exception as e:
                 logger.error(f"Error handling conversation: {e}")
 
-        @self.client.on(events.CallbackQuery)
+        @event_client.on(events.CallbackQuery)
         async def callback_handler(event):
             """Handle inline keyboard callbacks."""
             try:
@@ -101,7 +127,7 @@ class TelegramHandler:
 
         # Parse command and arguments
         parts = message.split()
-        command = parts[0][1:]  # Remove '/' prefix
+        command = parts[0][1:].split('@')[0].lower()  # Remove '/' prefix and @botname suffix
         args = parts[1:] if len(parts) > 1 else []
 
         # Update user activity
@@ -240,7 +266,9 @@ class TelegramHandler:
         await self._rate_limit_check()
 
         try:
-            await self.client.send_message(
+            # Use bot client for interactive messages if available, otherwise fallback to user client
+            client_to_use = self.bot_client if self.bot_client else self.client
+            await client_to_use.send_message(
                 chat_id,
                 text,
                 parse_mode=parse_mode,
@@ -255,7 +283,9 @@ class TelegramHandler:
                         reply_markup: Any = None):
         """Send a photo message."""
         try:
-            await self.client.send_file(
+            # Use bot client for interactive messages if available, otherwise fallback to user client
+            client_to_use = self.bot_client if self.bot_client else self.client
+            await client_to_use.send_file(
                 chat_id,
                 photo,
                 caption=caption,
@@ -267,7 +297,9 @@ class TelegramHandler:
     async def send_document(self, chat_id: int, document, caption: str = None):
         """Send a document."""
         try:
-            await self.client.send_file(
+            # Use bot client for interactive messages if available, otherwise fallback to user client
+            client_to_use = self.bot_client if self.bot_client else self.client
+            await client_to_use.send_file(
                 chat_id,
                 document,
                 caption=caption
@@ -279,7 +311,9 @@ class TelegramHandler:
                           reply_markup: Any = None):
         """Edit an existing message."""
         try:
-            await self.client.edit_message(
+            # Use bot client for interactive messages if available, otherwise fallback to user client
+            client_to_use = self.bot_client if self.bot_client else self.client
+            await client_to_use.edit_message(
                 chat_id,
                 message_id,
                 text,
@@ -291,7 +325,9 @@ class TelegramHandler:
     async def delete_message(self, chat_id: int, message_id: int):
         """Delete a message."""
         try:
-            await self.client.delete_messages(chat_id, [message_id])
+            # Use bot client for interactive messages if available, otherwise fallback to user client
+            client_to_use = self.bot_client if self.bot_client else self.client
+            await client_to_use.delete_messages(chat_id, [message_id])
         except Exception as e:
             logger.error(f"Failed to delete message {message_id} in {chat_id}: {e}")
 
@@ -405,16 +441,199 @@ class TelegramHandler:
             except Exception as e:
                 logger.error(f"Failed to send team broadcast to {chat_id}: {e}")
 
+    # Channel auto-posting
+    async def post_channel_summary(self, channel_id: int = None) -> Dict[str, Any]:
+        """Post summary to channel/supergroup with today's stats and team performance."""
+        try:
+            from working_hours import is_working_hours
+
+            # Only post during working hours
+            if not is_working_hours():
+                return {'success': False, 'message': 'Outside working hours, skipping channel post'}
+
+            # Use configured channel ID if not provided
+            if channel_id is None:
+                channel_id = config.bot.report_channel_id
+
+            if not channel_id:
+                logger.warning("No report channel ID configured")
+                return {'success': False, 'message': 'No channel ID configured'}
+
+            # Generate summary message
+            summary_message = await self._generate_channel_summary()
+
+            # Send to channel using bot client (or user client as fallback)
+            client = self.bot_client if self.bot_client else self.client
+
+            await client.send_message(
+                channel_id,
+                summary_message,
+                parse_mode='html'
+            )
+
+            logger.info(f"Posted channel summary to {channel_id}")
+            return {
+                'success': True,
+                'channel_id': channel_id,
+                'message_length': len(summary_message)
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to post channel summary: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _generate_channel_summary(self) -> str:
+        """Generate channel summary with today's stats and team performance."""
+        try:
+            from datetime import date
+            today = date.today()
+            today_str = today.strftime('%Y-%m-%d')
+
+            # Get today's statistics
+            stats = await self._get_daily_stats(today_str)
+
+            # Generate summary message
+            summary = f"""📊 <b>团队日报</b>
+🗓 {today.strftime('%Y年%m月%d日')}
+
+<b>📈 今日数据:</b>
+• 新增客户: {stats.get('new_clients', 0)}
+• 完成注册: {stats.get('registrations', 0)}
+• 待处理客户: {stats.get('pending_clients', 0)}
+• 完成培训: {stats.get('training_complete', 0)}
+
+<b>👥 团队排名:</b>"""
+
+            # Add top performers
+            top_performers = await self._get_top_performers(today_str)
+            if top_performers:
+                for i, performer in enumerate(top_performers[:5], 1):
+                    medal = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'][i-1]
+                    summary += f"\n{medal} {performer['name']} — {performer['registrations']}单"
+            else:
+                summary += "\n暂无数据"
+
+            # Add pending alerts if any
+            pending_count = stats.get('pending_clients', 0)
+            stale_count = stats.get('stale_clients', 0)
+            if pending_count > 0:
+                summary += f"\n\n⚠️ <b>待跟进:</b> {pending_count} 个客户待处理"
+            if stale_count > 0:
+                summary += f"\n🔴 <b>超时警告:</b> {stale_count} 个客户超3天未更新"
+
+            summary += f"\n\n🔄 下次更新: {(datetime.now() + timedelta(hours=config.bot.report_interval_hours)).strftime('%H:%M')}"
+
+            return summary
+
+        except Exception as e:
+            logger.error(f"Failed to generate channel summary: {e}")
+            return f"📊 <b>团队日报 / Daily Report</b>\n\n❌ 数据生成失败 / Failed to generate stats\n错误: {str(e)}"
+
+    async def _get_daily_stats(self, date_str: str) -> Dict[str, int]:
+        """Get daily statistics for channel summary."""
+        try:
+            stats = {}
+            async with database.get_connection() as db:
+                # New clients today
+                cursor = await db.execute("""
+                    SELECT COUNT(*) FROM client_records
+                    WHERE date(created_at) = ?
+                """, (date_str,))
+                stats['new_clients'] = (await cursor.fetchone())[0]
+
+                # Registrations today (updated today to 注册)
+                cursor = await db.execute("""
+                    SELECT COUNT(*) FROM client_records
+                    WHERE (first_day = '注册' OR second_day = '注册')
+                    AND date(updated_at) = ?
+                """, (date_str,))
+                stats['registrations'] = (await cursor.fetchone())[0]
+
+                # Pending clients (不注册 or empty)
+                cursor = await db.execute("""
+                    SELECT COUNT(*) FROM client_records
+                    WHERE (first_day IN ('不注册', '') OR first_day IS NULL)
+                    AND date(created_at) >= date('now', '-7 days')
+                """)
+                stats['pending_clients'] = (await cursor.fetchone())[0]
+
+                # Training complete today
+                cursor = await db.execute("""
+                    SELECT COUNT(*) FROM client_records
+                    WHERE second_day = '注册' AND date(updated_at) = ?
+                """, (date_str,))
+                stats['training_complete'] = (await cursor.fetchone())[0]
+
+                # Stale clients (>3 days, still 不注册)
+                stale_days = config.bot.stale_client_days if hasattr(config.bot, 'stale_client_days') else 3
+                cursor = await db.execute(f"""
+                    SELECT COUNT(*) FROM client_records
+                    WHERE (first_day IN ('不注册', '') OR first_day IS NULL)
+                    AND created_at <= datetime('now', '-{stale_days} days')
+                    AND created_at >= datetime('now', '-30 days')
+                """)
+                stats['stale_clients'] = (await cursor.fetchone())[0]
+
+            return stats
+
+        except Exception as e:
+            logger.error(f"Failed to get daily stats: {e}")
+            return {}
+
+    async def _get_top_performers(self, date_str: str) -> List[Dict[str, Any]]:
+        """Get top performing frontdesk staff for today."""
+        try:
+            async with database.get_connection() as db:
+                cursor = await db.execute("""
+                    SELECT frontdesk,
+                           COUNT(CASE WHEN (first_day = '注册' OR second_day = '注册')
+                                      AND date(updated_at) = ? THEN 1 END) as registrations,
+                           COUNT(*) as total_clients
+                    FROM client_records
+                    WHERE frontdesk IS NOT NULL AND frontdesk != ''
+                    GROUP BY frontdesk
+                    ORDER BY registrations DESC, total_clients DESC
+                    LIMIT 5
+                """, (date_str,))
+
+                performers = []
+                for row in await cursor.fetchall():
+                    performers.append({
+                        'name': row[0],
+                        'registrations': row[1],
+                        'total_clients': row[2]
+                    })
+
+                return performers
+
+        except Exception as e:
+            logger.error(f"Failed to get top performers: {e}")
+            return []
+
     # Health check
     async def health_check(self) -> bool:
-        """Check if client is connected and authenticated."""
+        """Check if clients are connected and authenticated."""
         try:
+            # Check user client
             if not self.client or not self.client.is_connected():
                 return False
 
-            # Try to get self info
+            # Try to get self info from user client
             me = await self.client.get_me()
-            return me is not None
+            if me is None:
+                return False
+
+            # Check bot client if available
+            if self.bot_client:
+                if not self.bot_client.is_connected():
+                    return False
+
+                # Try to get self info from bot client
+                bot_me = await self.bot_client.get_me()
+                if bot_me is None:
+                    return False
+
+            return True
 
         except Exception as e:
             logger.error(f"Health check failed: {e}")
@@ -422,12 +641,17 @@ class TelegramHandler:
 
     # Session management
     async def logout(self):
-        """Log out from Telegram."""
+        """Log out from Telegram clients."""
         try:
             if self.client:
                 await self.client.log_out()
-                self.is_authenticated = False
-                logger.info("Logged out from Telegram")
+                logger.info("Logged out from Telegram user client")
+
+            if self.bot_client:
+                await self.bot_client.log_out()
+                logger.info("Logged out from Telegram bot client")
+
+            self.is_authenticated = False
         except Exception as e:
             logger.error(f"Failed to log out: {e}")
 
