@@ -126,6 +126,7 @@ class Client:
     platform: Optional[str] = None
     total_deposited: float = 0.0
     sheet_gid: Optional[int] = None
+    sheet_row: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

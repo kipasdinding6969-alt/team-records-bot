@@ -208,6 +208,16 @@ class DatabaseV2:
                 CREATE INDEX IF NOT EXISTS idx_embeddings_source ON embeddings(source_type, source_id);
             """)
             await db.commit()
+
+        # Safe migration: add sheet_row to clients if not yet present
+        async with self.get_connection() as db:
+            try:
+                await db.execute('ALTER TABLE clients ADD COLUMN sheet_row INTEGER')
+                await db.commit()
+                logger.info('Migration: added sheet_row column to clients')
+            except Exception:
+                pass  # column already exists
+
         logger.info("DatabaseV2 initialized")
 
     # ─── Staff CRUD ─────────────────────────────────────────────────────────
@@ -308,6 +318,7 @@ class DatabaseV2:
             platform=row['platform'],
             total_deposited=row['total_deposited'] or 0.0,
             sheet_gid=row['sheet_gid'],
+            sheet_row=row['sheet_row'] if 'sheet_row' in row.keys() else None,
             created_at=_dt(row['created_at']),
             updated_at=_dt(row['updated_at']),
         )

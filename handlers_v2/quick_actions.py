@@ -102,6 +102,13 @@ async def handle_add_client(task_data: Dict[str, Any]):
     await telegram_handler.send_message(chat_id, msg)
     logger.info(f'Staff {staff.display_name} added client {phone} (source: {source})')
 
+    # Push new client to Google Sheets (non-blocking)
+    try:
+        from engines.sheet_sync_v2 import sheet_sync_v2
+        await sheet_sync_v2.export_client_to_sheet(client_id)
+    except Exception as _e:
+        logger.debug(f'Sheet export skipped after /add: {_e}')
+
 
 async def handle_update_status(task_data: Dict[str, Any]):
     """
@@ -162,6 +169,13 @@ async def handle_update_status(task_data: Dict[str, Any]):
             await index_client_notes(client.id)
         except Exception:
             pass
+
+        # Push updated status to Google Sheets (non-blocking)
+        try:
+            from engines.sheet_sync_v2 import sheet_sync_v2
+            await sheet_sync_v2.export_client_to_sheet(client.id)
+        except Exception as _e:
+            logger.debug(f'Sheet export skipped after /u: {_e}')
     else:
         await telegram_handler.send_message(chat_id, t('err_something_wrong', lang))
 

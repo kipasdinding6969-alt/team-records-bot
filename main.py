@@ -35,6 +35,7 @@ from handlers_v2.pipeline import PIPELINE_COMMANDS, PIPELINE_CALLBACKS, PIPELINE
 from handlers_v2.management import MANAGEMENT_COMMANDS, MANAGEMENT_CALLBACKS, MANAGEMENT_CONVERSATIONS
 from handlers_v2.registration_v2 import REGISTRATION_V2_COMMANDS, REGISTRATION_V2_CALLBACKS, REGISTRATION_V2_CONVERSATIONS
 from database_v2 import database_v2
+import engines.sheet_sync_v2 as _sheet_sync_v2_mod
 
 logging.basicConfig(
     level=logging.INFO,
@@ -62,6 +63,7 @@ class RalphLoop:
         self.last_v2_stale_check = None
         self.last_v2_stats_calc = None
         self.last_rag_reindex = None
+        self.last_v2_sheet_sync = None
 
         # Command and callback handlers registry
         self.command_handlers = {}
@@ -105,6 +107,18 @@ class RalphLoop:
             if hasattr(report_engine, 'initialize'):
                 await report_engine.initialize()
             await sheet_sync_engine.initialize()
+
+            # Initialize V2 bidirectional sheet sync
+            try:
+                from engines.gsheet_writer import GSheetWriter
+                from engines.sheet_sync_v2 import SheetSyncV2
+                _writer = GSheetWriter()
+                _writer.initialize()
+                _sheet_sync_v2_mod.sheet_sync_v2 = SheetSyncV2(_writer)
+                logger.info("SheetSyncV2 initialized")
+            except Exception as e:
+                logger.warning(f"SheetSyncV2 init failed (sheets may be unavailable): {e}")
+
             logger.info("Engines initialized")
 
             # Register all command and callback handlers
@@ -748,6 +762,25 @@ class RalphLoop:
             except Exception as e:
                 logger.debug(f'V2 RAG reindex skipped (Ollama may be down): {e}')
             self.last_rag_reindex = current_time
+
+        # V2: Bidirectional Sheets sync on sync_interval (default 3600s)
+        if (
+            _sheet_sync_v2_mod.sheet_sync_v2 is not None
+            and (
+                not self.last_v2_sheet_sync
+                or (current_time - self.last_v2_sheet_sync).total_seconds() >= config.bot.sync_interval
+            )
+        ):
+            try:
+                stats = await _sheet_sync_v2_mod.sheet_sync_v2.full_sync()
+                self.metrics['sync_operations'] += 1
+                logger.info(
+                    f'V2 Sheets full_sync: {stats["total_imported"]} imported, '
+                    f'{stats["total_exported"]} exported'
+                )
+            except Exception as e:
+                logger.error(f'V2 Sheets full_sync error: {e}')
+            self.last_v2_sheet_sync = current_time
 
     def _should_generate_daily_report(self) -> bool:
         """Check if daily report should be generated."""
