@@ -368,6 +368,10 @@ class SheetSyncV2:
 
     async def export_all_to_sheets(self) -> Dict[str, int]:
         """Full export: V2 DB → Sheets for all frontdesk clients."""
+        # Skip export if we already know the service account is read-only
+        if getattr(self, '_sheets_readonly', False):
+            return {}
+
         results: Dict[str, int] = {}
         all_staff = await database_v2.get_all_staff(active_only=False)
 
@@ -383,6 +387,11 @@ class SheetSyncV2:
                         exported += 1
                         await asyncio.sleep(0.5)  # rate limit
                     except Exception as e:
+                        if '403' in str(e) or 'permission' in str(e).lower():
+                            logger.warning('SheetSyncV2: service account has read-only access — '
+                                           'export disabled (NocoDB is primary)')
+                            self._sheets_readonly = True
+                            return results
                         logger.error(f'export_all_to_sheets client {client.id}: {e}')
             except Exception as e:
                 logger.error(f'export_all_to_sheets {staff.display_name}: {e}')

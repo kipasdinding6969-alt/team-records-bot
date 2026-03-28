@@ -991,6 +991,15 @@ class RalphLoop:
             except Exception as e:
                 logger.error(f"Error disconnecting Telegram: {e}")
 
+            # Close NocoDB writer session
+            global _nocodb_writer
+            if _nocodb_writer is not None:
+                try:
+                    await _nocodb_writer.close()
+                    logger.info("NocoDB writer closed")
+                except Exception as e:
+                    logger.error(f"Error closing NocoDB writer: {e}")
+
             # Close V2 persistent DB connection
             try:
                 await database_v2.close()
