@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """NocoDB Setup — Create tables in existing base."""
-import requests, json, sys
+import os, requests, json, sys
 
-NOCODB_URL = "http://localhost:8080"
-BASE_ID = "pq3jgqmclgw0ila"
-JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQHFpYW5odWIubG9jYWwiLCJkaXNwbGF5X25hbWUiOm51bGwsImF2YXRhciI6bnVsbCwidXNlcl9uYW1lIjpudWxsLCJpZCI6InVzczlibGxlajI2bHM1emsiLCJyb2xlcyI6eyJvcmctbGV2ZWwtY3JlYXRvciI6dHJ1ZSwic3VwZXIiOnRydWV9LCJ0b2tlbl92ZXJzaW9uIjoiNDg5MmZhODg1YjY3NjdmNGVhNzYyZjY5NzhjNWJmMjJkYmQwNmM1ZmQ2NjAzMDEzZWQ0OWNmMDM5YmI2YmRhOWM4ZjIyN2UyNjk0YTFkNDYiLCJpYXQiOjE3NzQ3MzMxNDcsImV4cCI6MTc3NDc2OTE0N30.v1bucnsPIMZo9d4oi_tiRSaFq5KJOFWTyoa2DxGx4h4"
+NOCODB_URL = os.getenv("NOCODB_URL", "http://localhost:8080")
+BASE_ID = os.getenv("NOCODB_BASE_ID", "pq3jgqmclgw0ila")
+JWT = os.getenv("NOCODB_JWT", "")
+if not JWT:
+    sys.exit("ERROR: Set NOCODB_JWT env var (get from NocoDB admin → API tokens)")
 
 headers = {"xc-auth": JWT, "Content-Type": "application/json"}
 

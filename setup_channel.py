@@ -5,11 +5,12 @@ from telethon import TelegramClient
 from telethon.tl.functions.channels import CreateChannelRequest, InviteToChannelRequest, EditAdminRequest
 from telethon.tl.types import ChatAdminRights
 
-API_ID = 32326218
-API_HASH = "2f44dfd151f291c8a4ec5c405eb51e94"
-SESSION = "team_records_bot"
-PROXY = (socks.SOCKS5, "127.0.0.1", 9050)
-BOT_USERNAME = "qianhub_records_bot"
+import os
+API_ID = int(os.getenv("API_ID", "0"))
+API_HASH = os.getenv("API_HASH", "")
+SESSION = os.getenv("SESSION_NAME", "team_records_bot")
+PROXY = (socks.SOCKS5, os.getenv("PROXY_HOST", "127.0.0.1"), int(os.getenv("PROXY_PORT", "9050")))
+BOT_USERNAME = os.getenv("BOT_USERNAME", "qianhub_records_bot")
 
 async def main():
     client = TelegramClient(SESSION, API_ID, API_HASH, proxy=PROXY)

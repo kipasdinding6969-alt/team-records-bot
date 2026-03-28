@@ -7,6 +7,7 @@ from database_v2 import database_v2
 from models_v2 import Client, ClientNote, ClientStatus, NoteType, Reminder, Staff
 from i18n import t
 from telegram_handler import telegram_handler
+from handlers_v2 import get_staff as _get_staff
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +51,6 @@ def _parse_time_delta(time_str: str) -> Optional[timedelta]:
         except ValueError:
             return None
     return None
-
-
-async def _get_staff(user_id: int) -> Optional[Staff]:
-    return await database_v2.get_staff_by_tg_id(user_id)
 
 
 def _build_status_buttons(client_id: int, current_status: ClientStatus) -> List[Dict]:

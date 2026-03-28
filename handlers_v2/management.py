@@ -9,12 +9,9 @@ from database_v2 import database_v2
 from models_v2 import PeriodType, Staff, TeamTarget
 from i18n import t
 from telegram_handler import telegram_handler
+from handlers_v2 import get_staff as _get_staff
 
 logger = logging.getLogger(__name__)
-
-
-async def _get_staff(user_id: int):
-    return await database_v2.get_staff_by_tg_id(user_id)
 
 
 async def handle_dashboard(task_data: Dict[str, Any]):

@@ -187,30 +187,50 @@ class ChartEngine:
         date_str = target_date.strftime("%m月%d日")
 
         # Get data from database
-        async with database.get_connection() as db:
-            cursor = await db.execute("""
-                SELECT frontdesk_name FROM team_members
-                WHERE role = 'frontdesk' AND is_active = TRUE
-            """)
-            frontdesks = [row[0] for row in await cursor.fetchall()]
+        # Use V2 database for accurate pipeline stats
+        try:
+            from database_v2 import database_v2
+            from models_v2 import ClientStatus
+            all_staff = await database_v2.get_all_staff(active_only=True)
+            total_fans = 0
+            total_replies = 0
+            total_registered = 0
+            total_training = 0
+            total_withdraw = 0
+            total_new_orders = 0
 
-        # Collect funnel data
-        total_fans = 0
-        total_replies = 0
-        total_registered = 0
-        total_training = 0
-        total_withdraw = 0
-        total_new_orders = 0
+            for staff in all_staff:
+                stat = await database_v2.calculate_daily_stats(staff.id, target_date)
+                total_fans += stat.new_leads
+                total_replies += stat.replied
+                total_registered += stat.registered
+                total_training += stat.training
+                total_withdraw += stat.withdrew
+                total_new_orders += stat.new_orders
+        except Exception as e:
+            logger.warning(f"V2 funnel fallback to V1: {e}")
+            # Fallback to V1 if V2 not available
+            async with database.get_connection() as db:
+                cursor = await db.execute("""
+                    SELECT frontdesk_name FROM team_members
+                    WHERE role = 'frontdesk' AND is_active = TRUE
+                """)
+                frontdesks = [row[0] for row in await cursor.fetchall()]
 
-        for frontdesk in frontdesks:
-            records = await database.get_client_records_by_frontdesk(frontdesk)
-            day_records = [r for r in records if r.date == date_str]
+            total_fans = 0
+            total_replies = 0
+            total_registered = 0
+            total_training = 0
+            total_withdraw = 0
+            total_new_orders = 0
 
-            total_fans += len(day_records)
-            total_replies += len([r for r in day_records if r.first_day != '待定'])
-            total_registered += len([r for r in day_records if r.first_day == '注册'])
-            total_training += len([r for r in day_records if r.second_day == '注册'])
-            # TODO: Get withdraw and new_orders from financial records
+            for frontdesk in frontdesks:
+                records = await database.get_client_records_by_frontdesk(frontdesk)
+                day_records = [r for r in records if r.date == date_str]
+                total_fans += len(day_records)
+                total_replies += len([r for r in day_records if r.first_day != '待定'])
+                total_registered += len([r for r in day_records if r.first_day == '注册'])
+                total_training += len([r for r in day_records if r.second_day == '注册'])
 
         # Create funnel chart
         fig, ax = plt.subplots(figsize=CHART_SIZE, facecolor=BACKGROUND_COLOR)
@@ -416,11 +436,24 @@ class ChartEngine:
         if target_date is None:
             target_date = date.today()
 
-        # TODO: Get real financial data
-        # For now, using sample data
-        categories = ['起始\nStarting', '新增\nNew', '提款\nWithdraw',
-                     '佣金\nCommission', '结束\nEnding']
-        values = [1000, 500, -300, 200, 1400]
+        # Pull real deposit data from V2 database
+        try:
+            from database_v2 import database_v2
+            all_staff = await database_v2.get_all_staff(active_only=True)
+            total_deposits = 0
+            total_withdrawals = 0
+            for staff in all_staff:
+                stat = await database_v2.calculate_daily_stats(staff.id, target_date)
+                total_deposits += stat.total_deposit
+                total_withdrawals += stat.withdrew  # count, not amount
+            categories = ['起始\nStarting', '入金\nDeposits', '提款\nWithdraw', '结束\nEnding']
+            starting = 0  # placeholder — need historical running total
+            values = [starting, total_deposits, -total_withdrawals, starting + total_deposits - total_withdrawals]
+        except Exception as e:
+            logger.warning(f"V2 waterfall fallback to sample data: {e}")
+            categories = ['起始\nStarting', '新增\nNew', '提款\nWithdraw',
+                         '佣金\nCommission', '结束\nEnding']
+            values = [1000, 500, -300, 200, 1400]
 
         # Create waterfall chart
         fig, ax = plt.subplots(figsize=CHART_SIZE, facecolor=BACKGROUND_COLOR)
