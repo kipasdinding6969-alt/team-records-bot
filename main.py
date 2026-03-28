@@ -37,6 +37,9 @@ from database_v2 import database_v2
 import engines.sheet_sync_v2 as _sheet_sync_v2_mod
 import engines.dashboard_sheets as _dashboard_mod
 
+# NocoDB private sheets engine (optional, parallel to Google Sheets)
+_nocodb_writer = None
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -122,6 +125,17 @@ class RalphLoop:
                 logger.info("SheetSyncV2 + DashboardSheets initialized")
             except Exception as e:
                 logger.warning(f"SheetSyncV2 init failed (sheets may be unavailable): {e}")
+
+            # Initialize NocoDB private sheets (runs parallel, non-blocking)
+            global _nocodb_writer
+            try:
+                from engines.nocodb_writer import NocoDBWriter
+                _nocodb_writer = NocoDBWriter()
+                await _nocodb_writer.connect()
+                logger.info("NocoDB writer initialized (private sheets active)")
+            except Exception as e:
+                logger.warning(f"NocoDB init failed (private sheets unavailable): {e}")
+                _nocodb_writer = None
 
             logger.info("Engines initialized")
 
@@ -885,6 +899,14 @@ class RalphLoop:
                 except Exception as e:
                     logger.error(f'V2 dashboard refresh error: {e}')
 
+            # NocoDB parallel sync — mirror SQLite → NocoDB on same interval
+            if _nocodb_writer is not None:
+                try:
+                    noco_stats = await _nocodb_writer.sync_all_from_sqlite()
+                    logger.info(f'NocoDB sync: {noco_stats}')
+                except Exception as e:
+                    logger.error(f'NocoDB sync error: {e}')
+
             self.last_v2_sheet_sync = current_time
 
     def _should_generate_daily_report(self) -> bool:
@@ -1058,6 +1080,12 @@ class RalphLoop:
             'status': 'healthy' if _sheet_sync_v2_mod.sheet_sync_v2 is not None else 'degraded',
             'last_sync': self.last_v2_sheet_sync.isoformat() if self.last_v2_sheet_sync else None,
             'engine': 'v2',
+        }
+
+        # Check NocoDB private sheets
+        health['checks']['nocodb'] = {
+            'status': 'healthy' if _nocodb_writer is not None else 'unavailable',
+            'url': os.getenv('NOCODB_URL', 'http://localhost:8080'),
         }
 
         # Overall status

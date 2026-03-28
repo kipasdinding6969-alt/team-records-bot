@@ -105,6 +105,23 @@ class NocoDBWriter:
             await self._session.close()
             self._session = None
 
+    async def connect(self):
+        """Open the aiohttp session (idempotent). Call from main.py init."""
+        await self._open()
+
+    async def close(self):
+        """Close the aiohttp session. Call on shutdown."""
+        await self._close()
+
+    async def sync_all_from_sqlite(self) -> Dict[str, int]:
+        """Convenience wrapper — sync from the default V2 database path."""
+        db_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'team_records_v2.db')
+        db_path = os.path.normpath(db_path)
+        if not os.path.exists(db_path):
+            logger.warning(f'SQLite DB not found at {db_path}, skipping NocoDB sync')
+            return {}
+        return await self.full_sync_from_sqlite(db_path)
+
     def _s(self) -> aiohttp.ClientSession:
         if self._session is None:
             raise RuntimeError('Not opened — use async with')
