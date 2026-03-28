@@ -167,6 +167,10 @@ class GSheetWriter:
             logger.info(f"Updated client status in '{sheet_name}' row {row_index}")
             return True
         except Exception as e:
+            err_str = str(e)
+            if '403' in err_str or 'permission' in err_str.lower():
+                # Re-raise permission errors so callers can detect read-only access
+                raise
             logger.error(f"Error updating '{sheet_name}' row {row_index}: {e}")
             return False
 
