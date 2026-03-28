@@ -176,7 +176,7 @@ class Config:
             self.telegram.proxy_port = int(os.getenv("PROXY_PORT"))
 
         # Google Sheets config - REQUIRED
-        self.google_sheets.spreadsheet_id = os.getenv("SHEETS_ID") or os.getenv("SPREADSHEET_ID") or "1rkgRG95lxUgeplceekMY3Z_NZIBKxjTKNwLSpw04xgQ"
+        self.google_sheets.spreadsheet_id = os.getenv("SHEETS_ID") or os.getenv("SPREADSHEET_ID") or ""
         self.google_sheets.spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{self.google_sheets.spreadsheet_id}/"
         self.google_sheets.title = os.getenv("SHEETS_TITLE", "Team Records")
 

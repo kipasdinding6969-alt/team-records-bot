@@ -1,14 +1,19 @@
-"""Obsidian REST API client — second brain integration for the team records bot."""
+"""Obsidian REST API client — second brain integration for the team records bot.
+
+NOTE: OBSIDIAN_URL should point to the team workspace vault instance,
+not a personal vault. Configure via environment variables.
+"""
 import asyncio
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
 import aiohttp
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = 'http://localhost:27123'
-API_KEY = '7f7fd125d3f3ab9b8741cdc98f1c33287e2362d24edff98447631d4ad101d10d'
+BASE_URL = os.getenv('OBSIDIAN_URL', 'http://localhost:27123')
+API_KEY = os.getenv('OBSIDIAN_API_KEY', '')
 _HEADERS = {
     'Authorization': f'Bearer {API_KEY}',
 }

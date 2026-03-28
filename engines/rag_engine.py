@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import math
+import os
 import time
 from typing import Any, Dict, List, Optional
 
@@ -11,8 +12,8 @@ from database_v2 import database_v2
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_URL = 'http://localhost:11434'
-EMBED_MODEL = 'nomic-embed-text'
+OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434')
+EMBED_MODEL = os.getenv('EMBED_MODEL', 'nomic-embed-text')
 
 # In-memory embedding cache — refreshed every 5 minutes.
 _embedding_cache: List[Dict] = []

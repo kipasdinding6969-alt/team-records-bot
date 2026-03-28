@@ -13,7 +13,6 @@ from telegram_handler import telegram_handler
 from models import BotTask, ReportTemplate
 from engines.report_engine import report_engine
 from engines.reminder_engine import reminder_engine
-from engines.sheet_sync import sheet_sync_engine
 from engines.chart_engine import chart_engine
 
 # Import all handlers
@@ -110,7 +109,6 @@ class RalphLoop:
             # Initialize engines
             if hasattr(report_engine, 'initialize'):
                 await report_engine.initialize()
-            await sheet_sync_engine.initialize()
 
             # Initialize V2 bidirectional sheet sync + dashboard
             try:
@@ -627,33 +625,19 @@ class RalphLoop:
             return False
 
     async def _handle_sync_task(self, task: BotTask) -> bool:
-        """Handle synchronization tasks."""
+        """Handle synchronization tasks (V2 only)."""
         try:
             sync_type = task.data.get('sync_type', 'full')
 
+            if _sheet_sync_v2_mod.sheet_sync_v2 is None:
+                logger.warning('Sync task skipped: SheetSyncV2 not initialized')
+                return False
+
             if sync_type == 'full':
-                results = await sheet_sync_engine.sync_all_data()
+                stats = await _sheet_sync_v2_mod.sheet_sync_v2.full_sync()
                 self.metrics['sync_operations'] += 1
-
-                # Check for errors in sync results
-                summary = results.get('summary', {})
-                success = summary.get('success', False)
-                error_count = summary.get('total_errors', 0)
-
-                if not success:
-                    logger.error(f"Sheet sync failed: {results.get('error', 'Unknown error')}")
-                    return False
-
-                if error_count > 0:
-                    # Log partial failure but don't fail the task completely
-                    logger.warning(f"Sheet sync completed with {error_count} errors")
-
+                logger.info(f'V2 sync: {stats["total_imported"]} imported, {stats["total_exported"]} exported')
                 return True
-            elif sync_type == 'export':
-                data_type = task.data.get('data_type')
-                filters = task.data.get('filters', {})
-                results = await sheet_sync_engine.export_to_sheets(data_type, filters)
-                return results.get('success', False)
             else:
                 logger.warning(f"Unknown sync type: {sync_type}")
                 return False
@@ -727,16 +711,6 @@ class RalphLoop:
             await database.create_task(stale_scan_task)
 
             self.last_reminder_check = current_time
-
-        if not self.last_sync or (current_time - self.last_sync).total_seconds() > config.bot.sync_interval:  # 1 hour
-            # Schedule sync task
-            sync_task = BotTask(
-                task_type='sync',
-                priority=3,
-                data={'sync_type': 'full'}
-            )
-            await database.create_task(sync_task)
-            self.last_sync = current_time
 
         if not self.last_health_check or (current_time - self.last_health_check).total_seconds() > config.bot.health_check_interval:
             # Schedule health check
@@ -1079,19 +1053,12 @@ class RalphLoop:
             }
             health['status'] = 'degraded'
 
-        # Check Google Sheets sync
-        try:
-            sync_status = await sheet_sync_engine.get_sync_status()
-            health['checks']['sheets_sync'] = {
-                'status': 'healthy' if sync_status.get('connection_status') == 'connected' else 'degraded',
-                'last_sync': sync_status.get('last_sync'),
-                'records_synced': sync_status.get('records_synced', 0)
-            }
-        except Exception as e:
-            health['checks']['sheets_sync'] = {
-                'status': 'unhealthy',
-                'error': str(e)
-            }
+        # Check Google Sheets sync (V2)
+        health['checks']['sheets_sync'] = {
+            'status': 'healthy' if _sheet_sync_v2_mod.sheet_sync_v2 is not None else 'degraded',
+            'last_sync': self.last_v2_sheet_sync.isoformat() if self.last_v2_sheet_sync else None,
+            'engine': 'v2',
+        }
 
         # Overall status
         check_statuses = [check['status'] for check in health['checks'].values()]
