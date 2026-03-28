@@ -1,4 +1,4 @@
-"""V2 management handlers — /dashboard, /team, /target, /export."""
+"""V2 management handlers — /dashboard, /team, /target, /export, /sync."""
 import csv
 import io
 import logging
@@ -27,6 +27,11 @@ async def handle_dashboard(task_data: Dict[str, Any]):
         await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
         return
 
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'dashboard'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', staff.language))
+        return
+
     if not staff.is_manager_or_above():
         await telegram_handler.send_message(chat_id, t('err_manager_only', staff.language))
         return
@@ -34,7 +39,6 @@ async def handle_dashboard(task_data: Dict[str, Any]):
     lang = staff.language
     today = date.today()
 
-    # Recalculate all today stats
     await database_v2.recalculate_all_today_stats()
     stats_list = await database_v2.get_team_daily_stats(today)
 
@@ -76,6 +80,11 @@ async def handle_team_stats(task_data: Dict[str, Any]):
     staff = await _get_staff(user_id)
     if not staff:
         await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
+        return
+
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'team'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', staff.language))
         return
 
     if not staff.is_manager_or_above():
@@ -125,10 +134,14 @@ async def handle_target(task_data: Dict[str, Any]):
         await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
         return
 
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'target'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', staff.language))
+        return
+
     lang = staff.language
     today = date.today()
 
-    # Handle "set" subcommand: /target set <team> <leads> <registers> <orders>
     if args.lower().startswith('set '):
         if not staff.is_manager_or_above():
             await telegram_handler.send_message(chat_id, t('err_manager_only', lang))
@@ -163,7 +176,6 @@ async def handle_target(task_data: Dict[str, Any]):
                         team=team_name, leads=leads, registers=registers, orders=orders))
         return
 
-    # Default: view current week target
     team = staff.team or 'default'
     week_start = today - timedelta(days=today.weekday())
 
@@ -197,9 +209,13 @@ async def handle_export(task_data: Dict[str, Any]):
         await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
         return
 
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'export'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', staff.language))
+        return
+
     lang = staff.language
 
-    # Managers export all, frontdesk export own
     if staff.is_manager_or_above():
         rows = await database_v2.export_clients_csv()
     else:
@@ -209,7 +225,6 @@ async def handle_export(task_data: Dict[str, Any]):
         await telegram_handler.send_message(chat_id, t('export_empty', lang))
         return
 
-    # Build CSV in memory
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=rows[0].keys())
     writer.writeheader()
@@ -220,7 +235,6 @@ async def handle_export(task_data: Dict[str, Any]):
     try:
         await telegram_handler.send_file(chat_id, csv_bytes, filename)
     except Exception:
-        # Fallback: send first 20 rows as text
         preview_lines = [t('export_success', lang, count=len(rows)), '']
         for r in rows[:20]:
             preview_lines.append(f"{r.get('phone','')} | {r.get('status','')} | {r.get('source','')}")
@@ -230,13 +244,18 @@ async def handle_export(task_data: Dict[str, Any]):
 
 
 async def handle_sync(task_data: Dict[str, Any]):
-    """/sync — force full Sheets sync + dashboard refresh (manager+)."""
+    """/sync — force full Sheets sync + dashboard refresh (admin only)."""
     chat_id = task_data.get('chat_id')
     user_id = task_data.get('user_id')
 
     staff = await _get_staff(user_id)
     if not staff:
         await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
+        return
+
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'sync'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', staff.language))
         return
 
     if not staff.is_manager_or_above():

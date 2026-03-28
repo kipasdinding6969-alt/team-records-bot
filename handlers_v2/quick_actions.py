@@ -80,6 +80,13 @@ async def handle_add_client(task_data: Dict[str, Any]):
         return
 
     lang = staff.language
+
+    # Role permission check
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'add'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', lang))
+        return
+
     parts = args.split(None, 1)
     if len(parts) < 2:
         msg = t('add_usage', lang)
@@ -87,6 +94,13 @@ async def handle_add_client(task_data: Dict[str, Any]):
         return
 
     phone, source = parts[0], parts[1]
+
+    # Policy: daily client limit
+    from engines.policy_engine import check_can_add_client
+    allowed, reason = await check_can_add_client(staff.id)
+    if not allowed:
+        await telegram_handler.send_message(chat_id, t('policy_add_limit', lang, reason=reason))
+        return
 
     # Check duplicate
     existing = await database_v2.get_client_by_phone(phone, staff.id)
@@ -125,6 +139,13 @@ async def handle_update_status(task_data: Dict[str, Any]):
         return
 
     lang = staff.language
+
+    # Role permission check
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'u'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', lang))
+        return
+
     parts = args.split(None, 1)
     if len(parts) < 2:
         await telegram_handler.send_message(chat_id, t('update_usage', lang))
@@ -155,6 +176,13 @@ async def handle_update_status(task_data: Dict[str, Any]):
                         from_status=client.status.value,
                         to_status=new_status.value,
                         valid=valid_str))
+        return
+
+    # Policy enforcement
+    from engines.policy_engine import enforce_on_status_change
+    allowed, reason = await enforce_on_status_change(client, new_status, staff)
+    if not allowed:
+        await telegram_handler.send_message(chat_id, t('policy_status_blocked', lang, reason=reason))
         return
 
     ok = await database_v2.update_client_status(client.id, new_status, staff.id)
@@ -195,6 +223,13 @@ async def handle_add_note(task_data: Dict[str, Any]):
         return
 
     lang = staff.language
+
+    # Role permission check
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'note'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', lang))
+        return
+
     parts = args.split(None, 1)
     if len(parts) < 2:
         await telegram_handler.send_message(chat_id, t('note_usage', lang))
@@ -224,6 +259,13 @@ async def handle_add_note(task_data: Dict[str, Any]):
     except Exception:
         pass
 
+    # Log to Obsidian (non-blocking)
+    try:
+        from engines.obsidian_brain import obsidian_brain
+        await obsidian_brain.log_client_interaction(phone, staff.display_name, content)
+    except Exception:
+        pass
+
 
 async def handle_remind(task_data: Dict[str, Any]):
     """
@@ -240,6 +282,13 @@ async def handle_remind(task_data: Dict[str, Any]):
         return
 
     lang = staff.language
+
+    # Role permission check
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'remind'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', lang))
+        return
+
     parts = args.split(None, 2)
     if len(parts) < 3:
         await telegram_handler.send_message(chat_id, t('remind_usage', lang))
@@ -250,6 +299,13 @@ async def handle_remind(task_data: Dict[str, Any]):
     delta = _parse_time_delta(time_str)
     if not delta:
         await telegram_handler.send_message(chat_id, t('remind_bad_time', lang, time=time_str))
+        return
+
+    # Policy: remind limits
+    from engines.policy_engine import check_remind_limits
+    allowed, reason = check_remind_limits(delta)
+    if not allowed:
+        await telegram_handler.send_message(chat_id, t('policy_remind_blocked', lang, reason=reason))
         return
 
     client = await database_v2.get_client_by_phone(phone, staff.id)
@@ -290,6 +346,13 @@ async def handle_handoff(task_data: Dict[str, Any]):
         return
 
     lang = staff.language
+
+    # Role permission check
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'handoff'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', lang))
+        return
+
     parts = args.split(None, 1)
     if not parts:
         await telegram_handler.send_message(chat_id, t('handoff_usage', lang))
@@ -301,6 +364,13 @@ async def handle_handoff(task_data: Dict[str, Any]):
     client = await database_v2.get_client_by_phone(phone, staff.id)
     if not client:
         await telegram_handler.send_message(chat_id, t('client_not_found', lang, phone=phone))
+        return
+
+    # Policy: client must be registered before handoff
+    from engines.policy_engine import check_can_handoff
+    allowed, reason = await check_can_handoff(client)
+    if not allowed:
+        await telegram_handler.send_message(chat_id, t('policy_handoff_blocked', lang, reason=reason))
         return
 
     # Get maintenance person for this frontdesk
@@ -330,6 +400,21 @@ async def handle_handoff(task_data: Dict[str, Any]):
     logger.info(
         f'{staff.display_name} handed off {phone} to {maintenance.display_name}'
         + (f' — {note}' if note else ''))
+
+    # Log handoff to Obsidian (non-blocking)
+    try:
+        from datetime import date
+        from engines.obsidian_brain import obsidian_brain
+        await obsidian_brain.log_handoff(
+            date_str=date.today().isoformat(),
+            frontdesk=staff.display_name,
+            maintenance=maintenance.display_name,
+            phone=phone,
+            status=client.status.value,
+            note=note,
+        )
+    except Exception:
+        pass
 
 
 async def handle_inline_status_callback(task_data: Dict[str, Any]):
@@ -370,6 +455,13 @@ async def handle_inline_status_callback(task_data: Dict[str, Any]):
                         from_status=client.status.value,
                         to_status=new_status.value,
                         valid=', '.join(s.value for s in ClientStatus.valid_transitions(client.status))))
+        return
+
+    # Policy enforcement
+    from engines.policy_engine import enforce_on_status_change
+    allowed, reason = await enforce_on_status_change(client, new_status, staff)
+    if not allowed:
+        await telegram_handler.send_message(chat_id, t('policy_status_blocked', lang, reason=reason))
         return
 
     ok = await database_v2.update_client_status(client_id, new_status, staff.id)

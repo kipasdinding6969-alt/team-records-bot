@@ -1,4 +1,4 @@
-"""V2 pipeline handlers — /pipeline, /followup, /today, /search, /rag."""
+"""V2 pipeline handlers — /pipeline, /followup, /today, /search, /rag, /sop."""
 import logging
 from datetime import date, datetime, timedelta
 from typing import Any, Dict
@@ -53,10 +53,14 @@ async def handle_pipeline(task_data: Dict[str, Any]):
         await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
         return
 
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'pipeline'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', staff.language))
+        return
+
     lang = staff.language
     counts = await database_v2.get_pipeline_counts(staff.id)
 
-    # Get stale + followup counts
     stale = await database_v2.get_stale_clients(staff.id, hours=72)
     followup_due = await database_v2.get_followup_due(staff.id)
 
@@ -66,7 +70,6 @@ async def handle_pipeline(task_data: Dict[str, Any]):
     if followup_due:
         text += f'\n🔥 {t("followup_due_count", lang, count=len(followup_due))}'
 
-    # Quick-action hint
     text += f'\n\n/followup  /today  /add'
 
     await telegram_handler.send_message(chat_id, text)
@@ -80,6 +83,11 @@ async def handle_followup(task_data: Dict[str, Any]):
     staff = await _get_staff(user_id)
     if not staff:
         await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
+        return
+
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'followup'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', staff.language))
         return
 
     lang = staff.language
@@ -121,9 +129,13 @@ async def handle_today(task_data: Dict[str, Any]):
         await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
         return
 
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'today'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', staff.language))
+        return
+
     lang = staff.language
 
-    # Recalculate fresh for today
     stat = await database_v2.calculate_daily_stats(staff.id)
     await database_v2.upsert_daily_stats(stat)
 
@@ -145,7 +157,6 @@ async def handle_today(task_data: Dict[str, Any]):
     if stat.total_deposit:
         lines.append(f'💵 {t("total_deposit_label", lang)}: ${stat.total_deposit:.2f}')
 
-    # Yesterday comparison
     yesterday = date.today() - timedelta(days=1)
     y_stat = await database_v2.get_daily_stats(staff.id, yesterday)
     if y_stat:
@@ -170,6 +181,11 @@ async def handle_search(task_data: Dict[str, Any]):
     staff = await _get_staff(user_id)
     if not staff:
         await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
+        return
+
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'search'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', staff.language))
         return
 
     lang = staff.language
@@ -202,6 +218,11 @@ async def handle_rag_search(task_data: Dict[str, Any]):
     staff = await _get_staff(user_id)
     if not staff:
         await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
+        return
+
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'rag'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', staff.language))
         return
 
     lang = staff.language
@@ -241,18 +262,21 @@ async def handle_me(task_data: Dict[str, Any]):
         await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
         return
 
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'me'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', staff.language))
+        return
+
     lang = staff.language
     today = date.today()
     now = datetime.now()
     lines = []
 
-    # ── Header ──
     lines.append(f'🐉 **{staff.display_name}** — {today.strftime("%Y-%m-%d %H:%M")}')
     if staff.team:
         lines.append(f'👥 Team: {staff.team}')
     lines.append('')
 
-    # ── Pipeline Funnel ──
     counts = await database_v2.get_pipeline_counts(staff.id)
     total = sum(counts.values())
     lines.append('━━━ 📊 PIPELINE ━━━')
@@ -272,7 +296,6 @@ async def handle_me(task_data: Dict[str, Any]):
     lines.append(f'   {"TOTAL":<11} {total:>3}')
     lines.append('')
 
-    # ── Today Stats ──
     stat = await database_v2.calculate_daily_stats(staff.id)
     await database_v2.upsert_daily_stats(stat)
     lines.append('━━━ 📈 TODAY ━━━')
@@ -284,7 +307,6 @@ async def handle_me(task_data: Dict[str, Any]):
         lines.append(f'💵 Deposits: ${stat.total_deposit:.2f}')
     lines.append('')
 
-    # ── Follow-up Due ──
     followup_due = await database_v2.get_followup_due(staff.id)
     stale = await database_v2.get_stale_clients(staff.id, hours=48)
     all_urgent = {c.id: c for c in followup_due + stale}
@@ -327,11 +349,9 @@ async def handle_overview(task_data: Dict[str, Any]):
     lines.append(f'🏢 **TEAM OVERVIEW** — {today}')
     lines.append('')
 
-    # Recalculate all stats
     await database_v2.recalculate_all_today_stats()
 
     all_staff = await database_v2.get_all_staff()
-    # Group by maintenance
     teams = {}
     for s in all_staff:
         if hasattr(s, 'maintenance_id') and s.maintenance_id:
@@ -366,7 +386,6 @@ async def handle_overview(task_data: Dict[str, Any]):
         grand_totals['orders'] += team_orders
         grand_totals['stale'] += team_stale
 
-    # Grand total
     lines.append('━━━ 🏆 GRAND TOTAL ━━━')
     g_conv = f'{grand_totals["orders"]/grand_totals["reg"]*100:.0f}%' if grand_totals['reg'] > 0 else '—'
     lines.append(f'🆕 {grand_totals["leads"]} leads  ✅ {grand_totals["reg"]} registered  🎯 {grand_totals["orders"]} orders  (Conv: {g_conv})')
@@ -378,6 +397,57 @@ async def handle_overview(task_data: Dict[str, Any]):
     await telegram_handler.send_message(chat_id, '\n'.join(lines))
 
 
+async def handle_sop(task_data: Dict[str, Any]):
+    """/sop <topic> — search Obsidian vault for SOPs and training material."""
+    chat_id = task_data.get('chat_id')
+    user_id = task_data.get('user_id')
+    args = task_data.get('args', '').strip()
+
+    staff = await _get_staff(user_id)
+    if not staff:
+        await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
+        return
+
+    from engines.policy_engine import check_permission
+    if not check_permission(staff.role.value, 'sop'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', staff.language))
+        return
+
+    lang = staff.language
+    if not args:
+        await telegram_handler.send_message(chat_id, t('sop_usage', lang))
+        return
+
+    try:
+        from engines.obsidian_brain import obsidian_brain
+        content = await obsidian_brain.get_sop(args)
+    except Exception as e:
+        logger.error(f'/sop Obsidian search failed: {e}')
+        content = ''
+
+    if not content:
+        # Fallback to RAG search
+        try:
+            from engines.rag_engine import search_similar
+            results = await search_similar(args, top_k=3)
+            if results:
+                lines = [t('sop_rag_fallback', lang, query=args), '']
+                for r in results:
+                    if r['source_type'] in ('obsidian_doc', 'obsidian_sop', 'policy'):
+                        lines.append(f'📖 {r["text_chunk"][:200]}')
+                        lines.append('')
+                content = '\n'.join(lines) if len(lines) > 2 else ''
+        except Exception:
+            pass
+
+    if not content:
+        await telegram_handler.send_message(chat_id, t('sop_not_found', lang, topic=args))
+        return
+
+    header = t('sop_results_title', lang, topic=args)
+    await telegram_handler.send_message(chat_id, f'{header}\n\n{content[:2000]}')
+
+
 PIPELINE_COMMANDS = {
     'me': handle_me,
     'overview': handle_overview,
@@ -386,6 +456,7 @@ PIPELINE_COMMANDS = {
     'today': handle_today,
     'search': handle_search,
     'rag': handle_rag_search,
+    'sop': handle_sop,
 }
 
 PIPELINE_CALLBACKS = {}

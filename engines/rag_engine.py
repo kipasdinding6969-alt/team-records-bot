@@ -85,13 +85,34 @@ async def search_similar(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
     return scored[:top_k]
 
 
+def chunk_text(text: str, max_chars: int = 500, overlap: int = 50) -> List[str]:
+    """Split text into overlapping paragraph-aware chunks."""
+    paragraphs = text.split('\n\n')
+    chunks: List[str] = []
+    current = ''
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue
+        if len(current) + len(para) + 2 > max_chars:
+            if current.strip():
+                chunks.append(current.strip())
+            # Keep overlap from the end of the previous chunk
+            tail = current[-overlap:] if overlap and current else ''
+            current = tail + para
+        else:
+            current = (current + '\n\n' + para) if current else para
+    if current.strip():
+        chunks.append(current.strip())
+    return chunks if chunks else [text[:max_chars]]
+
+
 async def index_client_notes(client_id: int):
     """Embed all notes for a client and store in embeddings table."""
     notes = await database_v2.get_client_notes(client_id, limit=50)
     if not notes:
         return
 
-    # Concatenate all notes into one text chunk per client
     parts = []
     for n in notes:
         if n.content:
@@ -124,7 +145,6 @@ async def index_client_status(client_id: int, phone: str, status: str, note: Opt
             if n.content:
                 parts.append(n.content)
     else:
-        # Fallback for very first status change (notes not yet in DB)
         parts = [f'client {phone} status {status}']
         if note:
             parts.append(note)
@@ -138,16 +158,108 @@ async def index_client_status(client_id: int, phone: str, status: str, note: Opt
         logger.error(f'Failed to index status change for client {client_id}: {e}')
 
 
+async def index_obsidian_docs():
+    """Read all .md files from Obsidian vault docs/ and index them."""
+    try:
+        from engines.obsidian_brain import obsidian_brain
+        files = await obsidian_brain.list_files('docs')
+        for f in files:
+            if not str(f).endswith('.md'):
+                continue
+            content = await obsidian_brain.read_note(str(f))
+            if not content:
+                continue
+            chunks = chunk_text(content, max_chars=500)
+            source_base = hash(f) & 0x7FFFFFFF
+            for i, chunk in enumerate(chunks):
+                try:
+                    vec = await embed_text(chunk)
+                    await database_v2.upsert_embedding('obsidian_doc', source_base + i, chunk, vec)
+                    await asyncio.sleep(0.1)
+                except Exception as e:
+                    logger.debug(f'Failed to index obsidian doc chunk {f}[{i}]: {e}')
+        logger.info(f'Indexed Obsidian docs/ ({len(files)} files)')
+    except Exception as e:
+        logger.warning(f'index_obsidian_docs failed: {e}')
+
+
+async def index_obsidian_sops():
+    """Read all .md files from Obsidian vault workspace/ and index them."""
+    try:
+        from engines.obsidian_brain import obsidian_brain
+        files = await obsidian_brain.list_files('workspace')
+        for f in files:
+            if not str(f).endswith('.md'):
+                continue
+            content = await obsidian_brain.read_note(str(f))
+            if not content:
+                continue
+            chunks = chunk_text(content, max_chars=500)
+            source_base = hash('sop_' + str(f)) & 0x7FFFFFFF
+            for i, chunk in enumerate(chunks):
+                try:
+                    vec = await embed_text(chunk)
+                    await database_v2.upsert_embedding('obsidian_sop', source_base + i, chunk, vec)
+                    await asyncio.sleep(0.1)
+                except Exception as e:
+                    logger.debug(f'Failed to index obsidian sop chunk {f}[{i}]: {e}')
+        logger.info(f'Indexed Obsidian workspace/ SOPs ({len(files)} files)')
+    except Exception as e:
+        logger.warning(f'index_obsidian_sops failed: {e}')
+
+
+async def index_policy_rules():
+    """Embed all hardcoded policy rules as searchable text."""
+    try:
+        from engines.policy_engine import (
+            MAX_NEW_CLIENTS_PER_DAY, STALE_WARNING_HOURS, STALE_CRITICAL_HOURS,
+            AUTO_DEAD_DAYS, MIN_REMIND_MINUTES, MAX_REMIND_DAYS, WORK_START, WORK_END, TIMEZONE,
+        )
+        policy_text = f"""Business Policy Rules:
+- Max new clients per day per frontdesk: {MAX_NEW_CLIENTS_PER_DAY}
+- Stale client warning after {STALE_WARNING_HOURS} hours of no update
+- Stale client critical escalation after {STALE_CRITICAL_HOURS} hours
+- Auto-mark dead after {AUTO_DEAD_DAYS} days of inactivity
+- Minimum reminder time: {MIN_REMIND_MINUTES} minutes
+- Maximum reminder time: {MAX_REMIND_DAYS} days
+- Working hours: {WORK_START:02d}:00 to {WORK_END:02d}:00 ({TIMEZONE})
+- Client must be "registered" before handoff to maintenance
+- Cannot mark as "ordered" without a recorded deposit
+- Admin required for: delete client, change role, full export, set target"""
+        vec = await embed_text(policy_text)
+        await database_v2.upsert_embedding('policy', 1, policy_text, vec)
+        logger.info('Policy rules indexed into RAG')
+    except Exception as e:
+        logger.warning(f'index_policy_rules failed: {e}')
+
+
 async def rebuild_index():
-    """Rebuild full embeddings index from all client notes."""
-    staff_list = await database_v2.get_all_staff()
+    """Rebuild full embeddings index from all client notes (legacy, calls rebuild_full_index)."""
+    return await rebuild_full_index()
+
+
+async def rebuild_full_index() -> int:
+    """Rebuild full embeddings index from ALL knowledge sources."""
     total = 0
+
+    # 1. Client notes
+    staff_list = await database_v2.get_all_staff()
     for s in staff_list:
         clients = await database_v2.export_clients_csv(frontdesk_id=s.id)
         for c in clients:
             await index_client_notes(c['id'])
             total += 1
-            await asyncio.sleep(0.1)  # rate-limit Ollama calls
+            await asyncio.sleep(0.1)
+
+    # 2. Obsidian docs
+    await index_obsidian_docs()
+
+    # 3. Obsidian SOPs
+    await index_obsidian_sops()
+
+    # 4. Policy rules
+    await index_policy_rules()
+
     _invalidate_cache()
-    logger.info(f'RAG index rebuilt: {total} clients indexed')
+    logger.info(f'Full RAG index rebuilt: {total} clients + Obsidian + policy')
     return total

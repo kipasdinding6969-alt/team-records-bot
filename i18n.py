@@ -1339,6 +1339,58 @@ STRINGS = {
         'zh': '❌ 同步出错: {error}',
         'en': '❌ Sync error: {error}',
     },
+
+    # === POLICY ENGINE MESSAGES ===
+    'policy_add_limit': {
+        'zh': '❌ 今日已达客户上限: {reason}',
+        'en': '❌ Daily client limit reached: {reason}',
+    },
+    'policy_status_blocked': {
+        'zh': '❌ 状态变更被策略拒绝: {reason}',
+        'en': '❌ Status change blocked by policy: {reason}',
+    },
+    'policy_handoff_blocked': {
+        'zh': '❌ 移交被策略拒绝: {reason}',
+        'en': '❌ Handoff blocked by policy: {reason}',
+    },
+    'policy_remind_blocked': {
+        'zh': '❌ 提醒设置不符合规则: {reason}',
+        'en': '❌ Reminder blocked by policy: {reason}',
+    },
+    'err_permission_denied': {
+        'zh': '❌ 您的角色没有权限执行此操作',
+        'en': '❌ Your role does not have permission for this action',
+    },
+    'policy_dead_marked': {
+        'zh': '🔄 自动标记 {count} 个长期未活跃客户为 dead',
+        'en': '🔄 Auto-marked {count} long-inactive clients as dead',
+    },
+    'policy_target_missed': {
+        'zh': '⚠️ 今日目标未达成: {team} — 目标 {target} 单，实际 {actual} 单',
+        'en': '⚠️ Daily target missed: {team} — target {target} orders, actual {actual}',
+    },
+
+    # === SOP COMMAND ===
+    'sop_usage': {
+        'zh': '📖 用法: /sop <主题>\n示例: /sop 注册流程  /sop 跟进话术',
+        'en': '📖 Usage: /sop <topic>\nExample: /sop registration flow  /sop follow-up script',
+    },
+    'sop_results_title': {
+        'zh': '📖 **SOP: {topic}**',
+        'en': '📖 **SOP: {topic}**',
+    },
+    'sop_not_found': {
+        'zh': '❓ 未找到关于 "{topic}" 的 SOP 内容\n请检查 Obsidian vault docs/ 中是否有相关文档',
+        'en': '❓ No SOP found for "{topic}"\nCheck Obsidian vault docs/ for related documents',
+    },
+    'sop_rag_fallback': {
+        'zh': '🔍 **RAG 搜索结果: {query}**',
+        'en': '🔍 **RAG search results: {query}**',
+    },
+    'obsidian_unavailable': {
+        'zh': '⚠️ Obsidian vault 暂时不可用',
+        'en': '⚠️ Obsidian vault temporarily unavailable',
+    },
 }
 
 

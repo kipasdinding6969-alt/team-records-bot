@@ -65,6 +65,9 @@ class RalphLoop:
         self.last_v2_stats_calc = None
         self.last_rag_reindex = None
         self.last_v2_sheet_sync = None
+        self.last_policy_dead_check = None
+        self.last_policy_target_check = None
+        self.last_obsidian_daily_report = None
 
         # Command and callback handlers registry
         self.command_handlers = {}
@@ -830,6 +833,57 @@ class RalphLoop:
             except Exception as e:
                 logger.debug(f'V2 RAG reindex skipped (Ollama may be down): {e}')
             self.last_rag_reindex = current_time
+
+        # Policy: auto-mark dead clients every 6 hours
+        if not self.last_policy_dead_check or (current_time - self.last_policy_dead_check).total_seconds() > 21600:
+            try:
+                from engines.policy_engine import auto_mark_dead_clients
+                count = await auto_mark_dead_clients()
+                if count > 0:
+                    logger.info(f'Policy: auto-marked {count} clients as dead (14d inactive)')
+            except Exception as e:
+                logger.error(f'Policy auto_mark_dead_clients error: {e}')
+            self.last_policy_dead_check = current_time
+
+        # Policy: daily target check at end of day (~21:00)
+        if (
+            not self.last_policy_target_check
+            or self.last_policy_target_check.date() < current_time.date()
+        ) and current_time.hour >= 21:
+            try:
+                from engines.policy_engine import check_daily_targets_missed
+                missed = await check_daily_targets_missed()
+                for m in missed:
+                    logger.warning(f'Policy: daily target missed — {m["team"]}: {m["actual"]}/{m["target"]}')
+                self.last_policy_target_check = current_time
+            except Exception as e:
+                logger.error(f'Policy daily target check error: {e}')
+
+        # Obsidian: save daily report at end of day (~21:30)
+        if (
+            not self.last_obsidian_daily_report
+            or self.last_obsidian_daily_report.date() < current_time.date()
+        ) and current_time.hour >= 21 and current_time.minute >= 30:
+            try:
+                from engines.obsidian_brain import obsidian_brain
+                await database_v2.recalculate_all_today_stats()
+                all_staff = await database_v2.get_all_staff()
+                lines = [f'# Daily Report — {current_time.strftime("%Y-%m-%d")}', '']
+                total_leads = total_reg = total_orders = 0
+                for s in all_staff:
+                    stat = await database_v2.get_daily_stats(s.id, current_time.date())
+                    if stat:
+                        lines.append(f'- {s.display_name}: 🆕{stat.new_leads} ✅{stat.registered} 🎯{stat.new_orders}')
+                        total_leads += stat.new_leads
+                        total_reg += stat.registered
+                        total_orders += stat.new_orders
+                lines.append(f'\n**TOTAL**: 🆕{total_leads} ✅{total_reg} 🎯{total_orders}')
+                report_text = '\n'.join(lines)
+                await obsidian_brain.save_daily_report(current_time.strftime('%Y-%m-%d'), report_text)
+                logger.info('Obsidian: daily report saved')
+                self.last_obsidian_daily_report = current_time
+            except Exception as e:
+                logger.error(f'Obsidian daily report error: {e}')
 
         # V2: Bidirectional Sheets sync on sync_interval (default 3600s)
         if (
