@@ -231,7 +231,156 @@ async def handle_rag_search(task_data: Dict[str, Any]):
     await telegram_handler.send_message(chat_id, '\n'.join(lines))
 
 
+async def handle_me(task_data: Dict[str, Any]):
+    """/me — ALL-IN-ONE: pipeline + today stats + followup + stale in one message."""
+    chat_id = task_data.get('chat_id')
+    user_id = task_data.get('user_id')
+
+    staff = await _get_staff(user_id)
+    if not staff:
+        await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
+        return
+
+    lang = staff.language
+    today = date.today()
+    now = datetime.now()
+    lines = []
+
+    # ── Header ──
+    lines.append(f'🐉 **{staff.display_name}** — {today.strftime("%Y-%m-%d %H:%M")}')
+    if staff.team:
+        lines.append(f'👥 Team: {staff.team}')
+    lines.append('')
+
+    # ── Pipeline Funnel ──
+    counts = await database_v2.get_pipeline_counts(staff.id)
+    total = sum(counts.values())
+    lines.append('━━━ 📊 PIPELINE ━━━')
+    stages = [
+        (ClientStatus.NEW, '🆕'), (ClientStatus.CONTACTED, '📱'),
+        (ClientStatus.REPLIED, '💬'), (ClientStatus.REGISTERED, '✅'),
+        (ClientStatus.TRAINING, '📚'), (ClientStatus.WITHDREW, '💰'),
+        (ClientStatus.ORDERED, '🎯'),
+    ]
+    for status, emoji in stages:
+        cnt = counts.get(status.value, 0)
+        bar = '█' * min(cnt, 20)
+        lines.append(f'{emoji} {status.value:<11} {cnt:>3}  {bar}')
+    other = sum(counts.get(s.value, 0) for s in [ClientStatus.GHOSTED, ClientStatus.BLOCKED, ClientStatus.SCAMMED, ClientStatus.DEAD])
+    if other:
+        lines.append(f'💀 {"other":<11} {other:>3}')
+    lines.append(f'   {"TOTAL":<11} {total:>3}')
+    lines.append('')
+
+    # ── Today Stats ──
+    stat = await database_v2.calculate_daily_stats(staff.id)
+    await database_v2.upsert_daily_stats(stat)
+    lines.append('━━━ 📈 TODAY ━━━')
+    lines.append(f'🆕 New: {stat.new_leads}  📱 Contacted: {stat.contacted}  💬 Replied: {stat.replied}')
+    lines.append(f'✅ Registered: {stat.registered}  📚 Training: {stat.training}  🎯 Orders: {stat.new_orders}')
+    if stat.contacted > 0:
+        lines.append(f'📊 Reply rate: {stat.reply_rate}%  |  Conv rate: {stat.conversion_rate}%')
+    if stat.total_deposit > 0:
+        lines.append(f'💵 Deposits: ${stat.total_deposit:.2f}')
+    lines.append('')
+
+    # ── Follow-up Due ──
+    followup_due = await database_v2.get_followup_due(staff.id)
+    stale = await database_v2.get_stale_clients(staff.id, hours=48)
+    all_urgent = {c.id: c for c in followup_due + stale}
+
+    if all_urgent:
+        lines.append(f'━━━ ⚠️ NEEDS ATTENTION ({len(all_urgent)}) ━━━')
+        for c in list(all_urgent.values())[:8]:
+            hours_ago = int((now - c.updated_at).total_seconds() / 3600) if c.updated_at else 999
+            lines.append(f'{c.status_emoji()} {c.phone} — {c.status.value} ({hours_ago}h ago)')
+            if c.status_note:
+                lines.append(f'   📝 {c.status_note[:50]}')
+        if len(all_urgent) > 8:
+            lines.append(f'   ... +{len(all_urgent) - 8} more')
+    else:
+        lines.append('━━━ ✅ ALL CLEAR ━━━')
+        lines.append('No stale clients or pending follow-ups!')
+
+    await telegram_handler.send_message(chat_id, '\n'.join(lines))
+
+
+async def handle_overview(task_data: Dict[str, Any]):
+    """/overview — ALL-IN-ONE for managers: all teams, all stats."""
+    chat_id = task_data.get('chat_id')
+    user_id = task_data.get('user_id')
+
+    staff = await _get_staff(user_id)
+    if not staff:
+        await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
+        return
+
+    if not staff.is_manager_or_above():
+        await telegram_handler.send_message(chat_id, t('err_manager_only', staff.language))
+        return
+
+    lang = staff.language
+    today = date.today()
+    now = datetime.now()
+    lines = []
+
+    lines.append(f'🏢 **TEAM OVERVIEW** — {today}')
+    lines.append('')
+
+    # Recalculate all stats
+    await database_v2.recalculate_all_today_stats()
+
+    all_staff = await database_v2.get_all_staff()
+    # Group by maintenance
+    teams = {}
+    for s in all_staff:
+        if hasattr(s, 'maintenance_id') and s.maintenance_id:
+            maint = await database_v2.get_staff_by_id(s.maintenance_id)
+            team_name = maint.display_name if maint else 'Unassigned'
+        elif s.team:
+            team_name = s.team
+        else:
+            team_name = 'Unassigned'
+        if s.role.value in ('frontdesk',):
+            teams.setdefault(team_name, []).append(s)
+
+    grand_totals = {'leads': 0, 'reg': 0, 'orders': 0, 'stale': 0}
+
+    for team_name, members in teams.items():
+        lines.append(f'━━━ 👥 {team_name} ━━━')
+        team_leads = team_reg = team_orders = team_stale = 0
+        for m in members:
+            stat = await database_v2.get_daily_stats(m.id, today)
+            stale_count = len(await database_v2.get_stale_clients(m.id, hours=72))
+            nl = stat.new_leads if stat else 0
+            reg = stat.registered if stat else 0
+            orders = stat.new_orders if stat else 0
+            stale_flag = f' 🔴{stale_count}' if stale_count > 0 else ''
+            lines.append(f'  {m.display_name}: 🆕{nl} ✅{reg} 🎯{orders}{stale_flag}')
+            team_leads += nl; team_reg += reg; team_orders += orders; team_stale += stale_count
+        conv = f'{team_orders/team_reg*100:.0f}%' if team_reg > 0 else '—'
+        lines.append(f'  **TOTAL**: 🆕{team_leads} ✅{team_reg} 🎯{team_orders} (Conv: {conv}) ⚠️{team_stale} stale')
+        lines.append('')
+        grand_totals['leads'] += team_leads
+        grand_totals['reg'] += team_reg
+        grand_totals['orders'] += team_orders
+        grand_totals['stale'] += team_stale
+
+    # Grand total
+    lines.append('━━━ 🏆 GRAND TOTAL ━━━')
+    g_conv = f'{grand_totals["orders"]/grand_totals["reg"]*100:.0f}%' if grand_totals['reg'] > 0 else '—'
+    lines.append(f'🆕 {grand_totals["leads"]} leads  ✅ {grand_totals["reg"]} registered  🎯 {grand_totals["orders"]} orders  (Conv: {g_conv})')
+    if grand_totals['stale'] > 0:
+        lines.append(f'⚠️ {grand_totals["stale"]} stale clients need attention')
+    else:
+        lines.append('✅ No stale clients!')
+
+    await telegram_handler.send_message(chat_id, '\n'.join(lines))
+
+
 PIPELINE_COMMANDS = {
+    'me': handle_me,
+    'overview': handle_overview,
     'pipeline': handle_pipeline,
     'followup': handle_followup,
     'today': handle_today,
