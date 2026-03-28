@@ -353,22 +353,26 @@ class DatabaseV2:
                     return False
                 old_status = row['status']
 
-                # Build timestamp update based on new status
-                ts_field = {
+                # Build timestamp update based on new status.
+                # Column names are hardcoded in a whitelist — no user input in SQL.
+                _TS_COLUMNS = {
                     ClientStatus.CONTACTED: 'contacted_at',
                     ClientStatus.REPLIED: 'replied_at',
                     ClientStatus.REGISTERED: 'registered_at',
                     ClientStatus.TRAINING: 'training_at',
                     ClientStatus.WITHDREW: 'withdrew_at',
                     ClientStatus.ORDERED: 'first_order_at',
-                }.get(new_status)
+                }
+                ts_col = _TS_COLUMNS.get(new_status)
 
-                if ts_field:
-                    await db.execute(
-                        f"UPDATE clients SET status=?, status_note=?, {ts_field}=CURRENT_TIMESTAMP, "
-                        f"updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                        (new_status.value, note, client_id)
+                if ts_col:
+                    # Safe: ts_col comes from a hardcoded dict, never from user input.
+                    sql = (
+                        "UPDATE clients SET status=?, status_note=?, "
+                        + ts_col + "=CURRENT_TIMESTAMP, "
+                        "updated_at=CURRENT_TIMESTAMP WHERE id=?"
                     )
+                    await db.execute(sql, (new_status.value, note, client_id))
                 else:
                     await db.execute(
                         "UPDATE clients SET status=?, status_note=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",

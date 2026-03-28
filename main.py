@@ -92,9 +92,10 @@ class RalphLoop:
             await database.initialize()
             logger.info("Database initialized")
 
-            # Initialize V2 database
+            # Initialize V2 database with persistent connection
             await database_v2.initialize()
-            logger.info("DatabaseV2 initialized")
+            await database_v2.connect()
+            logger.info("DatabaseV2 initialized (persistent connection)")
 
             # Initialize Telegram handler
             await telegram_handler.initialize()
@@ -698,7 +699,7 @@ class RalphLoop:
         except Exception as e:
             logger.error(f'V2 reminder processing error: {e}')
 
-        # V2: Stale client detection every 5 minutes
+        # V2: Stale client detection every 5 minutes — auto-create reminders
         if not self.last_v2_stale_check or (current_time - self.last_v2_stale_check).total_seconds() > 300:
             try:
                 from working_hours import is_working_hours
@@ -706,6 +707,24 @@ class RalphLoop:
                     stale = await database_v2.get_all_stale_clients(hours=72)
                     if stale:
                         logger.info(f'V2: {len(stale)} stale clients detected')
+                        from models_v2 import Reminder as ReminderV2
+                        for client in stale:
+                            # Check if we already sent a stale reminder for this client today
+                            existing = await database_v2.get_pending_reminders_v2()
+                            already_reminded = any(
+                                r.client_id == client.id and r.source == 'auto_stale'
+                                for r in existing
+                            )
+                            if not already_reminded:
+                                reminder = ReminderV2(
+                                    staff_id=client.frontdesk_id,
+                                    client_id=client.id,
+                                    remind_at=current_time,
+                                    message=f'⚠️ Client {client.phone} ({client.status.value}) has been stale for 72+ hours. Follow up!',
+                                    source='auto_stale',
+                                )
+                                await database_v2.create_reminder(reminder)
+                                logger.info(f'V2: Auto-reminder created for stale client {client.phone}')
             except Exception as e:
                 logger.error(f'V2 stale check error: {e}')
             self.last_v2_stale_check = current_time
@@ -811,6 +830,13 @@ class RalphLoop:
                 logger.info("Telegram client disconnected")
             except Exception as e:
                 logger.error(f"Error disconnecting Telegram: {e}")
+
+            # Close V2 persistent DB connection
+            try:
+                await database_v2.close()
+                logger.info("DatabaseV2 connection closed")
+            except Exception as e:
+                logger.error(f"Error closing DatabaseV2: {e}")
 
             # Clear any remaining conversation states
             try:
