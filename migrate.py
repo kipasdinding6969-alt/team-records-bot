@@ -81,18 +81,24 @@ async def migrate():
 
         for m in members:
             keys = m.keys()
-            # Old schema may use 'display_name' or 'frontdesk_name'
+            # Old schema uses frontdesk_name/first_name, V2 uses display_name.
+            # Values can be NULL even when the column exists — check both key AND value.
             display_name = (
-                m['display_name'] if 'display_name' in keys else
-                m['frontdesk_name'] if 'frontdesk_name' in keys else
-                str(m['id'])
+                (m['frontdesk_name'] if 'frontdesk_name' in keys and m['frontdesk_name'] else None)
+                or (m['display_name'] if 'display_name' in keys and m['display_name'] else None)
+                or (m['first_name'] if 'first_name' in keys and m['first_name'] else None)
+                or f"Staff#{m['id']}"
             )
             tg_user_id = (
-                m['tg_user_id'] if 'tg_user_id' in keys else
-                m['user_id'] if 'user_id' in keys else
+                m['user_id'] if 'user_id' in keys and m['user_id'] else
+                m['tg_user_id'] if 'tg_user_id' in keys and m['tg_user_id'] else
                 m['id']
             )
-            tg_chat_id = m['tg_chat_id'] if 'tg_chat_id' in keys else tg_user_id
+            tg_chat_id = (
+                m['chat_id'] if 'chat_id' in keys and m['chat_id'] else
+                m['tg_chat_id'] if 'tg_chat_id' in keys and m['tg_chat_id'] else
+                tg_user_id
+            )
 
             role_str = m['role'] if 'role' in keys else 'frontdesk'
             try:
@@ -103,7 +109,7 @@ async def migrate():
             s = Staff(
                 tg_user_id=tg_user_id,
                 tg_chat_id=tg_chat_id,
-                tg_username=m['tg_username'] if 'tg_username' in keys else None,
+                tg_username=m['username'] if 'username' in keys else (m['tg_username'] if 'tg_username' in keys else None),
                 display_name=display_name,
                 role=role,
                 language=m['language'] if 'language' in keys else 'zh',
