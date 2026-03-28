@@ -563,6 +563,15 @@ class DashboardSheets:
                 except Exception as pe:
                     logger.debug(f'DashboardSheets: post-protect failed for {name}: {pe}')
             except Exception as e:
+                err_str = str(e)
+                if '403' in err_str or 'permission' in err_str.lower():
+                    # Service account has read-only access — demote to debug
+                    # NocoDB is the primary dashboard now, Google Sheets is optional export
+                    if not getattr(self, '_perm_warned', False):
+                        logger.warning('DashboardSheets: service account lacks write access — '
+                                       'dashboards skipped (NocoDB is primary)')
+                        self._perm_warned = True
+                    return  # skip remaining tabs, all will fail the same way
                 logger.error(f'DashboardSheets: failed to refresh {name}: {e}')
             await asyncio.sleep(1)  # rate-limit between sheet writes
 

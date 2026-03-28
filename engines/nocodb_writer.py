@@ -115,7 +115,8 @@ class NocoDBWriter:
 
     async def sync_all_from_sqlite(self) -> Dict[str, int]:
         """Convenience wrapper — sync from the default V2 database path."""
-        db_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'team_records_v2.db')
+        # V2 DB lives at repo root (team_records_v2.db), not in data/
+        db_path = os.path.join(os.path.dirname(__file__), '..', 'team_records_v2.db')
         db_path = os.path.normpath(db_path)
         if not os.path.exists(db_path):
             logger.warning(f'SQLite DB not found at {db_path}, skipping NocoDB sync')

@@ -2,7 +2,7 @@
 import asyncio
 import os
 import tempfile
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -244,10 +244,12 @@ class TestClientNotes:
 class TestDailyStats:
     @pytest.mark.asyncio
     async def test_calculate_daily_stats(self, db, staff_row, client_row):
-        """Stats should reflect today's activity."""
+        """Stats should reflect today's activity (UTC, matching SQLite CURRENT_TIMESTAMP)."""
         await db.update_client_status(
             client_row.id, ClientStatus.CONTACTED, staff_row.id)
-        stat = await db.calculate_daily_stats(staff_row.id)
+        # Pass UTC date explicitly — SQLite CURRENT_TIMESTAMP is UTC
+        utc_today = datetime.now(timezone.utc).date()
+        stat = await db.calculate_daily_stats(staff_row.id, stat_date=utc_today)
         assert stat.contacted >= 1
 
     @pytest.mark.asyncio

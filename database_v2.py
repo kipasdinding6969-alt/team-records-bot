@@ -549,9 +549,16 @@ class DatabaseV2:
     # ─── Daily Stats ────────────────────────────────────────────────────────
 
     async def calculate_daily_stats(self, staff_id: int, stat_date: Optional[date] = None) -> DailyStat:
-        """Auto-calculate stats from client data for a given staff/date."""
+        """Auto-calculate stats from client data for a given staff/date.
+
+        Note: SQLite CURRENT_TIMESTAMP stores UTC.  We compare using DATE()
+        in SQLite which also operates on the stored UTC string, so we must
+        pass the UTC date — not the local date — to avoid mismatches around
+        midnight in non-UTC timezones.
+        """
         if stat_date is None:
-            stat_date = date.today()
+            from datetime import timezone
+            stat_date = datetime.now(timezone.utc).date()
         date_str = stat_date.isoformat()
 
         async with self.get_connection() as db:
