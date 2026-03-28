@@ -23,16 +23,34 @@ class DatabaseV2:
         self.db_path = db_path
         self._conn: Optional[aiosqlite.Connection] = None
 
+    async def connect(self):
+        """Open and cache a persistent connection for the lifetime of the process."""
+        if self._conn is None:
+            self._conn = await aiosqlite.connect(self.db_path)
+            self._conn.row_factory = aiosqlite.Row
+            await self._conn.execute('PRAGMA foreign_keys = ON')
+            await self._conn.execute('PRAGMA journal_mode = WAL')
+
+    async def close(self):
+        """Close the persistent connection."""
+        if self._conn is not None:
+            await self._conn.close()
+            self._conn = None
+
     @asynccontextmanager
     async def get_connection(self) -> AsyncGenerator[aiosqlite.Connection, None]:
-        conn = await aiosqlite.connect(self.db_path)
-        conn.row_factory = aiosqlite.Row
-        try:
-            await conn.execute('PRAGMA foreign_keys = ON')
-            await conn.execute('PRAGMA journal_mode = WAL')
-            yield conn
-        finally:
-            await conn.close()
+        if self._conn is not None:
+            # Reuse persistent connection — caller must not close it.
+            yield self._conn
+        else:
+            conn = await aiosqlite.connect(self.db_path)
+            conn.row_factory = aiosqlite.Row
+            try:
+                await conn.execute('PRAGMA foreign_keys = ON')
+                await conn.execute('PRAGMA journal_mode = WAL')
+                yield conn
+            finally:
+                await conn.close()
 
     async def initialize(self):
         """Create all 8 tables."""
@@ -327,42 +345,47 @@ class DatabaseV2:
     async def update_client_status(self, client_id: int, new_status: ClientStatus,
                                     staff_id: int, note: Optional[str] = None) -> bool:
         async with self.get_connection() as db:
-            cur = await db.execute('SELECT status FROM clients WHERE id=?', (client_id,))
-            row = await cur.fetchone()
-            if not row:
-                return False
-            old_status = row['status']
+            try:
+                # SELECT + UPDATE + INSERT are wrapped in a single atomic transaction.
+                cur = await db.execute('SELECT status FROM clients WHERE id=?', (client_id,))
+                row = await cur.fetchone()
+                if not row:
+                    return False
+                old_status = row['status']
 
-            # Build timestamp update based on new status
-            ts_field = {
-                ClientStatus.CONTACTED: 'contacted_at',
-                ClientStatus.REPLIED: 'replied_at',
-                ClientStatus.REGISTERED: 'registered_at',
-                ClientStatus.TRAINING: 'training_at',
-                ClientStatus.WITHDREW: 'withdrew_at',
-                ClientStatus.ORDERED: 'first_order_at',
-            }.get(new_status)
+                # Build timestamp update based on new status
+                ts_field = {
+                    ClientStatus.CONTACTED: 'contacted_at',
+                    ClientStatus.REPLIED: 'replied_at',
+                    ClientStatus.REGISTERED: 'registered_at',
+                    ClientStatus.TRAINING: 'training_at',
+                    ClientStatus.WITHDREW: 'withdrew_at',
+                    ClientStatus.ORDERED: 'first_order_at',
+                }.get(new_status)
 
-            if ts_field:
+                if ts_field:
+                    await db.execute(
+                        f"UPDATE clients SET status=?, status_note=?, {ts_field}=CURRENT_TIMESTAMP, "
+                        f"updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                        (new_status.value, note, client_id)
+                    )
+                else:
+                    await db.execute(
+                        "UPDATE clients SET status=?, status_note=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                        (new_status.value, note, client_id)
+                    )
+
+                # Log the status change
                 await db.execute(
-                    f"UPDATE clients SET status=?, status_note=?, {ts_field}=CURRENT_TIMESTAMP, "
-                    f"updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                    (new_status.value, note, client_id)
+                    """INSERT INTO client_notes (client_id, staff_id, note_type, old_status, new_status, content)
+                       VALUES (?,?,?,?,?,?)""",
+                    (client_id, staff_id, NoteType.STATUS_CHANGE.value, old_status, new_status.value, note)
                 )
-            else:
-                await db.execute(
-                    "UPDATE clients SET status=?, status_note=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                    (new_status.value, note, client_id)
-                )
-
-            # Log the status change
-            await db.execute(
-                """INSERT INTO client_notes (client_id, staff_id, note_type, old_status, new_status, content)
-                   VALUES (?,?,?,?,?,?)""",
-                (client_id, staff_id, NoteType.STATUS_CHANGE.value, old_status, new_status.value, note)
-            )
-            await db.commit()
-            return True
+                await db.commit()
+                return True
+            except Exception:
+                await db.rollback()
+                raise
 
     async def add_client_note(self, note: ClientNote) -> int:
         async with self.get_connection() as db:
@@ -434,15 +457,17 @@ class DatabaseV2:
             return [self._row_to_client(r) for r in rows]
 
     async def get_followup_due(self, frontdesk_id: int) -> List[Client]:
-        """Clients where next_followup is in the past."""
+        """Clients where next_followup is in the past AND status is still active."""
+        active = [s.value for s in ClientStatus.active_statuses()]
+        placeholders = ','.join('?' * len(active))
         async with self.get_connection() as db:
             cur = await db.execute(
-                """SELECT * FROM clients
+                f"""SELECT * FROM clients
                    WHERE frontdesk_id=? AND next_followup IS NOT NULL
                    AND next_followup <= CURRENT_TIMESTAMP
-                   AND status NOT IN ('ordered','dead','blocked','scammed')
+                   AND status IN ({placeholders})
                    ORDER BY next_followup ASC""",
-                (frontdesk_id,))
+                (frontdesk_id, *active))
             rows = await cur.fetchall()
             return [self._row_to_client(r) for r in rows]
 
@@ -481,7 +506,6 @@ class DatabaseV2:
         if stat_date is None:
             stat_date = date.today()
         date_str = stat_date.isoformat()
-        next_day = (stat_date + timedelta(days=1)).isoformat()
 
         async with self.get_connection() as db:
             # Count clients created today (new leads)
@@ -778,6 +802,44 @@ class DatabaseV2:
                 cur = await db.execute('SELECT * FROM clients ORDER BY created_at DESC')
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
+
+    # ─── Additional helper methods ───────────────────────────────────────────
+
+    async def get_staff_by_display_name(self, name: str) -> Optional[Staff]:
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT * FROM staff WHERE display_name=? LIMIT 1', (name,))
+            row = await cur.fetchone()
+            return self._row_to_staff(row) if row else None
+
+    async def get_total_client_count(self, frontdesk_id: Optional[int] = None) -> int:
+        async with self.get_connection() as db:
+            if frontdesk_id is not None:
+                cur = await db.execute(
+                    'SELECT COUNT(*) FROM clients WHERE frontdesk_id=?', (frontdesk_id,))
+            else:
+                cur = await db.execute('SELECT COUNT(*) FROM clients')
+            return (await cur.fetchone())[0]
+
+    async def get_clients_by_frontdesk(self, frontdesk_id: int, limit: int = 50) -> List[Client]:
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT * FROM clients WHERE frontdesk_id=? ORDER BY updated_at DESC LIMIT ?',
+                (frontdesk_id, limit))
+            rows = await cur.fetchall()
+            return [self._row_to_client(r) for r in rows]
+
+    async def update_client(self, client: Client):
+        """Update mutable fields of an existing client (not status — use update_client_status)."""
+        async with self.get_connection() as db:
+            await db.execute(
+                """UPDATE clients SET phone_remark=?, nickname=?, platform=?, account_id=?,
+                   recruiter=?, status_note=?, updated_at=CURRENT_TIMESTAMP
+                   WHERE id=?""",
+                (client.phone_remark, client.nickname, client.platform, client.account_id,
+                 client.recruiter, client.status_note, client.id)
+            )
+            await db.commit()
 
 
 # Global singleton

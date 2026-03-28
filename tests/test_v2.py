@@ -273,15 +273,15 @@ class TestDailyStats:
 
     @pytest.mark.asyncio
     async def test_reply_rate_calculation(self):
-        stat = DailyStat(staff_id=1, stat_date=date.today(), new_leads=100, replied=40)
+        stat = DailyStat(staff_id=1, stat_date=date.today(), new_leads=100, contacted=80, replied=40)
         stat.calculate_rates()
-        assert stat.reply_rate == 40.0
+        assert stat.reply_rate == 50.0  # 40/80 contacted
 
     @pytest.mark.asyncio
     async def test_conversion_rate_calculation(self):
-        stat = DailyStat(staff_id=1, stat_date=date.today(), new_leads=100, new_orders=5)
+        stat = DailyStat(staff_id=1, stat_date=date.today(), new_leads=100, registered=50, new_orders=5)
         stat.calculate_rates()
-        assert stat.conversion_rate == 5.0
+        assert stat.conversion_rate == 10.0  # 5/50 registered
 
     @pytest.mark.asyncio
     async def test_zero_leads_no_div_zero(self):
@@ -458,7 +458,9 @@ class TestClientStatusModel:
     def test_terminal_statuses(self):
         terminal = ClientStatus.terminal_statuses()
         assert ClientStatus.DEAD in terminal
-        assert ClientStatus.ORDERED in terminal
+        assert ClientStatus.BLOCKED in terminal
+        assert ClientStatus.SCAMMED in terminal
+        assert ClientStatus.ORDERED not in terminal  # ordered clients are still active
         assert ClientStatus.NEW not in terminal
 
     def test_valid_transitions_from_new(self):
@@ -538,7 +540,7 @@ class TestMigration:
     def test_map_status_not_registered(self):
         from migrate import _map_status
         assert _map_status('不注册', '不注册') == ClientStatus.CONTACTED
-        assert _map_status('', '') == ClientStatus.CONTACTED
+        assert _map_status('', '') == ClientStatus.NEW  # empty = never contacted
 
     @pytest.mark.asyncio
     async def test_migration_empty_old_db(self, tmp_path):

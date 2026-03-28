@@ -1,7 +1,8 @@
 """RAG engine — Ollama nomic-embed-text embeddings stored in SQLite."""
-import json
+import asyncio
 import logging
 import math
+import time
 from typing import Any, Dict, List, Optional
 
 import aiohttp
@@ -12,6 +13,11 @@ logger = logging.getLogger(__name__)
 
 OLLAMA_URL = 'http://localhost:11434'
 EMBED_MODEL = 'nomic-embed-text'
+
+# In-memory embedding cache — refreshed every 5 minutes.
+_embedding_cache: List[Dict] = []
+_cache_ts: float = 0.0
+_CACHE_TTL = 300  # seconds
 
 
 async def embed_text(text: str) -> List[float]:
@@ -37,6 +43,21 @@ def _cosine_similarity(a: List[float], b: List[float]) -> float:
     return dot / (mag_a * mag_b)
 
 
+async def _get_cached_embeddings() -> List[Dict]:
+    """Return all embeddings, refreshing the in-memory cache every 5 minutes."""
+    global _embedding_cache, _cache_ts
+    if time.time() - _cache_ts > _CACHE_TTL or not _embedding_cache:
+        _embedding_cache = await database_v2.get_all_embeddings()
+        _cache_ts = time.time()
+    return _embedding_cache
+
+
+def _invalidate_cache():
+    """Force next search_similar call to re-fetch from DB."""
+    global _cache_ts
+    _cache_ts = 0.0
+
+
 async def search_similar(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
     """Search embeddings store for chunks most similar to query."""
     try:
@@ -45,7 +66,7 @@ async def search_similar(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         logger.error(f'RAG embed_text failed: {e}')
         return []
 
-    all_embeddings = await database_v2.get_all_embeddings()
+    all_embeddings = await _get_cached_embeddings()
     if not all_embeddings:
         return []
 
@@ -85,21 +106,34 @@ async def index_client_notes(client_id: int):
     try:
         vec = await embed_text(text_chunk)
         await database_v2.upsert_embedding('client_notes', client_id, text_chunk, vec)
+        _invalidate_cache()
         logger.debug(f'Indexed notes for client {client_id}')
     except Exception as e:
         logger.error(f'Failed to index notes for client {client_id}: {e}')
 
 
 async def index_client_status(client_id: int, phone: str, status: str, note: Optional[str] = None):
-    """Embed a single status change event."""
-    parts = [f'client {phone} status {status}']
-    if note:
-        parts.append(note)
-    text_chunk = ' '.join(parts)
+    """Embed ALL status history for a client as a single concatenated chunk."""
+    notes = await database_v2.get_client_notes(client_id, limit=50)
+    status_changes = [n for n in notes if n.note_type.value == 'status_change']
+
+    if status_changes:
+        parts = []
+        for n in status_changes:
+            parts.append(f'client {phone}: {n.old_status} → {n.new_status}')
+            if n.content:
+                parts.append(n.content)
+    else:
+        # Fallback for very first status change (notes not yet in DB)
+        parts = [f'client {phone} status {status}']
+        if note:
+            parts.append(note)
+
+    text_chunk = ' | '.join(parts)
     try:
         vec = await embed_text(text_chunk)
-        # Use composite key: source_type='client_status', source_id=client_id
         await database_v2.upsert_embedding('client_status', client_id, text_chunk, vec)
+        _invalidate_cache()
     except Exception as e:
         logger.error(f'Failed to index status change for client {client_id}: {e}')
 
@@ -113,5 +147,7 @@ async def rebuild_index():
         for c in clients:
             await index_client_notes(c['id'])
             total += 1
+            await asyncio.sleep(0.1)  # rate-limit Ollama calls
+    _invalidate_cache()
     logger.info(f'RAG index rebuilt: {total} clients indexed')
     return total

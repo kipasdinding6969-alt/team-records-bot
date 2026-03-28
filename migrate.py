@@ -1,6 +1,7 @@
 """Standalone migration: old DB → V2 schema."""
 import asyncio
 import logging
+import re
 import shutil
 from datetime import date, datetime
 from pathlib import Path
@@ -18,14 +19,32 @@ OLD_DB_PATH = 'team_records.db'
 NEW_DB_PATH = 'team_records_v2.db'
 BACKUP_PATH = f'team_records.db.bak_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
 
+_MONTH_DAY_RE = re.compile(r'(\d{1,2})月(\d{1,2})日')
+
 
 def _map_status(first_day: str, second_day: str) -> ClientStatus:
     """Map old 注册/不注册 to new ClientStatus."""
     first = (first_day or '').strip()
     second = (second_day or '').strip()
+    if not first and not second:
+        return ClientStatus.NEW
     if second == '注册' or first == '注册':
         return ClientStatus.REGISTERED
     return ClientStatus.CONTACTED
+
+
+def _parse_date(date_str: Optional[str], fallback: date) -> date:
+    """Parse 'X月X日' format. Falls back to provided date on failure."""
+    if not date_str:
+        return fallback
+    m = _MONTH_DAY_RE.search(date_str)
+    if m:
+        month, day = int(m.group(1)), int(m.group(2))
+        try:
+            return date(fallback.year, month, day)
+        except ValueError:
+            pass
+    return fallback
 
 
 async def migrate():
@@ -51,7 +70,8 @@ async def migrate():
         old_db.row_factory = aiosqlite.Row
 
         # 3. Migrate team_members → staff
-        staff_id_map = {}  # old_name → new_id
+        staff_id_map: dict = {}   # old display_name → new V2 id
+        staff_tgid_map: dict = {} # old tg_user_id → new V2 id (for deposit lookup)
         try:
             cur = await old_db.execute(
                 'SELECT * FROM team_members WHERE is_active = 1')
@@ -60,11 +80,21 @@ async def migrate():
             members = []
 
         for m in members:
-            display_name = m['display_name'] if 'display_name' in m.keys() else str(m['id'])
-            tg_user_id = m['tg_user_id'] if 'tg_user_id' in m.keys() else m['id']
-            tg_chat_id = m['tg_chat_id'] if 'tg_chat_id' in m.keys() else tg_user_id
+            keys = m.keys()
+            # Old schema may use 'display_name' or 'frontdesk_name'
+            display_name = (
+                m['display_name'] if 'display_name' in keys else
+                m['frontdesk_name'] if 'frontdesk_name' in keys else
+                str(m['id'])
+            )
+            tg_user_id = (
+                m['tg_user_id'] if 'tg_user_id' in keys else
+                m['user_id'] if 'user_id' in keys else
+                m['id']
+            )
+            tg_chat_id = m['tg_chat_id'] if 'tg_chat_id' in keys else tg_user_id
 
-            role_str = m['role'] if 'role' in m.keys() else 'frontdesk'
+            role_str = m['role'] if 'role' in keys else 'frontdesk'
             try:
                 role = StaffRole(role_str)
             except ValueError:
@@ -73,20 +103,22 @@ async def migrate():
             s = Staff(
                 tg_user_id=tg_user_id,
                 tg_chat_id=tg_chat_id,
-                tg_username=m['tg_username'] if 'tg_username' in m.keys() else None,
+                tg_username=m['tg_username'] if 'tg_username' in keys else None,
                 display_name=display_name,
                 role=role,
-                language=m['language'] if 'language' in m.keys() else 'zh',
+                language=m['language'] if 'language' in keys else 'zh',
             )
             new_id = await db_v2.upsert_staff(s)
             staff_id_map[display_name] = new_id
+            staff_tgid_map[tg_user_id] = new_id
             logger.info(f'Migrated staff: {display_name} → id={new_id}')
 
         logger.info(f'Staff migrated: {len(staff_id_map)}')
 
-        # 4. Migrate client_records → clients
+        # 4. Migrate client_records → clients (with deduplication)
         client_count = 0
-        client_id_map = {}  # old_id → new_id
+        client_id_map: dict = {}       # old_id → new V2 client id
+        phone_fd_seen: set = set()     # (phone, frontdesk_id) dedup set
 
         try:
             cur = await old_db.execute('SELECT * FROM client_records')
@@ -95,40 +127,47 @@ async def migrate():
             records = []
 
         for r in records:
-            # Find frontdesk_id
-            frontdesk_name = r['frontdesk'] if 'frontdesk' in r.keys() else ''
+            keys = r.keys()
+            # Resolve frontdesk_id
+            frontdesk_name = r['frontdesk'] if 'frontdesk' in keys else ''
             frontdesk_id = staff_id_map.get(frontdesk_name)
             if not frontdesk_id:
-                # Use first staff as fallback
                 if staff_id_map:
                     frontdesk_id = list(staff_id_map.values())[0]
                 else:
                     continue
 
-            phone = r['client_number'] if 'client_number' in r.keys() else ''
+            phone = r['client_number'] if 'client_number' in keys else ''
             if not phone:
                 continue
 
-            source = r['category'] if 'category' in r.keys() else '未知'
-            first_day = r['first_day'] if 'first_day' in r.keys() else ''
-            second_day = r['second_day'] if 'second_day' in r.keys() else ''
+            # Deduplication: skip if (phone, frontdesk_id) already migrated
+            dedup_key = (phone, frontdesk_id)
+            if dedup_key in phone_fd_seen:
+                logger.debug(f'Skipping duplicate client {phone} for frontdesk {frontdesk_id}')
+                continue
+            phone_fd_seen.add(dedup_key)
+
+            source = r['category'] if 'category' in keys else '未知'
+            first_day = r['first_day'] if 'first_day' in keys else ''
+            second_day = r['second_day'] if 'second_day' in keys else ''
 
             status = _map_status(first_day, second_day)
-            status_note = r['client_condition'] if 'client_condition' in r.keys() else None
+            status_note = r['client_condition'] if 'client_condition' in keys else None
 
             client = Client(
                 frontdesk_id=frontdesk_id,
                 phone=phone,
                 source=source,
-                account_id=r['account_id'] if 'account_id' in r.keys() else None,
-                phone_remark=r['phone_remark'] if 'phone_remark' in r.keys() else None,
-                recruiter=r['recruiter'] if 'recruiter' in r.keys() else None,
+                account_id=r['account_id'] if 'account_id' in keys else None,
+                phone_remark=r['phone_remark'] if 'phone_remark' in keys else None,
+                recruiter=r['recruiter'] if 'recruiter' in keys else None,
                 status=status,
                 status_note=status_note,
-                sheet_gid=r['sheet_gid'] if 'sheet_gid' in r.keys() else None,
+                sheet_gid=r['sheet_gid'] if 'sheet_gid' in keys else None,
             )
             new_id = await db_v2.create_client(client)
-            old_row_id = r['id'] if 'id' in r.keys() else None
+            old_row_id = r['id'] if 'id' in keys else None
             if old_row_id:
                 client_id_map[old_row_id] = new_id
             client_count += 1
@@ -144,16 +183,33 @@ async def migrate():
             fin_records = []
 
         for f in fin_records:
-            frontdesk_name = f['frontdesk'] if 'frontdesk' in f.keys() else ''
+            keys = f.keys()
+            frontdesk_name = f['frontdesk'] if 'frontdesk' in keys else ''
             frontdesk_id = staff_id_map.get(frontdesk_name)
             if not frontdesk_id:
                 continue
 
-            # Find or create a placeholder client
+            # Try to match deposit to a client by frontdesk + account_id
+            account_id = f['account_id'] if 'account_id' in keys else None
+            matched_client_id: Optional[int] = None
+            if account_id:
+                # Search V2 clients for this frontdesk+account_id
+                all_clients = await db_v2.get_clients_by_frontdesk(frontdesk_id, limit=500)
+                for c in all_clients:
+                    if c.account_id and str(c.account_id) == str(account_id):
+                        matched_client_id = c.id
+                        break
+
+            if matched_client_id is None:
+                logger.warning(
+                    f'Deposit skipped: no client match for frontdesk={frontdesk_name} account_id={account_id}')
+                continue
+
+            # Extract amount from knife_1..knife_8 or new_order_amount
             amount = 0.0
             for knife_col in [f'knife_{i}' for i in range(1, 9)] + ['new_order_amount']:
                 try:
-                    val = f[knife_col] if knife_col in f.keys() else None
+                    val = f[knife_col] if knife_col in keys else None
                     if val:
                         val_str = str(val).replace('$', '').replace(',', '').strip()
                         if val_str.startswith('-'):
@@ -166,27 +222,24 @@ async def migrate():
             if amount <= 0:
                 continue
 
-            dep_date_str = f['date'] if 'date' in f.keys() else None
-            try:
-                dep_date = date.today()
-                if dep_date_str:
-                    # Try parse "X月X日" → today as fallback
-                    dep_date = date.today()
-            except Exception:
-                dep_date = date.today()
-
-            # Use a placeholder client_id = 1 (or skip if no clients)
-            if not client_id_map:
-                continue
-            client_id = list(client_id_map.values())[0]
+            # Parse date from 'X月X日' format
+            raw_date = f['date'] if 'date' in keys else None
+            created_at_str = f['created_at'] if 'created_at' in keys else None
+            fallback_date = date.today()
+            if created_at_str:
+                try:
+                    fallback_date = datetime.fromisoformat(created_at_str).date()
+                except Exception:
+                    pass
+            dep_date = _parse_date(raw_date, fallback_date)
 
             d = Deposit(
-                client_id=client_id,
+                client_id=matched_client_id,
                 frontdesk_id=frontdesk_id,
                 amount=amount,
                 deposit_date=dep_date,
-                platform=f['platform'] if 'platform' in f.keys() else None,
-                note=f['note'] if 'note' in f.keys() else None,
+                platform=f['platform'] if 'platform' in keys else None,
+                note=f['note'] if 'note' in keys else None,
             )
             await db_v2.create_deposit(d)
             deposit_count += 1

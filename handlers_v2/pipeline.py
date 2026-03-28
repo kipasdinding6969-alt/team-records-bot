@@ -1,8 +1,6 @@
 """V2 pipeline handlers — /pipeline, /followup, /today, /search, /rag."""
-import csv
-import io
 import logging
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any, Dict
 
 from database_v2 import database_v2
@@ -19,7 +17,6 @@ async def _get_staff(user_id: int):
 
 def _build_pipeline_text(counts: Dict[str, int], staff_name: str, lang: str) -> str:
     total = sum(counts.values())
-    active_count = sum(counts.get(s.value, 0) for s in ClientStatus.active_statuses())
 
     lines = [t('pipeline_title', lang, name=staff_name), '']
 
@@ -69,11 +66,14 @@ async def handle_pipeline(task_data: Dict[str, Any]):
     if followup_due:
         text += f'\n🔥 {t("followup_due_count", lang, count=len(followup_due))}'
 
+    # Quick-action hint
+    text += f'\n\n/followup  /today  /add'
+
     await telegram_handler.send_message(chat_id, text)
 
 
 async def handle_followup(task_data: Dict[str, Any]):
-    """/followup — list clients needing follow-up."""
+    """/followup — list clients needing follow-up with hours-since-last-update."""
     chat_id = task_data.get('chat_id')
     user_id = task_data.get('user_id')
 
@@ -93,10 +93,16 @@ async def handle_followup(task_data: Dict[str, Any]):
         await telegram_handler.send_message(chat_id, t('no_followup', lang))
         return
 
+    now = datetime.now()
     lines = [t('followup_title', lang), '']
     for c in list(all_clients.values())[:20]:
         emoji = c.status_emoji()
-        lines.append(f'{emoji} {c.phone} — {c.status.value}')
+        if c.updated_at:
+            hours_ago = int((now - c.updated_at).total_seconds() / 3600)
+            staleness = f'{hours_ago}h ago'
+        else:
+            staleness = '?'
+        lines.append(f'{emoji} {c.phone} — {c.status.value} ({staleness})')
         if c.status_note:
             lines.append(f'   📝 {c.status_note}')
     if len(all_clients) > 20:
@@ -106,7 +112,7 @@ async def handle_followup(task_data: Dict[str, Any]):
 
 
 async def handle_today(task_data: Dict[str, Any]):
-    """/today — auto-calculated today stats."""
+    """/today — auto-calculated today stats with yesterday comparison."""
     chat_id = task_data.get('chat_id')
     user_id = task_data.get('user_id')
 
@@ -117,7 +123,7 @@ async def handle_today(task_data: Dict[str, Any]):
 
     lang = staff.language
 
-    # Recalculate fresh
+    # Recalculate fresh for today
     stat = await database_v2.calculate_daily_stats(staff.id)
     await database_v2.upsert_daily_stats(stat)
 
@@ -138,6 +144,19 @@ async def handle_today(task_data: Dict[str, Any]):
     ]
     if stat.total_deposit:
         lines.append(f'💵 {t("total_deposit_label", lang)}: ${stat.total_deposit:.2f}')
+
+    # Yesterday comparison
+    yesterday = date.today() - timedelta(days=1)
+    y_stat = await database_v2.get_daily_stats(staff.id, yesterday)
+    if y_stat:
+        lines.append('')
+        lines.append(t('yesterday_comparison', lang))
+        def _delta(today_val: int, yest_val: int) -> str:
+            diff = today_val - yest_val
+            return f'+{diff}' if diff >= 0 else str(diff)
+        lines.append(f'  🆕 {_delta(stat.new_leads, y_stat.new_leads)}  '
+                     f'✅ {_delta(stat.registered, y_stat.registered)}  '
+                     f'🎯 {_delta(stat.new_orders, y_stat.new_orders)}')
 
     await telegram_handler.send_message(chat_id, '\n'.join(lines))
 

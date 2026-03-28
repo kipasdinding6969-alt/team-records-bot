@@ -2,11 +2,11 @@
 import csv
 import io
 import logging
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Dict
 
 from database_v2 import database_v2
-from models_v2 import PeriodType, TeamTarget
+from models_v2 import PeriodType, Staff, TeamTarget
 from i18n import t
 from telegram_handler import telegram_handler
 
@@ -60,7 +60,8 @@ async def handle_dashboard(task_data: Dict[str, Any]):
     lines.append('')
     lines.append(t('individual_breakdown', lang))
     for stat in sorted(stats_list, key=lambda s: s.new_leads, reverse=True)[:10]:
-        name = staff_map.get(stat.staff_id, type('', (), {'display_name': str(stat.staff_id)})()).display_name
+        member = staff_map.get(stat.staff_id)
+        name = member.display_name if member else f'Staff#{stat.staff_id}'
         lines.append(f'• {name}: 🆕{stat.new_leads} ✅{stat.registered} 🎯{stat.new_orders}')
 
     await telegram_handler.send_message(chat_id, '\n'.join(lines))
@@ -114,7 +115,7 @@ async def handle_team_stats(task_data: Dict[str, Any]):
 
 
 async def handle_target(task_data: Dict[str, Any]):
-    """/target — view or set team targets."""
+    """/target [set <team> <leads> <registers> <orders>] — view or set team targets."""
     chat_id = task_data.get('chat_id')
     user_id = task_data.get('user_id')
     args = task_data.get('args', '').strip()
@@ -125,12 +126,46 @@ async def handle_target(task_data: Dict[str, Any]):
         return
 
     lang = staff.language
-    team = staff.team or 'default'
     today = date.today()
 
-    # Get current week's target
-    week_start = today - __import__('datetime').timedelta(days=today.weekday())
-    week_end = week_start + __import__('datetime').timedelta(days=6)
+    # Handle "set" subcommand: /target set <team> <leads> <registers> <orders>
+    if args.lower().startswith('set '):
+        if not staff.is_manager_or_above():
+            await telegram_handler.send_message(chat_id, t('err_manager_only', lang))
+            return
+        parts = args.split()
+        if len(parts) < 5:
+            await telegram_handler.send_message(chat_id, t('target_set_usage', lang))
+            return
+        _, team_name, leads_s, registers_s, orders_s = parts[0], parts[1], parts[2], parts[3], parts[4]
+        try:
+            leads = int(leads_s)
+            registers = int(registers_s)
+            orders = int(orders_s)
+        except ValueError:
+            await telegram_handler.send_message(chat_id, t('target_set_usage', lang))
+            return
+        week_start = today - timedelta(days=today.weekday())
+        week_end = week_start + timedelta(days=6)
+        target = TeamTarget(
+            team=team_name,
+            period_type=PeriodType.WEEKLY,
+            period_start=week_start,
+            period_end=week_end,
+            target_leads=leads,
+            target_registers=registers,
+            target_orders=orders,
+            created_by=staff.id,
+        )
+        await database_v2.upsert_team_target(target)
+        await telegram_handler.send_message(
+            chat_id, t('target_set_success', lang,
+                        team=team_name, leads=leads, registers=registers, orders=orders))
+        return
+
+    # Default: view current week target
+    team = staff.team or 'default'
+    week_start = today - timedelta(days=today.weekday())
 
     target = await database_v2.get_team_target(team, PeriodType.WEEKLY, week_start)
 
@@ -185,8 +220,13 @@ async def handle_export(task_data: Dict[str, Any]):
     try:
         await telegram_handler.send_file(chat_id, csv_bytes, filename)
     except Exception:
-        await telegram_handler.send_message(
-            chat_id, t('export_success', lang, count=len(rows)))
+        # Fallback: send first 20 rows as text
+        preview_lines = [t('export_success', lang, count=len(rows)), '']
+        for r in rows[:20]:
+            preview_lines.append(f"{r.get('phone','')} | {r.get('status','')} | {r.get('source','')}")
+        if len(rows) > 20:
+            preview_lines.append(t('and_more_clients', lang, count=len(rows) - 20))
+        await telegram_handler.send_message(chat_id, '\n'.join(preview_lines))
 
 
 MANAGEMENT_COMMANDS = {

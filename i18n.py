@@ -1232,6 +1232,68 @@ STRINGS = {
         'en': 'Language',
     },
 
+    # === V2 STATUS TRANSITION ERROR ===
+    'invalid_transition': {
+        'zh': '❌ 无效状态变更: {from_status} → {to_status}\n允许的转变: {valid}',
+        'en': '❌ Invalid transition: {from_status} → {to_status}\nAllowed: {valid}',
+    },
+
+    # === V2 YESTERDAY COMPARISON ===
+    'yesterday_comparison': {
+        'zh': '📈 vs 昨日',
+        'en': '📈 vs Yesterday',
+    },
+
+    # === V2 TARGET SET ===
+    'target_set_usage': {
+        'zh': '用法: /target set <团队> <粉丝数> <注册数> <下单数>\n例如: /target set A队 100 20 5',
+        'en': 'Usage: /target set <team> <leads> <registers> <orders>\nExample: /target set TeamA 100 20 5',
+    },
+    'target_set_success': {
+        'zh': '✅ 已设置 {team} 本周目标\n🆕 粉丝: {leads}  ✅ 注册: {registers}  🎯 下单: {orders}',
+        'en': '✅ Weekly target set for {team}\n🆕 Leads: {leads}  ✅ Registers: {registers}  🎯 Orders: {orders}',
+    },
+
+    # === V2 REGISTRATION FLOW ===
+    'reg_lang_prompt': {
+        'zh': '🌐 欢迎！请选择语言：\n  zh — 中文\n  en — English\n\n请回复 zh 或 en',
+        'en': '🌐 Welcome! Please choose language:\n  zh — Chinese\n  en — English\n\nReply with zh or en',
+    },
+    'reg_lang_invalid': {
+        'zh': '❌ 请回复 zh（中文）或 en（English）',
+        'en': '❌ Please reply with zh (Chinese) or en (English)',
+    },
+    'reg_role_prompt': {
+        'zh': '🎭 请选择您的身份：\n  1 — 前台 (frontdesk)\n  2 — 经理 (manager)\n  3 — 管理员 (admin)\n\n请回复 1、2 或 3',
+        'en': '🎭 Please select your role:\n  1 — Frontdesk\n  2 — Manager\n  3 — Admin\n\nReply with 1, 2, or 3',
+    },
+    'reg_role_invalid': {
+        'zh': '❌ 请回复 1（前台）、2（经理）或 3（管理员）',
+        'en': '❌ Please reply with 1 (Frontdesk), 2 (Manager), or 3 (Admin)',
+    },
+    'reg_name_prompt': {
+        'zh': '👤 请输入您的显示名称（例如：阿YIM）：',
+        'en': '👤 Please enter your display name (e.g. John):',
+    },
+
+    # === V2 LANG / SETNAME ===
+    'lang_usage': {
+        'zh': '用法: /lang <zh|en>',
+        'en': 'Usage: /lang <zh|en>',
+    },
+    'lang_changed': {
+        'zh': '✅ 语言已切换为中文',
+        'en': '✅ Language changed to English',
+    },
+    'setname_usage': {
+        'zh': '用法: /setname <新名称>',
+        'en': 'Usage: /setname <new name>',
+    },
+    'name_changed': {
+        'zh': '✅ 名称已更新: {old} → {new}',
+        'en': '✅ Name updated: {old} → {new}',
+    },
+
     # === V2 AUTO-REMINDER MESSAGES ===
     'auto_reminder_stale': {
         'zh': '⚠️ **自动提醒**\n客户 {phone} 已超过 {hours}小时未更新状态\n当前状态: {status}\n请及时跟进！',

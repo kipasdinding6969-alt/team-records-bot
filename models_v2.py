@@ -32,8 +32,13 @@ class ClientStatus(str, Enum):
 
     @classmethod
     def terminal_statuses(cls) -> List['ClientStatus']:
-        """No further action needed."""
-        return [cls.WITHDREW, cls.ORDERED, cls.GHOSTED, cls.BLOCKED, cls.SCAMMED, cls.DEAD]
+        """Truly terminal — no further action, ever."""
+        return [cls.BLOCKED, cls.SCAMMED, cls.DEAD]
+
+    @classmethod
+    def completed_statuses(cls) -> List['ClientStatus']:
+        """Done for now but may reactivate (ordered again, ghosted revival, etc.)."""
+        return [cls.WITHDREW, cls.ORDERED, cls.GHOSTED]
 
     @classmethod
     def pipeline_order(cls) -> List['ClientStatus']:
@@ -51,8 +56,8 @@ class ClientStatus(str, Enum):
             cls.REPLIED: [cls.REGISTERED, cls.SCHEDULED] + terminal,
             cls.REGISTERED: [cls.TRAINING, cls.SCHEDULED] + terminal,
             cls.TRAINING: [cls.WITHDREW, cls.ORDERED, cls.SCHEDULED] + terminal,
-            cls.WITHDREW: [cls.ORDERED] + terminal,
-            cls.ORDERED: terminal,
+            cls.WITHDREW: [cls.ORDERED, cls.CONTACTED] + terminal,
+            cls.ORDERED: [cls.CONTACTED, cls.REPLIED, cls.REGISTERED, cls.TRAINING] + terminal,
             cls.SCHEDULED: [cls.CONTACTED, cls.REPLIED, cls.REGISTERED] + terminal,
             cls.GHOSTED: [cls.CONTACTED, cls.REPLIED] + terminal,
             cls.BLOCKED: terminal,
@@ -125,8 +130,8 @@ class Client:
     updated_at: Optional[datetime] = None
 
     def is_stale(self, hours: int = 72) -> bool:
-        """True if no update in given hours and in active status."""
-        if self.status in ClientStatus.terminal_statuses():
+        """True if no update in given hours and in an active (needs-followup) status."""
+        if self.status not in ClientStatus.active_statuses():
             return False
         if not self.updated_at:
             return True
@@ -184,10 +189,15 @@ class DailyStat:
     created_at: Optional[datetime] = None
 
     def calculate_rates(self):
-        """Recalculate reply_rate and conversion_rate from raw counts."""
-        if self.new_leads > 0:
-            self.reply_rate = round(self.replied / self.new_leads * 100, 2)
-            self.conversion_rate = round(self.new_orders / self.new_leads * 100, 2)
+        """Recalculate reply_rate and conversion_rate from raw counts.
+
+        reply_rate     = replied / contacted  (how many contacted actually replied)
+        conversion_rate = new_orders / registered  (how many registered ultimately ordered)
+        """
+        if self.contacted > 0:
+            self.reply_rate = round(self.replied / self.contacted * 100, 2)
+        if self.registered > 0:
+            self.conversion_rate = round(self.new_orders / self.registered * 100, 2)
 
 
 @dataclass

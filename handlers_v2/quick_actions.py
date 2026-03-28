@@ -1,7 +1,7 @@
 """V2 quick action handlers — /add, /u, /note, /remind, inline status buttons."""
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from database_v2 import database_v2
 from models_v2 import Client, ClientNote, ClientStatus, NoteType, Reminder, Staff
@@ -9,6 +9,26 @@ from i18n import t
 from telegram_handler import telegram_handler
 
 logger = logging.getLogger(__name__)
+
+# Standalone emoji map — avoids creating dummy Client objects.
+_STATUS_EMOJIS = {
+    ClientStatus.NEW: '🆕',
+    ClientStatus.CONTACTED: '📱',
+    ClientStatus.REPLIED: '💬',
+    ClientStatus.REGISTERED: '✅',
+    ClientStatus.TRAINING: '📚',
+    ClientStatus.WITHDREW: '💰',
+    ClientStatus.ORDERED: '🎯',
+    ClientStatus.GHOSTED: '👻',
+    ClientStatus.BLOCKED: '🚫',
+    ClientStatus.SCAMMED: '⚠️',
+    ClientStatus.SCHEDULED: '📅',
+    ClientStatus.DEAD: '💀',
+}
+
+
+def status_emoji(status: ClientStatus) -> str:
+    return _STATUS_EMOJIS.get(status, '❓')
 
 
 def _parse_time_delta(time_str: str) -> Optional[timedelta]:
@@ -34,6 +54,15 @@ def _parse_time_delta(time_str: str) -> Optional[timedelta]:
 
 async def _get_staff(user_id: int) -> Optional[Staff]:
     return await database_v2.get_staff_by_tg_id(user_id)
+
+
+def _build_status_buttons(client_id: int, current_status: ClientStatus) -> List[Dict]:
+    """Return a list of button-spec dicts for valid next statuses."""
+    return [
+        {'text': f'{status_emoji(s)} {s.value}', 'callback_data': f'v2_status_{client_id}_{s.value}'}
+        for s in ClientStatus.valid_transitions(current_status)
+        if s not in ClientStatus.terminal_statuses()  # keep buttons tidy; terminal via /u
+    ]
 
 
 async def handle_add_client(task_data: Dict[str, Any]):
@@ -77,7 +106,7 @@ async def handle_add_client(task_data: Dict[str, Any]):
 async def handle_update_status(task_data: Dict[str, Any]):
     """
     /u <phone> <status>
-    Quick status update for a client.
+    Quick status update for a client. Validates state machine transitions.
     """
     chat_id = task_data.get('chat_id')
     user_id = task_data.get('user_id')
@@ -96,7 +125,7 @@ async def handle_update_status(task_data: Dict[str, Any]):
 
     phone, status_str = parts[0], parts[1].lower()
 
-    # Validate status
+    # Validate status value
     try:
         new_status = ClientStatus(status_str)
     except ValueError:
@@ -110,9 +139,20 @@ async def handle_update_status(task_data: Dict[str, Any]):
         await telegram_handler.send_message(chat_id, t('client_not_found', lang, phone=phone))
         return
 
+    # Validate state machine transition
+    valid_transitions = ClientStatus.valid_transitions(client.status)
+    if new_status not in valid_transitions:
+        valid_str = ', '.join(s.value for s in valid_transitions)
+        await telegram_handler.send_message(
+            chat_id, t('invalid_transition', lang,
+                        from_status=client.status.value,
+                        to_status=new_status.value,
+                        valid=valid_str))
+        return
+
     ok = await database_v2.update_client_status(client.id, new_status, staff.id)
     if ok:
-        emoji = Client(frontdesk_id=0, phone='', source='', status=new_status).status_emoji()
+        emoji = status_emoji(new_status)
         msg = t('status_updated', lang, phone=phone, status=status_str, emoji=emoji)
         await telegram_handler.send_message(chat_id, msg)
 
@@ -223,7 +263,7 @@ async def handle_remind(task_data: Dict[str, Any]):
 async def handle_inline_status_callback(task_data: Dict[str, Any]):
     """
     Callback: v2_status_<client_id>_<status>
-    Inline button status update.
+    Inline button status update with transition validation.
     """
     chat_id = task_data.get('chat_id')
     user_id = task_data.get('user_id')
@@ -251,9 +291,18 @@ async def handle_inline_status_callback(task_data: Dict[str, Any]):
     if not client or client.frontdesk_id != staff.id:
         return
 
+    # Validate transition
+    if new_status not in ClientStatus.valid_transitions(client.status):
+        await telegram_handler.send_message(
+            chat_id, t('invalid_transition', lang,
+                        from_status=client.status.value,
+                        to_status=new_status.value,
+                        valid=', '.join(s.value for s in ClientStatus.valid_transitions(client.status))))
+        return
+
     ok = await database_v2.update_client_status(client_id, new_status, staff.id)
     if ok:
-        emoji = Client(frontdesk_id=0, phone='', source='', status=new_status).status_emoji()
+        emoji = status_emoji(new_status)
         msg = t('status_updated', lang, phone=client.phone, status=status_str, emoji=emoji)
         await telegram_handler.send_message(chat_id, msg)
 

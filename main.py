@@ -92,6 +92,10 @@ class RalphLoop:
             await database.initialize()
             logger.info("Database initialized")
 
+            # Initialize V2 database
+            await database_v2.initialize()
+            logger.info("DatabaseV2 initialized")
+
             # Initialize Telegram handler
             await telegram_handler.initialize()
             logger.info("Telegram handler initialized")
@@ -681,6 +685,18 @@ class RalphLoop:
             )
             await database.create_task(channel_post_task)
             self.last_channel_post = current_time
+
+        # V2: Process pending reminders
+        try:
+            pending_v2 = await database_v2.get_pending_reminders_v2(before=current_time)
+            for reminder in pending_v2:
+                staff = await database_v2.get_staff_by_id(reminder.staff_id)
+                if staff:
+                    await telegram_handler.send_message(staff.tg_chat_id, reminder.message)
+                    await database_v2.mark_reminder_sent(reminder.id)
+                    self.metrics['reminders_sent'] += 1
+        except Exception as e:
+            logger.error(f'V2 reminder processing error: {e}')
 
         # V2: Stale client detection every 5 minutes
         if not self.last_v2_stale_check or (current_time - self.last_v2_stale_check).total_seconds() > 300:
