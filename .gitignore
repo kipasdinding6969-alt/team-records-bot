@@ -156,3 +156,4 @@ __pycache__/
 *.pyc
 .pytest_cache/
 htmlcov/
+nocodb_config.json

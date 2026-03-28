@@ -1,0 +1,99 @@
+{
+  "url": "http://localhost:8080",
+  "api_token": "l3Q8t5BYkLnrgz4hgFnYkl3C_ij-teaMy3UfiRx2",
+  "base_id": "pq3jgqmclgw0ila",
+  "tables": {
+    "staff": "m86ezootd5q5uvk",
+    "clients": "m0eyp4lqlj15r59",
+    "client_notes": "msd72gbqcc2a2s9",
+    "daily_stats": "mptkw0nsybv51wa",
+    "deposits": "mr9t5h1k9bybx4w",
+    "reminders": "mra0q5brw3rtrv7",
+    "team_targets": "m69g56oto3q6up1"
+  },
+  "field_map": {
+    "staff": {
+      "id": "Id",
+      "tg_user_id": "Telegram ID",
+      "display_name": "Display Name",
+      "username": "Username",
+      "phone": "Phone",
+      "role": "Role",
+      "team": "Team",
+      "language": "Language",
+      "is_active": "Active",
+      "joined_at": "Joined"
+    },
+    "clients": {
+      "id": "Id",
+      "phone": "Phone",
+      "source": "Source",
+      "status": "Status",
+      "platform": "Platform",
+      "condition": "Condition",
+      "frontdesk_name": "Frontdesk",
+      "frontdesk_tg_id": "Frontdesk TG ID",
+      "maintenance_name": "Maintenance By",
+      "maintenance_id": "Maintenance TG ID",
+      "handoff_at": "Handoff At",
+      "handoff_note": "Handoff Note",
+      "last_contact": "Last Contact",
+      "followup_count": "Followups",
+      "deposit_total": "Total Deposits",
+      "deposit_count": "Deposit Count"
+    },
+    "client_notes": {
+      "id": "Id",
+      "client_phone": "Client Phone",
+      "note": "Note",
+      "author_name": "Author",
+      "author_tg_id": "Author TG ID",
+      "note_type": "Type"
+    },
+    "daily_stats": {
+      "id": "Id",
+      "date": "Date",
+      "frontdesk_name": "Frontdesk",
+      "frontdesk_tg_id": "Frontdesk TG ID",
+      "new_clients": "New",
+      "contacted": "Contacted",
+      "replied": "Replied",
+      "registered": "Registered",
+      "training": "Training",
+      "withdrew": "Withdrew",
+      "ordered": "Ordered",
+      "reply_rate": "Reply Rate %",
+      "conversion_rate": "Conversion %"
+    },
+    "deposits": {
+      "id": "Id",
+      "client_phone": "Client Phone",
+      "amount": "Amount",
+      "tier": "Tier",
+      "platform": "Platform",
+      "frontdesk_name": "Frontdesk",
+      "maintenance_name": "Maintenance By",
+      "deposited_at": "Deposited At",
+      "verified": "Verified"
+    },
+    "reminders": {
+      "id": "Id",
+      "staff_name": "Staff",
+      "staff_tg_id": "Staff TG ID",
+      "client_phone": "Client Phone",
+      "message": "Message",
+      "remind_at": "Remind At",
+      "is_sent": "Sent",
+      "reminder_type": "Type"
+    },
+    "team_targets": {
+      "id": "Id",
+      "month": "Month",
+      "team": "Team",
+      "target_new": "Target: New",
+      "target_registered": "Target: Registered",
+      "target_ordered": "Target: Ordered",
+      "target_deposits": "Target: Deposits"
+    }
+  }
+}
