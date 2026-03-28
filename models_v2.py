@@ -1,0 +1,236 @@
+"""V2 data models — pipeline-centric dataclasses."""
+from dataclasses import dataclass, field
+from datetime import datetime, date
+from typing import Optional, List
+from enum import Enum
+
+
+class StaffRole(str, Enum):
+    FRONTDESK = 'frontdesk'
+    MANAGER = 'manager'
+    ADMIN = 'admin'
+
+
+class ClientStatus(str, Enum):
+    NEW = 'new'
+    CONTACTED = 'contacted'
+    REPLIED = 'replied'
+    REGISTERED = 'registered'
+    TRAINING = 'training'
+    WITHDREW = 'withdrew'
+    ORDERED = 'ordered'
+    GHOSTED = 'ghosted'
+    BLOCKED = 'blocked'
+    SCAMMED = 'scammed'
+    SCHEDULED = 'scheduled'
+    DEAD = 'dead'
+
+    @classmethod
+    def active_statuses(cls) -> List['ClientStatus']:
+        """Statuses that need follow-up."""
+        return [cls.NEW, cls.CONTACTED, cls.REPLIED, cls.REGISTERED, cls.TRAINING, cls.SCHEDULED]
+
+    @classmethod
+    def terminal_statuses(cls) -> List['ClientStatus']:
+        """No further action needed."""
+        return [cls.WITHDREW, cls.ORDERED, cls.GHOSTED, cls.BLOCKED, cls.SCAMMED, cls.DEAD]
+
+    @classmethod
+    def pipeline_order(cls) -> List['ClientStatus']:
+        """Main pipeline stages in order."""
+        return [cls.NEW, cls.CONTACTED, cls.REPLIED, cls.REGISTERED, cls.TRAINING, cls.WITHDREW, cls.ORDERED]
+
+    @classmethod
+    def valid_transitions(cls, from_status: 'ClientStatus') -> List['ClientStatus']:
+        """Valid next statuses from a given status."""
+        # Can always move to terminal statuses from any active status
+        terminal = [cls.GHOSTED, cls.BLOCKED, cls.SCAMMED, cls.DEAD]
+        transitions = {
+            cls.NEW: [cls.CONTACTED, cls.SCHEDULED] + terminal,
+            cls.CONTACTED: [cls.REPLIED, cls.SCHEDULED] + terminal,
+            cls.REPLIED: [cls.REGISTERED, cls.SCHEDULED] + terminal,
+            cls.REGISTERED: [cls.TRAINING, cls.SCHEDULED] + terminal,
+            cls.TRAINING: [cls.WITHDREW, cls.ORDERED, cls.SCHEDULED] + terminal,
+            cls.WITHDREW: [cls.ORDERED] + terminal,
+            cls.ORDERED: terminal,
+            cls.SCHEDULED: [cls.CONTACTED, cls.REPLIED, cls.REGISTERED] + terminal,
+            cls.GHOSTED: [cls.CONTACTED, cls.REPLIED] + terminal,
+            cls.BLOCKED: terminal,
+            cls.SCAMMED: terminal,
+            cls.DEAD: terminal,
+        }
+        return transitions.get(from_status, [])
+
+
+class NoteType(str, Enum):
+    STATUS_CHANGE = 'status_change'
+    FOLLOWUP = 'followup'
+    NOTE = 'note'
+    CALL = 'call'
+    MESSAGE = 'message'
+
+
+class PeriodType(str, Enum):
+    WEEKLY = 'weekly'
+    MONTHLY = 'monthly'
+
+
+@dataclass
+class Staff:
+    tg_user_id: int
+    tg_chat_id: int
+    display_name: str
+    id: Optional[int] = None
+    tg_username: Optional[str] = None
+    role: StaffRole = StaffRole.FRONTDESK
+    team: Optional[str] = None
+    phone: Optional[str] = None
+    language: str = 'zh'
+    is_active: bool = True
+    daily_target: int = 40
+    created_at: Optional[datetime] = None
+    last_active_at: Optional[datetime] = None
+
+    def is_manager_or_above(self) -> bool:
+        return self.role in (StaffRole.MANAGER, StaffRole.ADMIN)
+
+    def is_admin(self) -> bool:
+        return self.role == StaffRole.ADMIN
+
+
+@dataclass
+class Client:
+    frontdesk_id: int
+    phone: str
+    source: str
+    id: Optional[int] = None
+    account_id: Optional[str] = None
+    phone_remark: Optional[str] = None
+    nickname: Optional[str] = None
+    recruiter: Optional[str] = None
+    status: ClientStatus = ClientStatus.NEW
+    status_note: Optional[str] = None
+    contacted_at: Optional[datetime] = None
+    replied_at: Optional[datetime] = None
+    registered_at: Optional[datetime] = None
+    training_at: Optional[datetime] = None
+    withdrew_at: Optional[datetime] = None
+    first_order_at: Optional[datetime] = None
+    next_followup: Optional[datetime] = None
+    followup_count: int = 0
+    platform: Optional[str] = None
+    total_deposited: float = 0.0
+    sheet_gid: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    def is_stale(self, hours: int = 72) -> bool:
+        """True if no update in given hours and in active status."""
+        if self.status in ClientStatus.terminal_statuses():
+            return False
+        if not self.updated_at:
+            return True
+        delta = datetime.now() - self.updated_at
+        return delta.total_seconds() > hours * 3600
+
+    def status_emoji(self) -> str:
+        emojis = {
+            ClientStatus.NEW: '🆕',
+            ClientStatus.CONTACTED: '📱',
+            ClientStatus.REPLIED: '💬',
+            ClientStatus.REGISTERED: '✅',
+            ClientStatus.TRAINING: '📚',
+            ClientStatus.WITHDREW: '💰',
+            ClientStatus.ORDERED: '🎯',
+            ClientStatus.GHOSTED: '👻',
+            ClientStatus.BLOCKED: '🚫',
+            ClientStatus.SCAMMED: '⚠️',
+            ClientStatus.SCHEDULED: '📅',
+            ClientStatus.DEAD: '💀',
+        }
+        return emojis.get(self.status, '❓')
+
+
+@dataclass
+class ClientNote:
+    client_id: int
+    staff_id: int
+    note_type: NoteType
+    id: Optional[int] = None
+    old_status: Optional[str] = None
+    new_status: Optional[str] = None
+    content: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+@dataclass
+class DailyStat:
+    staff_id: int
+    stat_date: date
+    id: Optional[int] = None
+    new_leads: int = 0
+    contacted: int = 0
+    replied: int = 0
+    registered: int = 0
+    training: int = 0
+    withdrew: int = 0
+    new_orders: int = 0
+    ghosted: int = 0
+    blocked: int = 0
+    dead: int = 0
+    reply_rate: float = 0.0
+    conversion_rate: float = 0.0
+    total_deposit: float = 0.0
+    created_at: Optional[datetime] = None
+
+    def calculate_rates(self):
+        """Recalculate reply_rate and conversion_rate from raw counts."""
+        if self.new_leads > 0:
+            self.reply_rate = round(self.replied / self.new_leads * 100, 2)
+            self.conversion_rate = round(self.new_orders / self.new_leads * 100, 2)
+
+
+@dataclass
+class Deposit:
+    client_id: int
+    frontdesk_id: int
+    amount: float
+    deposit_date: date
+    id: Optional[int] = None
+    currency: str = 'USD'
+    platform: Optional[str] = None
+    knife_number: Optional[int] = None
+    role_type: Optional[str] = None
+    note: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+@dataclass
+class Reminder:
+    staff_id: int
+    remind_at: datetime
+    message: str
+    id: Optional[int] = None
+    client_id: Optional[int] = None
+    is_sent: bool = False
+    sent_at: Optional[datetime] = None
+    source: str = 'manual'
+    created_at: Optional[datetime] = None
+
+    def is_due(self) -> bool:
+        return not self.is_sent and datetime.now() >= self.remind_at
+
+
+@dataclass
+class TeamTarget:
+    team: str
+    period_type: PeriodType
+    period_start: date
+    period_end: date
+    id: Optional[int] = None
+    target_leads: Optional[int] = None
+    target_registers: Optional[int] = None
+    target_orders: Optional[int] = None
+    target_deposit: Optional[float] = None
+    created_by: Optional[int] = None
+    created_at: Optional[datetime] = None

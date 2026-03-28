@@ -1015,6 +1015,236 @@ STRINGS = {
         'zh': '暂无今日记录。',
         'en': 'No records for today.',
     },
+
+    # === V2 QUICK ACTIONS ===
+    'add_usage': {
+        'zh': '用法: /add <手机号> <来源>\n例如: /add 1234567890 飞机筛选',
+        'en': 'Usage: /add <phone> <source>\nExample: /add 1234567890 飞机筛选',
+    },
+    'add_duplicate': {
+        'zh': '⚠️ 客户 {phone} 已存在，当前状态: {status}',
+        'en': '⚠️ Client {phone} already exists, current status: {status}',
+    },
+    'add_success': {
+        'zh': '✅ 已添加客户\n📱 {phone}\n📂 来源: {source}\n🆔 ID: {id}',
+        'en': '✅ Client added\n📱 {phone}\n📂 Source: {source}\n🆔 ID: {id}',
+    },
+    'update_usage': {
+        'zh': '用法: /u <手机号> <状态>\n状态: new/contacted/replied/registered/training/withdrew/ordered/ghosted/blocked/dead',
+        'en': 'Usage: /u <phone> <status>\nStatuses: new/contacted/replied/registered/training/withdrew/ordered/ghosted/blocked/dead',
+    },
+    'invalid_status': {
+        'zh': '❌ 无效状态。有效状态: {valid}',
+        'en': '❌ Invalid status. Valid: {valid}',
+    },
+    'client_not_found': {
+        'zh': '❌ 未找到客户: {phone}',
+        'en': '❌ Client not found: {phone}',
+    },
+    'status_updated': {
+        'zh': '{emoji} 状态已更新\n📱 {phone} → {status}',
+        'en': '{emoji} Status updated\n📱 {phone} → {status}',
+    },
+    'note_usage': {
+        'zh': '用法: /note <手机号> <备注内容>',
+        'en': 'Usage: /note <phone> <note text>',
+    },
+    'note_saved': {
+        'zh': '✅ 备注已保存 ({phone})',
+        'en': '✅ Note saved ({phone})',
+    },
+    'remind_usage': {
+        'zh': '用法: /remind <手机号> <时间> <消息>\n时间格式: 2h, 30m, 1d',
+        'en': 'Usage: /remind <phone> <time> <message>\nTime formats: 2h, 30m, 1d',
+    },
+    'remind_bad_time': {
+        'zh': '❌ 无效时间格式: {time}。请使用 2h, 30m, 1d 等格式',
+        'en': '❌ Invalid time format: {time}. Use 2h, 30m, 1d etc.',
+    },
+    'remind_set': {
+        'zh': '✅ 提醒已设置\n📱 {phone}\n⏰ {time}\n💬 {message}',
+        'en': '✅ Reminder set\n📱 {phone}\n⏰ {time}\n💬 {message}',
+    },
+
+    # === V2 PIPELINE ===
+    'pipeline_title': {
+        'zh': '📊 **{name} 的客户漏斗**',
+        'en': '📊 **{name}\'s Pipeline**',
+    },
+    'pipeline_total': {
+        'zh': '📦 总计: {total}',
+        'en': '📦 Total: {total}',
+    },
+    'stale_count': {
+        'zh': '⚠️ 超时未更新: {count} 个客户',
+        'en': '⚠️ Stale (no update): {count} clients',
+    },
+    'followup_due_count': {
+        'zh': '🔥 到期跟进: {count} 个',
+        'en': '🔥 Follow-up due: {count}',
+    },
+    'no_followup': {
+        'zh': '✅ 当前没有需要跟进的客户',
+        'en': '✅ No clients need follow-up right now',
+    },
+    'followup_title': {
+        'zh': '📋 **待跟进客户**',
+        'en': '📋 **Follow-up List**',
+    },
+    'today_stats_title': {
+        'zh': '📊 **{name} 今日统计** ({date})',
+        'en': '📊 **{name} Today Stats** ({date})',
+    },
+    'new_leads_label': {
+        'zh': '新增粉丝',
+        'en': 'New Leads',
+    },
+    'contacted_label': {
+        'zh': '已联系',
+        'en': 'Contacted',
+    },
+    'replied_label': {
+        'zh': '已回复',
+        'en': 'Replied',
+    },
+    'registered_label': {
+        'zh': '已注册',
+        'en': 'Registered',
+    },
+    'training_label': {
+        'zh': '完成培训',
+        'en': 'Training',
+    },
+    'withdrew_label': {
+        'zh': '已提款',
+        'en': 'Withdrew',
+    },
+    'orders_label': {
+        'zh': '新单',
+        'en': 'Orders',
+    },
+    'reply_rate_label': {
+        'zh': '回复率',
+        'en': 'Reply Rate',
+    },
+    'conversion_rate_label': {
+        'zh': '转化率',
+        'en': 'Conversion Rate',
+    },
+    'total_deposit_label': {
+        'zh': '总存款',
+        'en': 'Total Deposit',
+    },
+    'search_usage': {
+        'zh': '用法: /search <关键词>',
+        'en': 'Usage: /search <keyword>',
+    },
+    'search_no_results': {
+        'zh': '🔍 未找到匹配 "{query}" 的客户',
+        'en': '🔍 No clients found matching "{query}"',
+    },
+    'search_results_title': {
+        'zh': '🔍 搜索 "{query}" — {count} 个结果',
+        'en': '🔍 Search "{query}" — {count} results',
+    },
+    'rag_usage': {
+        'zh': '用法: /rag <查询语句>',
+        'en': 'Usage: /rag <query>',
+    },
+    'rag_unavailable': {
+        'zh': '❌ RAG 搜索不可用（Ollama 未运行）',
+        'en': '❌ RAG search unavailable (Ollama not running)',
+    },
+    'rag_no_results': {
+        'zh': '🔍 未找到与 "{query}" 相关的内容',
+        'en': '🔍 No relevant results for "{query}"',
+    },
+    'rag_results_title': {
+        'zh': '🤖 **RAG 搜索: "{query}"**',
+        'en': '🤖 **RAG Search: "{query}"**',
+    },
+
+    # === V2 MANAGEMENT ===
+    'individual_breakdown': {
+        'zh': '**👤 个人明细:**',
+        'en': '**👤 Individual Breakdown:**',
+    },
+    'team_usage': {
+        'zh': '用法: /team <团队名称>',
+        'en': 'Usage: /team <team name>',
+    },
+    'team_not_found': {
+        'zh': '❌ 未找到团队: {team}',
+        'en': '❌ Team not found: {team}',
+    },
+    'team_report_title': {
+        'zh': '👥 **{team} 团队报告**',
+        'en': '👥 **{team} Team Report**',
+    },
+    'no_target_set': {
+        'zh': '⚠️ {team} 本周暂未设置目标',
+        'en': '⚠️ No weekly target set for {team}',
+    },
+    'target_title': {
+        'zh': '🎯 **{team} 本周目标**',
+        'en': '🎯 **{team} Weekly Target**',
+    },
+    'export_empty': {
+        'zh': '📭 暂无数据可导出',
+        'en': '📭 No data to export',
+    },
+    'export_success': {
+        'zh': '✅ 已导出 {count} 条客户记录',
+        'en': '✅ Exported {count} client records',
+    },
+
+    # === V2 REGISTRATION ===
+    'welcome_back': {
+        'zh': '👋 欢迎回来，{name}！\n🎭 身份: {role}',
+        'en': '👋 Welcome back, {name}!\n🎭 Role: {role}',
+    },
+    'registered_v2': {
+        'zh': '✅ **注册成功！**\n👤 姓名: {name}\n🆔 ID: {id}\n\n使用 /profile 查看个人信息\n使用 /add 添加客户\n使用 /pipeline 查看漏斗',
+        'en': '✅ **Registered!**\n👤 Name: {name}\n🆔 ID: {id}\n\nUse /profile to view your profile\nUse /add to add clients\nUse /pipeline to view funnel',
+    },
+    'profile_title': {
+        'zh': '👤 **个人信息**',
+        'en': '👤 **Profile**',
+    },
+    'display_name_label': {
+        'zh': '姓名',
+        'en': 'Name',
+    },
+    'role_label': {
+        'zh': '身份',
+        'en': 'Role',
+    },
+    'team_label': {
+        'zh': '团队',
+        'en': 'Team',
+    },
+    'daily_target_label': {
+        'zh': '每日目标',
+        'en': 'Daily Target',
+    },
+    'language_label': {
+        'zh': '语言',
+        'en': 'Language',
+    },
+
+    # === V2 AUTO-REMINDER MESSAGES ===
+    'auto_reminder_stale': {
+        'zh': '⚠️ **自动提醒**\n客户 {phone} 已超过 {hours}小时未更新状态\n当前状态: {status}\n请及时跟进！',
+        'en': '⚠️ **Auto Reminder**\nClient {phone} has not been updated for {hours}h\nCurrent status: {status}\nPlease follow up!',
+    },
+    'auto_reminder_contacted': {
+        'zh': '🔔 **跟进提醒**\n客户 {phone} 联系后 24 小时未回复\n请再次跟进！',
+        'en': '🔔 **Follow-up Reminder**\nClient {phone} has not replied 24h after contact\nPlease follow up again!',
+    },
+    'daily_stats_calculated': {
+        'zh': '✅ 今日统计已自动计算',
+        'en': '✅ Daily stats auto-calculated',
+    },
 }
 
 

@@ -29,6 +29,13 @@ from handlers.menu import MENU_COMMANDS, MENU_CALLBACKS, MENU_CONVERSATIONS
 from handlers.analytics import ANALYTICS_COMMANDS, ANALYTICS_CALLBACKS, ANALYTICS_CONVERSATIONS
 from handlers.help_guide import HELP_COMMANDS, HELP_CALLBACKS, HELP_CONVERSATIONS
 
+# Import V2 handlers
+from handlers_v2.quick_actions import QUICK_ACTIONS_COMMANDS, QUICK_ACTIONS_CALLBACKS, QUICK_ACTIONS_CONVERSATIONS
+from handlers_v2.pipeline import PIPELINE_COMMANDS, PIPELINE_CALLBACKS, PIPELINE_CONVERSATIONS
+from handlers_v2.management import MANAGEMENT_COMMANDS, MANAGEMENT_CALLBACKS, MANAGEMENT_CONVERSATIONS
+from handlers_v2.registration_v2 import REGISTRATION_V2_COMMANDS, REGISTRATION_V2_CALLBACKS, REGISTRATION_V2_CONVERSATIONS
+from database_v2 import database_v2
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -52,6 +59,9 @@ class RalphLoop:
         self.last_reminder_check = None
         self.last_report_generation = None
         self.last_channel_post = None
+        self.last_v2_stale_check = None
+        self.last_v2_stats_calc = None
+        self.last_rag_reindex = None
 
         # Command and callback handlers registry
         self.command_handlers = {}
@@ -169,6 +179,11 @@ class RalphLoop:
         all_commands.update(MENU_COMMANDS)
         all_commands.update(ANALYTICS_COMMANDS)
         all_commands.update(HELP_COMMANDS)
+        # V2 handlers
+        all_commands.update(QUICK_ACTIONS_COMMANDS)
+        all_commands.update(PIPELINE_COMMANDS)
+        all_commands.update(MANAGEMENT_COMMANDS)
+        all_commands.update(REGISTRATION_V2_COMMANDS)
 
         # Merge all callback handlers
         all_callbacks = {}
@@ -182,6 +197,11 @@ class RalphLoop:
         all_callbacks.update(MENU_CALLBACKS)
         all_callbacks.update(ANALYTICS_CALLBACKS)
         all_callbacks.update(HELP_CALLBACKS)
+        # V2 handlers
+        all_callbacks.update(QUICK_ACTIONS_CALLBACKS)
+        all_callbacks.update(PIPELINE_CALLBACKS)
+        all_callbacks.update(MANAGEMENT_CALLBACKS)
+        all_callbacks.update(REGISTRATION_V2_CALLBACKS)
 
         # Merge all conversation handlers
         all_conversations = {}
@@ -195,6 +215,11 @@ class RalphLoop:
         all_conversations.update(MENU_CONVERSATIONS)
         all_conversations.update(ANALYTICS_CONVERSATIONS)
         all_conversations.update(HELP_CONVERSATIONS)
+        # V2 handlers
+        all_conversations.update(QUICK_ACTIONS_CONVERSATIONS)
+        all_conversations.update(PIPELINE_CONVERSATIONS)
+        all_conversations.update(MANAGEMENT_CONVERSATIONS)
+        all_conversations.update(REGISTRATION_V2_CONVERSATIONS)
 
         self.command_handlers = all_commands
         self.callback_handlers = all_callbacks
@@ -656,6 +681,38 @@ class RalphLoop:
             )
             await database.create_task(channel_post_task)
             self.last_channel_post = current_time
+
+        # V2: Stale client detection every 5 minutes
+        if not self.last_v2_stale_check or (current_time - self.last_v2_stale_check).total_seconds() > 300:
+            try:
+                from working_hours import is_working_hours
+                if is_working_hours():
+                    stale = await database_v2.get_all_stale_clients(hours=72)
+                    if stale:
+                        logger.info(f'V2: {len(stale)} stale clients detected')
+            except Exception as e:
+                logger.error(f'V2 stale check error: {e}')
+            self.last_v2_stale_check = current_time
+
+        # V2: Daily stats auto-calculation (end of day ~22:00)
+        if not self.last_v2_stats_calc or self.last_v2_stats_calc.date() < current_time.date():
+            if current_time.hour >= 21:
+                try:
+                    await database_v2.recalculate_all_today_stats()
+                    logger.info('V2: Daily stats recalculated')
+                    self.last_v2_stats_calc = current_time
+                except Exception as e:
+                    logger.error(f'V2 daily stats error: {e}')
+
+        # V2: RAG re-indexing hourly
+        if not self.last_rag_reindex or (current_time - self.last_rag_reindex).total_seconds() > 3600:
+            try:
+                from engines.rag_engine import rebuild_index
+                await rebuild_index()
+                logger.info('V2: RAG index refreshed')
+            except Exception as e:
+                logger.debug(f'V2 RAG reindex skipped (Ollama may be down): {e}')
+            self.last_rag_reindex = current_time
 
     def _should_generate_daily_report(self) -> bool:
         """Check if daily report should be generated."""
