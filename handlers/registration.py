@@ -10,6 +10,12 @@ from telegram_handler import telegram_handler
 from utils.formatting import format_user_info
 from utils.validators import validate_phone_number
 from config import FRONTDESK_STAFF
+from i18n import t
+
+
+async def _get_lang(user_id):
+    from database import database
+    return (await database.get_user_language(user_id)) or 'zh'
 
 logger = logging.getLogger(__name__)
 
@@ -196,10 +202,11 @@ Invalid phone number format. Please enter a valid phone number.
         await telegram_handler.clear_conversation_state(user_id)
 
         # Send success message
+        lang = await _get_lang(user_id)
         success_text = f"""
-✅ **注册成功！Registration Successful!**
+{t('registration_successful', lang)}
 
-**您的信息 / Your Information:**
+{t('your_information', lang)}
 • 用户名 / Username: {user_info['username'] or 'N/A'}
 • 姓名 / Name: {user_info['first_name']} {user_info['last_name'] or ''}
 • 角色 / Role: {state['selected_role'].capitalize()}
@@ -209,9 +216,9 @@ Invalid phone number format. Please enter a valid phone number.
         if state.get('frontdesk_name'):
             success_text += f"• 前台名称 / Frontdesk Name: {state['frontdesk_name']}\n"
 
-        success_text += """
+        success_text += f"""
 
-**可用命令 / Available Commands:**
+{t('available_commands', lang)}
 • /status - 查看今日统计 / View today's stats
 • /clients - 查看活跃客户 / View active clients
 • /report - 提交客户记录 / Submit client record
@@ -219,9 +226,9 @@ Invalid phone number format. Please enter a valid phone number.
 
         # Add role-specific commands
         if state['selected_role'] in ['manager', 'admin']:
-            success_text += """
+            success_text += f"""
 
-**管理命令 / Management Commands:**
+{t('management_commands', lang)}
 • /dashboard - 团队总览 / Team overview
 • /summary - 日报 / Daily summary
 • /team_report [team] - 团队评估 / Team assessment
@@ -254,12 +261,7 @@ Invalid phone number format. Please enter a valid phone number.
 
     except Exception as e:
         logger.error(f"Failed to register user {user_id}: {e}")
-        error_text = """
-❌ 注册失败，请稍后重试。
-Registration failed, please try again later.
-        """.strip()
-
-        await telegram_handler.send_message(chat_id, error_text)
+        await telegram_handler.send_message(chat_id, t('registration_failed', lang))
 
 
 async def handle_profile_command(task_data: Dict[str, Any]):

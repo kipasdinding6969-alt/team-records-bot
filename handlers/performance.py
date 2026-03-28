@@ -9,6 +9,12 @@ from database import database
 from models import PerformanceRecord
 from telegram_handler import telegram_handler
 from utils.formatting import format_performance_stats, format_percentage
+from i18n import t
+
+
+async def _get_lang(user_id):
+    from database import database
+    return (await database.get_user_language(user_id)) or 'zh'
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +27,11 @@ async def handle_performance_command(task_data: Dict[str, Any]):
 
     # Check permissions
     member = await database.get_team_member_by_user_id(user_id)
+    lang = await _get_lang(user_id)
     if not member or member.role not in ['manager', 'admin']:
         await telegram_handler.send_message(
             chat_id,
-            "❌ 此功能仅限管理员和经理使用。\nThis feature is only for managers and admins."
+            t('err_manager_admin_only', lang)
         )
         return
 
@@ -35,20 +42,19 @@ async def handle_performance_command(task_data: Dict[str, Any]):
         if not available_members:
             await telegram_handler.send_message(
                 chat_id,
-                "❌ 暂无前台成员数据。\nNo frontdesk member data available."
+                t('no_frontdesk_data', lang)
             )
             return
 
-        members_text = """
-📈 **个人表现分析 / Individual Performance Analysis**
+        members_text = f"""
+{t('performance_analysis_title', lang)}
 
-请指定前台成员姓名：
-Please specify frontdesk member name:
+{t('performance_specify_member', lang)}
 
-可用成员 / Available members:
-""" + '\n'.join(f"• {member}" for member in available_members) + """
+{t('available_members', lang)}:
+""" + '\n'.join(f"• {member}" for member in available_members) + f"""
 
-使用方法 / Usage:
+{t('performance_usage', lang)}:
 /performance [成员姓名]
 /performance 阿YIM
         """.strip()

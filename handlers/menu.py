@@ -7,57 +7,106 @@ from telethon import Button
 
 from database import database
 from telegram_handler import telegram_handler
+from i18n import t
 
 logger = logging.getLogger(__name__)
 
 
+async def _get_lang(user_id: int) -> str:
+    """Get user language, default zh."""
+    lang = await database.get_user_language(user_id)
+    return lang or 'zh'
+
+
 async def handle_start_command(task_data: Dict[str, Any]):
-    """Handle /start command - show main menu."""
+    """Handle /start — show language picker first."""
+    user_id = task_data['user_id']
+    chat_id = task_data['chat_id']
+
+    # Check if user already has a language set
+    lang = await database.get_user_language(user_id)
+    if lang:
+        # Already chose language, go straight to menu
+        await handle_menu_command(task_data)
+        return
+
+    # First time: show language picker
+    keyboard = telegram_handler.create_inline_keyboard([
+        [
+            {'text': '🇨🇳 中文', 'callback_data': 'set_lang_zh'},
+            {'text': '🇬🇧 English', 'callback_data': 'set_lang_en'},
+        ]
+    ])
+
+    await telegram_handler.send_message(
+        chat_id,
+        t('lang_picker'),
+        reply_markup=keyboard
+    )
+
+
+async def handle_set_language(task_data: Dict[str, Any]):
+    """Handle language selection callback."""
+    user_id = task_data['user_id']
+    chat_id = task_data['chat_id']
+    callback_data = task_data['callback_data']
+
+    lang = 'zh' if callback_data == 'set_lang_zh' else 'en'
+
+    # Make sure user exists in DB first
+    member = await database.get_team_member_by_user_id(user_id)
+    if not member:
+        from models import TeamMember
+        new_member = TeamMember(
+            user_id=user_id,
+            chat_id=chat_id,
+            username=task_data.get('username'),
+            first_name=task_data.get('first_name'),
+            last_name=task_data.get('last_name'),
+            role='unregistered'
+        )
+        await database.create_team_member(new_member)
+
+    await database.set_user_language(user_id, lang)
+
+    # Show menu in chosen language
     await handle_menu_command(task_data)
 
 
 async def handle_menu_command(task_data: Dict[str, Any]):
-    """Handle /menu command - display main navigation menu."""
+    """Handle /menu command — display main navigation menu."""
     user_id = task_data['user_id']
     chat_id = task_data['chat_id']
+    lang = await _get_lang(user_id)
 
-    # Check if user is registered
-    member = await database.get_team_member_by_user_id(user_id)
+    menu_text = f"""{t('main_menu_title', lang)}
 
-    # Welcome text with main menu
-    menu_text = f"""
-🏠 **主菜单 / Main Menu**
+{t('main_menu_welcome', lang)}
 
-欢迎来到团队记录机器人！
-Welcome to Team Records Bot!
+{t('main_menu_today', lang)} {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
-📅 **今日 / Today:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+{t('main_menu_select', lang)}"""
 
-请选择功能：
-Please select a function:
-    """.strip()
-
-    # Create main menu keyboard
     keyboard = telegram_handler.create_inline_keyboard([
         [
-            {'text': '📊 今日总览 / Today Overview', 'callback_data': 'menu_today_overview'},
-            {'text': '📈 数据分析 / Analytics', 'callback_data': 'menu_analytics'}
+            {'text': t('btn_today_overview', lang), 'callback_data': 'menu_today_overview'},
+            {'text': t('btn_analytics', lang), 'callback_data': 'menu_analytics'}
         ],
         [
-            {'text': '📝 提交报告 / Submit Report', 'callback_data': 'menu_submit_report'},
-            {'text': '👥 团队管理 / Team Manage', 'callback_data': 'menu_team_manage'}
+            {'text': t('btn_submit_report', lang), 'callback_data': 'menu_submit_report'},
+            {'text': t('btn_team_manage', lang), 'callback_data': 'menu_team_manage'}
         ],
         [
-            {'text': '⏰ 提醒管理 / Reminders', 'callback_data': 'menu_reminders'},
-            {'text': '💰 财务概览 / Finance', 'callback_data': 'menu_finance'}
+            {'text': t('btn_reminders', lang), 'callback_data': 'menu_reminders'},
+            {'text': t('btn_finance', lang), 'callback_data': 'menu_finance'}
         ],
         [
-            {'text': '📋 我的客户 / My Clients', 'callback_data': 'menu_my_clients'},
-            {'text': '⚙️ 设置 / Settings', 'callback_data': 'menu_settings'}
+            {'text': t('btn_my_clients', lang), 'callback_data': 'menu_my_clients'},
+            {'text': t('btn_settings', lang), 'callback_data': 'menu_settings'}
         ],
         [
-            {'text': '📖 帮助 / Help', 'callback_data': 'menu_help'},
-            {'text': '🔄 刷新 / Refresh', 'callback_data': 'menu_refresh'}
+            {'text': t('btn_help', lang), 'callback_data': 'menu_help'},
+            {'text': t('btn_refresh', lang), 'callback_data': 'menu_refresh'}
         ]
     ])
 
@@ -73,42 +122,35 @@ async def handle_today_overview(task_data: Dict[str, Any]):
     """Handle today overview from main menu."""
     user_id = task_data['user_id']
     chat_id = task_data['chat_id']
+    lang = await _get_lang(user_id)
 
-    # Check permissions
     member = await database.get_team_member_by_user_id(user_id)
     if not member:
-        await telegram_handler.send_message(
-            chat_id,
-            "❌ 请先使用 /start 注册。\nPlease register using /start first."
-        )
+        await telegram_handler.send_message(chat_id, t('err_not_registered', lang))
         return
 
-    # Generate today's overview
     overview_data = await generate_today_overview(member)
 
-    overview_text = f"""
-📊 **今日总览 / Today Overview**
+    overview_text = f"""{t('today_overview_title', lang)}
 
-📅 **日期 / Date:** {datetime.now().strftime('%Y-%m-%d')} ({datetime.now().strftime('%m月%d日')})
+{t('today_date', lang)} {datetime.now().strftime('%Y-%m-%d')}
 
-{format_today_overview(overview_data)}
+{format_today_overview(overview_data, lang)}
 
-点击按钮查看详细信息：
-Click buttons for detailed information:
-    """.strip()
+{t('click_for_details', lang)}"""
 
     keyboard = telegram_handler.create_inline_keyboard([
         [
-            {'text': '📈 查看图表 / View Charts', 'callback_data': 'analytics_daily_funnel'},
-            {'text': '📋 详细数据 / Detailed Data', 'callback_data': 'dashboard_today'}
+            {'text': t('btn_view_charts', lang), 'callback_data': 'analytics_daily_funnel'},
+            {'text': t('btn_detailed_data', lang), 'callback_data': 'dashboard_today'}
         ],
         [
-            {'text': '📝 新增记录 / New Record', 'callback_data': 'start_report_wizard'},
-            {'text': '⏰ 待办提醒 / Pending Reminders', 'callback_data': 'dashboard_reminders'}
+            {'text': t('btn_new_record', lang), 'callback_data': 'start_report_wizard'},
+            {'text': t('btn_pending_reminders', lang), 'callback_data': 'dashboard_reminders'}
         ],
         [
-            {'text': '🏠 返回主菜单 / Back to Main', 'callback_data': 'menu_main'},
-            {'text': '🔄 刷新 / Refresh', 'callback_data': 'menu_today_overview'}
+            {'text': t('btn_back_main', lang), 'callback_data': 'menu_main'},
+            {'text': t('btn_refresh', lang), 'callback_data': 'menu_today_overview'}
         ]
     ])
 
@@ -125,7 +167,6 @@ async def generate_today_overview(member) -> Dict[str, Any]:
     today = datetime.now()
     today_str = today.strftime("%m月%d日")
 
-    # Get user's own data if they're frontdesk
     if member.role == 'frontdesk':
         frontdesk_name = member.frontdesk_name or member.first_name
         records = await database.get_client_records_by_frontdesk(frontdesk_name)
@@ -140,7 +181,6 @@ async def generate_today_overview(member) -> Dict[str, Any]:
     else:
         personal_stats = None
 
-    # Get team overview (for managers/admins or general stats)
     async with database.get_connection() as db:
         cursor = await db.execute("""
             SELECT frontdesk_name FROM team_members
@@ -149,23 +189,19 @@ async def generate_today_overview(member) -> Dict[str, Any]:
         frontdesks = [row[0] for row in await cursor.fetchall()]
 
     team_stats = {
-        'total_new': 0,
-        'total_registered': 0,
-        'total_pending': 0,
-        'total_training': 0,
+        'total_new': 0, 'total_registered': 0,
+        'total_pending': 0, 'total_training': 0,
         'active_frontdesks': len(frontdesks)
     }
 
     for frontdesk in frontdesks:
         records = await database.get_client_records_by_frontdesk(frontdesk)
         today_records = [r for r in records if r.date == today_str]
-
         team_stats['total_new'] += len(today_records)
         team_stats['total_registered'] += len([r for r in today_records if r.first_day == '注册'])
         team_stats['total_pending'] += len([r for r in today_records if r.first_day == '待定'])
         team_stats['total_training'] += len([r for r in today_records if r.second_day == '注册'])
 
-    # Get pending reminders count
     pending_reminders = await database.get_pending_reminders()
     if member.role == 'frontdesk':
         user_reminders = [r for r in pending_reminders if r.frontdesk_user_id == member.user_id]
@@ -182,42 +218,37 @@ async def generate_today_overview(member) -> Dict[str, Any]:
     }
 
 
-def format_today_overview(data: Dict[str, Any]) -> str:
+def format_today_overview(data: Dict[str, Any], lang: str = 'zh') -> str:
     """Format today's overview for display."""
     member = data['member']
     personal_stats = data['personal_stats']
     team_stats = data['team_stats']
     reminders_count = data['reminders_count']
 
-    overview_text = ""
+    lines = []
 
-    # Personal stats for frontdesk
     if personal_stats:
-        conversion_rate = (personal_stats['registered'] / personal_stats['new_clients'] * 100) if personal_stats['new_clients'] > 0 else 0
-        overview_text += f"""
-**👤 个人统计 / Personal Stats ({member.frontdesk_name or member.first_name}):**
-• 新增客户 / New Clients: {personal_stats['new_clients']}
-• 成功注册 / Registered: {personal_stats['registered']} ({conversion_rate:.1f}%)
-• 待处理 / Pending: {personal_stats['pending']}
-• 完成培训 / Training: {personal_stats['training']}
+        name = member.frontdesk_name or member.first_name
+        conv = (personal_stats['registered'] / personal_stats['new_clients'] * 100) if personal_stats['new_clients'] > 0 else 0
+        lines.append(t('personal_stats_title', lang, name=name))
+        lines.append(f"• {t('new_clients', lang)}: {personal_stats['new_clients']}")
+        lines.append(f"• {t('registered', lang)}: {personal_stats['registered']} ({conv:.1f}%)")
+        lines.append(f"• {t('pending', lang)}: {personal_stats['pending']}")
+        lines.append(f"• {t('training', lang)}: {personal_stats['training']}")
+        lines.append("")
 
-"""
+    team_conv = (team_stats['total_registered'] / team_stats['total_new'] * 100) if team_stats['total_new'] > 0 else 0
+    lines.append(t('team_stats_title', lang))
+    lines.append(f"• {t('active_frontdesks', lang)}: {team_stats['active_frontdesks']}")
+    lines.append(f"• {t('team_new_clients', lang)}: {team_stats['total_new']}")
+    lines.append(f"• {t('team_registered', lang)}: {team_stats['total_registered']} ({team_conv:.1f}%)")
+    lines.append(f"• {t('team_pending', lang)}: {team_stats['total_pending']}")
+    lines.append(f"• {t('team_training', lang)}: {team_stats['total_training']}")
+    lines.append("")
+    lines.append(t('reminders_title', lang))
+    lines.append(f"• {t('pending_reminders', lang)}: {reminders_count}")
 
-    # Team stats
-    team_conversion = (team_stats['total_registered'] / team_stats['total_new'] * 100) if team_stats['total_new'] > 0 else 0
-    overview_text += f"""
-**🏢 团队统计 / Team Stats:**
-• 活跃前台 / Active Frontdesk: {team_stats['active_frontdesks']}
-• 团队新客户 / Team New Clients: {team_stats['total_new']}
-• 团队注册 / Team Registered: {team_stats['total_registered']} ({team_conversion:.1f}%)
-• 团队待处理 / Team Pending: {team_stats['total_pending']}
-• 团队培训 / Team Training: {team_stats['total_training']}
-
-**🔔 提醒 / Reminders:**
-• 待处理提醒 / Pending Reminders: {reminders_count}
-"""
-
-    return overview_text.strip()
+    return "\n".join(lines)
 
 
 async def handle_menu_callbacks(task_data: Dict[str, Any]):
@@ -225,47 +256,39 @@ async def handle_menu_callbacks(task_data: Dict[str, Any]):
     user_id = task_data['user_id']
     chat_id = task_data['chat_id']
     callback_data = task_data['callback_data']
+    lang = await _get_lang(user_id)
 
-    if callback_data == 'menu_main' or callback_data == 'menu_refresh':
-        # Return to main menu
+    if callback_data in ('menu_main', 'menu_refresh'):
         await handle_menu_command(task_data)
 
     elif callback_data == 'menu_today_overview':
         await handle_today_overview(task_data)
 
     elif callback_data == 'menu_analytics':
-        # Show analytics submenu
         await show_analytics_submenu(task_data)
 
     elif callback_data == 'menu_submit_report':
-        # Forward to reporting handler
         from handlers.reporting import handle_report_command
         await handle_report_command(task_data)
 
     elif callback_data == 'menu_team_manage':
-        # Show team management options
         await show_team_management_submenu(task_data)
 
     elif callback_data == 'menu_reminders':
-        # Forward to reminders handler
-        from handlers.reminders import handle_reminders_command
-        await handle_reminders_command(task_data)
+        from handlers.reminders import handle_remind_command
+        await handle_remind_command(task_data)
 
     elif callback_data == 'menu_finance':
-        # Forward to finance handler
         from handlers.finance import handle_finance_command
         await handle_finance_command(task_data)
 
     elif callback_data == 'menu_my_clients':
-        # Show user's clients
         await show_my_clients(task_data)
 
     elif callback_data == 'menu_settings':
-        # Show settings
         await show_settings_submenu(task_data)
 
     elif callback_data == 'menu_help':
-        # Forward to help handler
         from handlers.help_guide import handle_help_command
         await handle_help_command(task_data)
 
@@ -273,112 +296,87 @@ async def handle_menu_callbacks(task_data: Dict[str, Any]):
 async def show_analytics_submenu(task_data: Dict[str, Any]):
     """Show analytics submenu."""
     chat_id = task_data['chat_id']
+    lang = await _get_lang(task_data['user_id'])
 
-    submenu_text = """
-📈 **数据分析 / Analytics Menu**
+    text = f"""{t('analytics_title', lang)}
 
-选择要查看的分析类型：
-Select the type of analysis to view:
-    """.strip()
+{t('analytics_select', lang)}"""
 
     keyboard = telegram_handler.create_inline_keyboard([
         [
-            {'text': '📊 日报图表 / Daily Charts', 'callback_data': 'analytics_daily_charts'},
-            {'text': '📈 趋势分析 / Trend Analysis', 'callback_data': 'analytics_trends'}
+            {'text': t('btn_daily_charts', lang), 'callback_data': 'analytics_daily_charts'},
+            {'text': t('btn_trends', lang), 'callback_data': 'analytics_trends'}
         ],
         [
-            {'text': '🏆 排行榜 / Leaderboard', 'callback_data': 'analytics_leaderboard'},
-            {'text': '🔥 转化漏斗 / Conversion Funnel', 'callback_data': 'analytics_funnel'}
+            {'text': t('btn_leaderboard', lang), 'callback_data': 'analytics_leaderboard'},
+            {'text': t('btn_funnel', lang), 'callback_data': 'analytics_funnel'}
         ],
         [
-            {'text': '📉 对比分析 / Comparison', 'callback_data': 'analytics_comparison'},
-            {'text': '🌡️ 热力图 / Heatmap', 'callback_data': 'analytics_heatmap'}
+            {'text': t('btn_comparison', lang), 'callback_data': 'analytics_comparison'},
+            {'text': t('btn_heatmap', lang), 'callback_data': 'analytics_heatmap'}
         ],
         [
-            {'text': '🏠 返回主菜单 / Back to Main', 'callback_data': 'menu_main'}
+            {'text': t('btn_back_main', lang), 'callback_data': 'menu_main'}
         ]
     ])
 
-    await telegram_handler.send_message(
-        chat_id,
-        submenu_text,
-        parse_mode='markdown',
-        reply_markup=keyboard
-    )
+    await telegram_handler.send_message(chat_id, text, parse_mode='markdown', reply_markup=keyboard)
 
 
 async def show_team_management_submenu(task_data: Dict[str, Any]):
     """Show team management submenu."""
     user_id = task_data['user_id']
     chat_id = task_data['chat_id']
+    lang = await _get_lang(user_id)
 
-    # Check permissions
     member = await database.get_team_member_by_user_id(user_id)
     if not member or member.role not in ['manager', 'admin']:
-        await telegram_handler.send_message(
-            chat_id,
-            "❌ 此功能仅限管理员和经理使用。\nThis feature is only for managers and admins."
-        )
+        await telegram_handler.send_message(chat_id, t('err_manager_only', lang))
         return
 
-    submenu_text = """
-👥 **团队管理 / Team Management**
+    text = f"""{t('team_manage_title', lang)}
 
-选择管理功能：
-Select management function:
-    """.strip()
+{t('team_manage_select', lang)}"""
 
     keyboard = telegram_handler.create_inline_keyboard([
         [
-            {'text': '📊 团队仪表板 / Team Dashboard', 'callback_data': 'dashboard_main'},
-            {'text': '📝 日报生成 / Daily Summary', 'callback_data': 'generate_summary'}
+            {'text': t('btn_team_dashboard', lang), 'callback_data': 'dashboard_main'},
+            {'text': t('btn_daily_summary', lang), 'callback_data': 'generate_summary'}
         ],
         [
-            {'text': '👥 团队评估 / Team Assessment', 'callback_data': 'team_assessment'},
-            {'text': '📈 个人表现 / Individual Performance', 'callback_data': 'individual_performance'}
+            {'text': t('btn_team_assessment', lang), 'callback_data': 'team_assessment'},
+            {'text': t('btn_individual_perf', lang), 'callback_data': 'individual_performance'}
         ],
         [
-            {'text': '📋 活跃成员 / Active Members', 'callback_data': 'active_members'},
-            {'text': '⚙️ 权限管理 / Permission Management', 'callback_data': 'permission_management'}
+            {'text': t('btn_active_members', lang), 'callback_data': 'active_members'},
+            {'text': t('btn_permissions', lang), 'callback_data': 'permission_management'}
         ],
         [
-            {'text': '🏠 返回主菜单 / Back to Main', 'callback_data': 'menu_main'}
+            {'text': t('btn_back_main', lang), 'callback_data': 'menu_main'}
         ]
     ])
 
-    await telegram_handler.send_message(
-        chat_id,
-        submenu_text,
-        parse_mode='markdown',
-        reply_markup=keyboard
-    )
+    await telegram_handler.send_message(chat_id, text, parse_mode='markdown', reply_markup=keyboard)
 
 
 async def show_my_clients(task_data: Dict[str, Any]):
     """Show user's client list."""
     user_id = task_data['user_id']
     chat_id = task_data['chat_id']
+    lang = await _get_lang(user_id)
 
     member = await database.get_team_member_by_user_id(user_id)
     if not member:
-        await telegram_handler.send_message(
-            chat_id,
-            "❌ 请先使用 /start 注册。\nPlease register using /start first."
-        )
+        await telegram_handler.send_message(chat_id, t('err_not_registered', lang))
         return
 
     if member.role not in ['frontdesk', 'manager', 'admin']:
-        await telegram_handler.send_message(
-            chat_id,
-            "❌ 此功能仅限前台和管理人员使用。\nThis feature is only for frontdesk and management staff."
-        )
+        await telegram_handler.send_message(chat_id, t('err_frontdesk_only', lang))
         return
 
-    # Get client records
     frontdesk_name = member.frontdesk_name or member.first_name
     records = await database.get_client_records_by_frontdesk(frontdesk_name)
 
-    # Filter recent records (last 30 days)
     today = datetime.now()
     recent_records = []
     for record in records:
@@ -389,81 +387,92 @@ async def show_my_clients(task_data: Dict[str, Any]):
         except:
             continue
 
-    clients_text = f"""
-📋 **我的客户 / My Clients**
+    total = len(recent_records)
+    reg = len([r for r in recent_records if r.first_day == '注册'])
+    not_reg = len([r for r in recent_records if r.first_day == '不注册'])
+    pend = len([r for r in recent_records if r.first_day == '待定'])
 
-👤 **前台 / Frontdesk:** {frontdesk_name}
-📅 **时间范围 / Time Range:** 最近30天 / Last 30 days
+    text = f"""{t('my_clients_title', lang)}
 
-**📊 统计摘要 / Statistics:**
-• 总客户数 / Total Clients: {len(recent_records)}
-• 已注册 / Registered: {len([r for r in recent_records if r.first_day == '注册'])}
-• 未注册 / Not Registered: {len([r for r in recent_records if r.first_day == '不注册'])}
-• 待处理 / Pending: {len([r for r in recent_records if r.first_day == '待定'])}
+{t('frontdesk_label', lang)} {frontdesk_name}
+{t('time_range', lang)}
 
-点击按钮查看详细信息：
-Click buttons for detailed information:
-    """.strip()
+{t('stats_summary', lang)}
+• {t('total_clients', lang)}: {total}
+• {t('registered', lang)}: {reg}
+• {t('not_registered', lang)}: {not_reg}
+• {t('pending', lang)}: {pend}
+
+{t('click_for_details', lang)}"""
 
     keyboard = telegram_handler.create_inline_keyboard([
         [
-            {'text': '📝 新增客户 / New Client', 'callback_data': 'start_report_wizard'},
-            {'text': '🔍 搜索客户 / Search Client', 'callback_data': 'search_clients'}
+            {'text': t('btn_new_client', lang), 'callback_data': 'start_report_wizard'},
+            {'text': t('btn_search_client', lang), 'callback_data': 'search_clients'}
         ],
         [
-            {'text': '📊 客户统计 / Client Stats', 'callback_data': 'client_statistics'},
-            {'text': '📋 待跟进 / Follow-up List', 'callback_data': 'followup_list'}
+            {'text': t('btn_client_stats', lang), 'callback_data': 'client_statistics'},
+            {'text': t('btn_followup', lang), 'callback_data': 'followup_list'}
         ],
         [
-            {'text': '📈 我的图表 / My Charts', 'callback_data': 'my_charts'},
-            {'text': '📤 导出数据 / Export Data', 'callback_data': 'export_my_data'}
+            {'text': t('btn_my_charts', lang), 'callback_data': 'my_charts'},
+            {'text': t('btn_export', lang), 'callback_data': 'export_my_data'}
         ],
         [
-            {'text': '🏠 返回主菜单 / Back to Main', 'callback_data': 'menu_main'}
+            {'text': t('btn_back_main', lang), 'callback_data': 'menu_main'}
         ]
     ])
 
-    await telegram_handler.send_message(
-        chat_id,
-        clients_text,
-        parse_mode='markdown',
-        reply_markup=keyboard
-    )
+    await telegram_handler.send_message(chat_id, text, parse_mode='markdown', reply_markup=keyboard)
 
 
 async def show_settings_submenu(task_data: Dict[str, Any]):
     """Show settings submenu."""
     chat_id = task_data['chat_id']
+    lang = await _get_lang(task_data['user_id'])
 
-    settings_text = """
-⚙️ **设置 / Settings**
+    text = f"""{t('settings_title', lang)}
 
-配置您的个人设置：
-Configure your personal settings:
-    """.strip()
+{t('settings_select', lang)}"""
 
     keyboard = telegram_handler.create_inline_keyboard([
         [
-            {'text': '🔔 通知设置 / Notifications', 'callback_data': 'settings_notifications'},
-            {'text': '🌐 语言设置 / Language', 'callback_data': 'settings_language'}
+            {'text': t('btn_notifications', lang), 'callback_data': 'settings_notifications'},
+            {'text': t('btn_language', lang), 'callback_data': 'settings_language'}
         ],
         [
-            {'text': '⏰ 时区设置 / Timezone', 'callback_data': 'settings_timezone'},
-            {'text': '📊 报表偏好 / Report Preferences', 'callback_data': 'settings_reports'}
+            {'text': t('btn_timezone', lang), 'callback_data': 'settings_timezone'},
+            {'text': t('btn_report_prefs', lang), 'callback_data': 'settings_reports'}
         ],
         [
-            {'text': '👤 个人信息 / Profile', 'callback_data': 'settings_profile'},
-            {'text': '🔐 隐私设置 / Privacy', 'callback_data': 'settings_privacy'}
+            {'text': t('btn_profile', lang), 'callback_data': 'settings_profile'},
+            {'text': t('btn_privacy', lang), 'callback_data': 'settings_privacy'}
         ],
         [
-            {'text': '🏠 返回主菜单 / Back to Main', 'callback_data': 'menu_main'}
+            {'text': t('btn_back_main', lang), 'callback_data': 'menu_main'}
+        ]
+    ])
+
+    await telegram_handler.send_message(chat_id, text, parse_mode='markdown', reply_markup=keyboard)
+
+
+async def handle_change_language(task_data: Dict[str, Any]):
+    """Show language picker from settings."""
+    chat_id = task_data['chat_id']
+
+    keyboard = telegram_handler.create_inline_keyboard([
+        [
+            {'text': '🇨🇳 中文', 'callback_data': 'set_lang_zh'},
+            {'text': '🇬🇧 English', 'callback_data': 'set_lang_en'},
+        ],
+        [
+            {'text': t('btn_back_main', await _get_lang(task_data['user_id'])), 'callback_data': 'menu_main'}
         ]
     ])
 
     await telegram_handler.send_message(
         chat_id,
-        settings_text,
-        parse_mode='markdown',
+        t('lang_picker'),
         reply_markup=keyboard
     )
 
@@ -475,6 +484,8 @@ MENU_COMMANDS = {
 }
 
 MENU_CALLBACKS = {
+    'set_lang_zh': handle_set_language,
+    'set_lang_en': handle_set_language,
     'menu_main': handle_menu_callbacks,
     'menu_refresh': handle_menu_callbacks,
     'menu_today_overview': handle_menu_callbacks,
@@ -486,6 +497,7 @@ MENU_CALLBACKS = {
     'menu_my_clients': handle_menu_callbacks,
     'menu_settings': handle_menu_callbacks,
     'menu_help': handle_menu_callbacks,
+    'settings_language': handle_change_language,
 }
 
 MENU_CONVERSATIONS = {}

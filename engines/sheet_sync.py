@@ -428,15 +428,208 @@ class SheetSyncEngine:
         return results
 
     async def _read_financial_sheet(self, gid: int) -> Optional[List[Dict[str, Any]]]:
-        """Read financial data from Google Sheet."""
-        # Simulated implementation
-        logger.info(f"Reading financial sheet {gid}")
-        return []  # In real implementation, return actual sheet data
+        """Read financial data from Google Sheet (维护数据 worksheet)."""
+        if not self.writer or not self.writer.gc:
+            logger.error("Google Sheets client not initialized")
+            return None
+
+        try:
+            logger.info(f"Reading financial sheet {gid}")
+
+            # Find the worksheet by GID
+            worksheet = None
+            for ws in self.writer.spreadsheet.worksheets():
+                if ws.id == gid:
+                    worksheet = ws
+                    break
+
+            if not worksheet:
+                logger.error(f"Financial worksheet with GID {gid} not found")
+                return None
+
+            # Get all values from the worksheet
+            rows = worksheet.get_all_values()
+            if len(rows) < 2:  # Need at least header + data
+                logger.warning(f"Financial sheet {gid} has no data rows")
+                return []
+
+            # Parse the data - expected columns:
+            # 日期, 账号/ID, 群号/ID, 前台, 维护, 前台号, 盘子, 新单$, 承压$, [note], 一刀~八刀, 共入, 前台
+            sheet_data = []
+            for i, row in enumerate(rows[1:], start=1):  # Skip header row
+                if len(row) < 7 or not row[0].strip():
+                    continue
+
+                # Skip template rows (X月XX日)
+                date_str = row[0].strip()
+                if 'X月' in date_str and 'X日' in date_str:
+                    continue
+                if date_str in ('DATE', '日期'):
+                    continue
+
+                try:
+                    # Parse money values (remove $ and commas, handle negative)
+                    def parse_money(value_str):
+                        if not value_str or value_str.strip() == '':
+                            return 0.0
+                        cleaned = value_str.replace('$', '').replace(',', '').strip()
+                        if cleaned == '' or cleaned == '-':
+                            return 0.0
+                        try:
+                            return float(cleaned)
+                        except ValueError:
+                            return 0.0
+
+                    record_data = {
+                        'date': date_str,
+                        'account_id': row[1].strip() if len(row) > 1 else '',
+                        'group_id': row[2].strip() if len(row) > 2 else '',
+                        'frontdesk': row[3].strip() if len(row) > 3 else '',
+                        'maintenance': row[4].strip() if len(row) > 4 else '',
+                        'frontdesk_number': row[5].strip() if len(row) > 5 else '',
+                        'platform': row[6].strip() if len(row) > 6 else '',
+                        'new_order_amount': parse_money(row[7]) if len(row) > 7 else 0.0,
+                        'pressure_amount': parse_money(row[8]) if len(row) > 8 else 0.0,
+                        'note': row[9].strip() if len(row) > 9 else '',
+                        'knife_1': parse_money(row[10]) if len(row) > 10 else 0.0,
+                        'knife_2': parse_money(row[11]) if len(row) > 11 else 0.0,
+                        'knife_3': parse_money(row[12]) if len(row) > 12 else 0.0,
+                        'knife_4': parse_money(row[13]) if len(row) > 13 else 0.0,
+                        'knife_5': parse_money(row[14]) if len(row) > 14 else 0.0,
+                        'knife_6': parse_money(row[15]) if len(row) > 15 else 0.0,
+                        'knife_7': parse_money(row[16]) if len(row) > 16 else 0.0,
+                        'knife_8': parse_money(row[17]) if len(row) > 17 else 0.0,
+                        'total_in': parse_money(row[18]) if len(row) > 18 else 0.0,
+                        'role_frontdesk': row[19].strip() if len(row) > 19 else ''
+                    }
+
+                    # Only add if we have essential fields
+                    if record_data['date'] and (record_data['account_id'] or record_data['frontdesk']):
+                        sheet_data.append(record_data)
+
+                except Exception as e:
+                    logger.warning(f"Failed to parse financial row {i}: {e}")
+                    continue
+
+            logger.info(f"Read {len(sheet_data)} financial records from sheet {gid}")
+            return sheet_data
+
+        except Exception as e:
+            logger.error(f"Failed to read financial sheet {gid}: {e}")
+            return None
 
     async def _process_financial_sheet_data(self, sheet_data: List[Dict[str, Any]]) -> int:
-        """Process financial sheet data."""
-        # Simulated processing
-        return len(sheet_data)
+        """Process and store financial sheet data in database."""
+        processed_count = 0
+
+        try:
+            for row_data in sheet_data:
+                try:
+                    # Validate data
+                    if not self._validate_financial_data(row_data):
+                        logger.warning(f"Invalid financial data: {row_data}")
+                        continue
+
+                    # Check if record already exists
+                    existing_record = await self._find_existing_financial_record(row_data)
+
+                    if existing_record:
+                        # Update existing record if data has changed
+                        if self._has_financial_data_changed(existing_record, row_data):
+                            await self._update_financial_record(existing_record.id, row_data)
+                            processed_count += 1
+                    else:
+                        # Create new record
+                        financial_record = FinancialRecord(
+                            date=row_data['date'],
+                            account_id=row_data['account_id'],
+                            group_id=row_data['group_id'],
+                            frontdesk=row_data['frontdesk'],
+                            maintenance=row_data['maintenance'],
+                            frontdesk_number=row_data['frontdesk_number'],
+                            platform=row_data['platform'],
+                            new_order_amount=row_data['new_order_amount'],
+                            pressure_amount=row_data['pressure_amount'],
+                            note=row_data['note'],
+                            knife_1=row_data['knife_1'],
+                            knife_2=row_data['knife_2'],
+                            knife_3=row_data['knife_3'],
+                            knife_4=row_data['knife_4'],
+                            knife_5=row_data['knife_5'],
+                            knife_6=row_data['knife_6'],
+                            knife_7=row_data['knife_7'],
+                            knife_8=row_data['knife_8'],
+                            total_in=row_data['total_in'],
+                            role_frontdesk=row_data['role_frontdesk']
+                        )
+
+                        await database.create_financial_record(financial_record)
+                        processed_count += 1
+
+                except Exception as e:
+                    logger.error(f"Failed to process financial row: {e}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"Failed to process financial sheet data: {e}")
+
+        return processed_count
+
+    def _validate_financial_data(self, row_data: Dict[str, Any]) -> bool:
+        """Validate financial record data."""
+        # At minimum we need a date and either account_id or frontdesk
+        return bool(row_data.get('date') and (row_data.get('account_id') or row_data.get('frontdesk')))
+
+    async def _find_existing_financial_record(self, row_data: Dict[str, Any]) -> Optional[FinancialRecord]:
+        """Find existing financial record by unique identifiers."""
+        try:
+            async with database.get_connection() as db:
+                cursor = await db.execute("""
+                    SELECT * FROM financial_records
+                    WHERE date = ? AND account_id = ? AND frontdesk = ?
+                """, (row_data['date'], row_data['account_id'], row_data['frontdesk']))
+                row = await cursor.fetchone()
+                return database._row_to_financial_record(row) if row else None
+
+        except Exception as e:
+            logger.error(f"Failed to find existing financial record: {e}")
+            return None
+
+    def _has_financial_data_changed(self, existing_record: FinancialRecord, new_data: Dict[str, Any]) -> bool:
+        """Check if financial data has changed."""
+        # Compare monetary fields that might change
+        changeable_fields = ['new_order_amount', 'pressure_amount', 'total_in', 'knife_1', 'knife_2', 'knife_3', 'knife_4', 'knife_5', 'knife_6', 'knife_7', 'knife_8']
+
+        for field in changeable_fields:
+            existing_value = getattr(existing_record, field)
+            new_value = new_data.get(field)
+            if abs(existing_value - new_value) > 0.01:  # Small epsilon for float comparison
+                return True
+
+        return False
+
+    async def _update_financial_record(self, record_id: int, new_data: Dict[str, Any]):
+        """Update existing financial record."""
+        try:
+            async with database.get_connection() as db:
+                await db.execute("""
+                    UPDATE financial_records SET
+                    new_order_amount = ?, pressure_amount = ?, total_in = ?,
+                    knife_1 = ?, knife_2 = ?, knife_3 = ?, knife_4 = ?,
+                    knife_5 = ?, knife_6 = ?, knife_7 = ?, knife_8 = ?,
+                    note = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (
+                    new_data['new_order_amount'], new_data['pressure_amount'], new_data['total_in'],
+                    new_data['knife_1'], new_data['knife_2'], new_data['knife_3'], new_data['knife_4'],
+                    new_data['knife_5'], new_data['knife_6'], new_data['knife_7'], new_data['knife_8'],
+                    new_data['note'], record_id
+                ))
+                await db.commit()
+
+        except Exception as e:
+            logger.error(f"Failed to update financial record {record_id}: {e}")
+            raise
 
     async def _write_financial_changes_to_sheet(self, gid: int) -> int:
         """Write financial changes to sheet."""
@@ -467,14 +660,230 @@ class SheetSyncEngine:
         return results
 
     async def _read_performance_sheet(self, gid: int) -> Optional[List[Dict[str, Any]]]:
-        """Read performance data from Google Sheet."""
-        # Simulated implementation
-        logger.info(f"Reading performance sheet {gid}")
-        return []
+        """Read performance data from Google Sheet (3月-前台数据 worksheet)."""
+        if not self.writer or not self.writer.gc:
+            logger.error("Google Sheets client not initialized")
+            return None
+
+        try:
+            logger.info(f"Reading performance sheet {gid}")
+
+            # Find the worksheet by GID
+            worksheet = None
+            for ws in self.writer.spreadsheet.worksheets():
+                if ws.id == gid:
+                    worksheet = ws
+                    break
+
+            if not worksheet:
+                logger.error(f"Performance worksheet with GID {gid} not found")
+                return None
+
+            # Get all values from the worksheet
+            rows = worksheet.get_all_values()
+            if len(rows) < 2:  # Need at least header + data
+                logger.warning(f"Performance sheet {gid} has no data rows")
+                return []
+
+            # Parse the data - complex multi-section layout with dates as section headers
+            # Expected columns: 名字(name), 类别(category), 粉量, 开头不回复, 回复率, 卡解释, 拉黑/来玩, 被骗过, 给链接没回复, 完成注册, 审核率, 完成培训, 约时间, 提款
+            sheet_data = []
+            current_section = None
+
+            for i, row in enumerate(rows):
+                if len(row) < 2 or not row[0].strip():
+                    continue
+
+                first_cell = row[0].strip()
+
+                # Check if this is a section header (e.g., "MAO UK 3/1")
+                if 'MAO' in first_cell or ('/' in first_cell and len(first_cell) < 15):
+                    current_section = first_cell
+                    logger.debug(f"Found section header: {current_section}")
+                    continue
+
+                # Skip column headers
+                if first_cell in ('名字', 'name', '姓名'):
+                    continue
+
+                # Parse data row
+                if current_section and len(row) >= 10:
+                    try:
+                        def parse_int(value_str):
+                            if not value_str or value_str.strip() == '':
+                                return 0
+                            cleaned = value_str.replace(',', '').strip()
+                            try:
+                                return int(float(cleaned))
+                            except ValueError:
+                                return 0
+
+                        def parse_float(value_str):
+                            if not value_str or value_str.strip() == '' or value_str.strip() == '%':
+                                return 0.0
+                            cleaned = value_str.replace('%', '').replace(',', '').strip()
+                            try:
+                                return float(cleaned)
+                            except ValueError:
+                                return 0.0
+
+                        record_data = {
+                            'section': current_section,
+                            'name': row[0].strip(),
+                            'category': row[1].strip() if len(row) > 1 else '',
+                            'powder_count': parse_int(row[2]) if len(row) > 2 else 0,
+                            'no_initial_reply': parse_int(row[3]) if len(row) > 3 else 0,
+                            'reply_rate': parse_float(row[4]) if len(row) > 4 else 0.0,
+                            'stuck_explanation': parse_int(row[5]) if len(row) > 5 else 0,
+                            'blocked_or_play': parse_int(row[6]) if len(row) > 6 else 0,
+                            'been_scammed': parse_int(row[7]) if len(row) > 7 else 0,
+                            'sent_link_no_reply': parse_int(row[8]) if len(row) > 8 else 0,
+                            'completed_register': parse_int(row[9]) if len(row) > 9 else 0,
+                            'review_rate': parse_float(row[10]) if len(row) > 10 else 0.0,
+                            'completed_training': parse_int(row[11]) if len(row) > 11 else 0,
+                            'scheduled_time': parse_int(row[12]) if len(row) > 12 else 0,
+                            'withdrawal': parse_int(row[13]) if len(row) > 13 else 0,
+                            'new_order': parse_int(row[14]) if len(row) > 14 else 0,
+                            'conversion_rate': parse_float(row[15]) if len(row) > 15 else 0.0,
+                            'new_kill': parse_int(row[16]) if len(row) > 16 else 0,
+                            'dead_client': parse_int(row[17]) if len(row) > 17 else 0,
+                            'is_sum_row': '总计' in row[0] or 'sum' in row[0].lower() or 'total' in row[0].lower()
+                        }
+
+                        # Only add if we have essential fields
+                        if record_data['name'] and record_data['name'] not in ('', '-'):
+                            sheet_data.append(record_data)
+
+                    except Exception as e:
+                        logger.warning(f"Failed to parse performance row {i}: {e}")
+                        continue
+
+            logger.info(f"Read {len(sheet_data)} performance records from sheet {gid}")
+            return sheet_data
+
+        except Exception as e:
+            logger.error(f"Failed to read performance sheet {gid}: {e}")
+            return None
 
     async def _process_performance_sheet_data(self, sheet_data: List[Dict[str, Any]]) -> int:
-        """Process performance sheet data."""
-        return len(sheet_data)
+        """Process and store performance sheet data in database."""
+        processed_count = 0
+
+        try:
+            for row_data in sheet_data:
+                try:
+                    # Validate data
+                    if not self._validate_performance_data(row_data):
+                        logger.warning(f"Invalid performance data: {row_data}")
+                        continue
+
+                    # Check if record already exists
+                    existing_record = await self._find_existing_performance_record(row_data)
+
+                    if existing_record:
+                        # Update existing record if data has changed
+                        if self._has_performance_data_changed(existing_record, row_data):
+                            await self._update_performance_record(existing_record.id, row_data)
+                            processed_count += 1
+                    else:
+                        # Create new record
+                        performance_record = PerformanceRecord(
+                            name=row_data['name'],
+                            category=row_data['category'],
+                            powder_count=row_data['powder_count'],
+                            no_initial_reply=row_data['no_initial_reply'],
+                            reply_rate=row_data['reply_rate'],
+                            stuck_explanation=row_data['stuck_explanation'],
+                            blocked_or_play=row_data['blocked_or_play'],
+                            been_scammed=row_data['been_scammed'],
+                            sent_link_no_reply=row_data['sent_link_no_reply'],
+                            completed_register=row_data['completed_register'],
+                            review_rate=row_data['review_rate'],
+                            completed_training=row_data['completed_training'],
+                            scheduled_time=row_data['scheduled_time'],
+                            withdrawal=row_data['withdrawal'],
+                            new_order=row_data['new_order'],
+                            conversion_rate=row_data['conversion_rate'],
+                            new_kill=row_data['new_kill'],
+                            dead_client=row_data['dead_client'],
+                            is_sum_row=row_data['is_sum_row']
+                        )
+
+                        await database.create_performance_record(performance_record)
+                        processed_count += 1
+
+                except Exception as e:
+                    logger.error(f"Failed to process performance row: {e}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"Failed to process performance sheet data: {e}")
+
+        return processed_count
+
+    def _validate_performance_data(self, row_data: Dict[str, Any]) -> bool:
+        """Validate performance record data."""
+        # At minimum we need a name
+        return bool(row_data.get('name'))
+
+    async def _find_existing_performance_record(self, row_data: Dict[str, Any]) -> Optional[PerformanceRecord]:
+        """Find existing performance record by unique identifiers."""
+        try:
+            async with database.get_connection() as db:
+                cursor = await db.execute("""
+                    SELECT * FROM performance_records
+                    WHERE name = ? AND category = ? ORDER BY created_at DESC LIMIT 1
+                """, (row_data['name'], row_data['category']))
+                row = await cursor.fetchone()
+                return database._row_to_performance_record(row) if row else None
+
+        except Exception as e:
+            logger.error(f"Failed to find existing performance record: {e}")
+            return None
+
+    def _has_performance_data_changed(self, existing_record: PerformanceRecord, new_data: Dict[str, Any]) -> bool:
+        """Check if performance data has changed."""
+        # Compare key numeric fields that might change
+        changeable_fields = ['powder_count', 'completed_register', 'completed_training', 'withdrawal', 'new_order', 'reply_rate', 'conversion_rate']
+
+        for field in changeable_fields:
+            existing_value = getattr(existing_record, field)
+            new_value = new_data.get(field)
+
+            if isinstance(existing_value, float) and isinstance(new_value, (int, float)):
+                if abs(existing_value - new_value) > 0.01:  # Small epsilon for float comparison
+                    return True
+            elif existing_value != new_value:
+                return True
+
+        return False
+
+    async def _update_performance_record(self, record_id: int, new_data: Dict[str, Any]):
+        """Update existing performance record."""
+        try:
+            async with database.get_connection() as db:
+                await db.execute("""
+                    UPDATE performance_records SET
+                    powder_count = ?, no_initial_reply = ?, reply_rate = ?,
+                    stuck_explanation = ?, blocked_or_play = ?, been_scammed = ?,
+                    sent_link_no_reply = ?, completed_register = ?, review_rate = ?,
+                    completed_training = ?, scheduled_time = ?, withdrawal = ?,
+                    new_order = ?, conversion_rate = ?, new_kill = ?, dead_client = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (
+                    new_data['powder_count'], new_data['no_initial_reply'], new_data['reply_rate'],
+                    new_data['stuck_explanation'], new_data['blocked_or_play'], new_data['been_scammed'],
+                    new_data['sent_link_no_reply'], new_data['completed_register'], new_data['review_rate'],
+                    new_data['completed_training'], new_data['scheduled_time'], new_data['withdrawal'],
+                    new_data['new_order'], new_data['conversion_rate'], new_data['new_kill'],
+                    new_data['dead_client'], record_id
+                ))
+                await db.commit()
+
+        except Exception as e:
+            logger.error(f"Failed to update performance record {record_id}: {e}")
+            raise
 
     async def _write_performance_changes_to_sheet(self, gid: int) -> int:
         """Write performance changes to sheet."""

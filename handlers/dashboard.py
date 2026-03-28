@@ -18,46 +18,49 @@ logger = logging.getLogger(__name__)
 
 async def handle_dashboard_command(task_data: Dict[str, Any]):
     """Handle /dashboard command for team overview."""
+    from i18n import t
+
     user_id = task_data['user_id']
     chat_id = task_data['chat_id']
+
+    # Get user language
+    user_language = await database.get_user_language(user_id)
+    lang = user_language or 'zh'
 
     # Check permissions
     member = await database.get_team_member_by_user_id(user_id)
     if not member or member.role not in ['manager', 'admin']:
         await telegram_handler.send_message(
             chat_id,
-            "❌ 此功能仅限管理员和经理使用。\nThis feature is only for managers and admins."
+            t('err_manager_only', lang)
         )
         return
 
     # Generate dashboard
     dashboard_data = await generate_dashboard_data()
 
-    dashboard_text = f"""
-📊 **团队仪表板 / Team Dashboard**
+    dashboard_text = f"""{t('dashboard_title', lang)}
 
-📅 **日期 / Date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+📅 **{t('date_label', lang)}:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
 {format_dashboard_stats(dashboard_data)}
 
-点击按钮查看详细信息：
-Click buttons for detailed information:
-    """.strip()
+{t('click_for_details', lang)}"""
 
     keyboard = telegram_handler.create_inline_keyboard([
         [
-            {'text': '📈 今日报告 / Today Report', 'callback_data': 'dashboard_today'},
-            {'text': '📊 周报 / Weekly Report', 'callback_data': 'dashboard_weekly'}
+            {'text': t('btn_today_report', lang), 'callback_data': 'dashboard_today'},
+            {'text': t('btn_weekly_report', lang), 'callback_data': 'dashboard_weekly'}
         ],
         [
-            {'text': '👥 团队详情 / Team Details', 'callback_data': 'dashboard_teams'},
-            {'text': '🎯 个人表现 / Individual Performance', 'callback_data': 'dashboard_individual'}
+            {'text': t('btn_team_details', lang), 'callback_data': 'dashboard_teams'},
+            {'text': t('btn_individual_perf', lang), 'callback_data': 'dashboard_individual'}
         ],
         [
-            {'text': '📋 活跃客户 / Active Clients', 'callback_data': 'dashboard_clients'},
-            {'text': '⚠️ 待处理提醒 / Pending Reminders', 'callback_data': 'dashboard_reminders'}
+            {'text': t('btn_active_clients', lang), 'callback_data': 'dashboard_clients'},
+            {'text': t('btn_pending_reminders_dash', lang), 'callback_data': 'dashboard_reminders'}
         ],
-        [{'text': '🔄 刷新 / Refresh', 'callback_data': 'refresh_dashboard'}]
+        [{'text': t('btn_refresh', lang), 'callback_data': 'refresh_dashboard'}]
     ])
 
     await telegram_handler.send_message(

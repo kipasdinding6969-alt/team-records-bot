@@ -7,8 +7,14 @@ from telethon import Button
 
 from database import database
 from telegram_handler import telegram_handler
+from i18n import t
 
 logger = logging.getLogger(__name__)
+
+
+async def _get_lang(user_id):
+    from database import database
+    return (await database.get_user_language(user_id)) or 'zh'
 
 
 async def handle_help_command(task_data: Dict[str, Any]):
@@ -18,42 +24,41 @@ async def handle_help_command(task_data: Dict[str, Any]):
 
     # Get user info for personalized help
     member = await database.get_team_member_by_user_id(user_id)
+    lang = await _get_lang(user_id)
 
     help_text = f"""
-📖 **帮助中心 / Help Center**
+{t('help_center_title', lang)}
 
-欢迎使用团队记录机器人帮助系统！
-Welcome to Team Records Bot Help System!
+{t('help_center_welcome', lang)}
 
-👤 **您的身份 / Your Role:** {get_role_display(member.role if member else 'unregistered')}
+{t('your_role_label', lang)} {get_role_display(member.role if member else 'unregistered', lang)}
 
-选择您需要的帮助主题：
-Select the help topic you need:
+{t('help_select_topic', lang)}
     """.strip()
 
     keyboard = telegram_handler.create_inline_keyboard([
         [
-            {'text': '🔰 快速入门 / Quick Start', 'callback_data': 'help_quick_start'},
-            {'text': '📝 提交报告 / Submit Reports', 'callback_data': 'help_submit_reports'}
+            {'text': t('btn_help_quick_start', lang), 'callback_data': 'help_quick_start'},
+            {'text': t('btn_help_submit_reports', lang), 'callback_data': 'help_submit_reports'}
         ],
         [
-            {'text': '📊 查看数据 / View Data', 'callback_data': 'help_view_data'},
-            {'text': '📈 图表分析 / Chart Analysis', 'callback_data': 'help_chart_analysis'}
+            {'text': t('btn_help_view_data', lang), 'callback_data': 'help_view_data'},
+            {'text': t('btn_help_chart_analysis', lang), 'callback_data': 'help_chart_analysis'}
         ],
         [
-            {'text': '⏰ 提醒系统 / Reminder System', 'callback_data': 'help_reminder_system'},
-            {'text': '🔄 同步说明 / Sync Information', 'callback_data': 'help_sync_info'}
+            {'text': t('btn_help_reminder_system', lang), 'callback_data': 'help_reminder_system'},
+            {'text': t('btn_help_sync_info', lang), 'callback_data': 'help_sync_info'}
         ],
         [
-            {'text': '👥 团队功能 / Team Functions', 'callback_data': 'help_team_functions'},
-            {'text': '⚙️ 设置配置 / Settings Config', 'callback_data': 'help_settings'}
+            {'text': t('btn_help_team_functions', lang), 'callback_data': 'help_team_functions'},
+            {'text': t('btn_help_settings', lang), 'callback_data': 'help_settings'}
         ],
         [
-            {'text': '🔧 常见问题 / FAQ', 'callback_data': 'help_faq'},
-            {'text': '📞 联系支持 / Contact Support', 'callback_data': 'help_contact_support'}
+            {'text': t('btn_help_faq', lang), 'callback_data': 'help_faq'},
+            {'text': t('btn_help_contact_support', lang), 'callback_data': 'help_contact_support'}
         ],
         [
-            {'text': '🏠 返回主菜单 / Back to Main', 'callback_data': 'menu_main'}
+            {'text': t('btn_back_main', lang), 'callback_data': 'menu_main'}
         ]
     ])
 
@@ -65,13 +70,13 @@ Select the help topic you need:
     )
 
 
-def get_role_display(role: str) -> str:
+def get_role_display(role: str, lang: str = 'zh') -> str:
     """Get role display name."""
     role_map = {
-        'unregistered': '未注册 / Unregistered',
-        'frontdesk': '前台 / Frontdesk',
-        'manager': '经理 / Manager',
-        'admin': '管理员 / Admin'
+        'unregistered': t('role_unregistered', lang),
+        'frontdesk': t('role_frontdesk', lang),
+        'manager': t('role_manager', lang),
+        'admin': t('role_admin', lang)
     }
     return role_map.get(role, role)
 
@@ -83,6 +88,7 @@ async def show_quick_start_guide(task_data: Dict[str, Any]):
 
     member = await database.get_team_member_by_user_id(user_id)
     role = member.role if member else 'unregistered'
+    lang = await _get_lang(user_id)
 
     if role == 'unregistered':
         guide_text = """

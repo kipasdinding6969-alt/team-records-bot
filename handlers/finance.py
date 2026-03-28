@@ -6,12 +6,19 @@ from datetime import datetime, date, timedelta
 from telethon import Button
 
 from database import database
+from i18n import t
 from models import FinancialRecord
 from telegram_handler import telegram_handler
 from utils.formatting import format_financial_record, format_currency
 from utils.validators import validate_amount, validate_account_id
 
 logger = logging.getLogger(__name__)
+
+
+async def _get_lang(user_id):
+    """Get user language preference."""
+    from database import database
+    return (await database.get_user_language(user_id)) or 'zh'
 
 
 async def handle_finance_command(task_data: Dict[str, Any]):
@@ -23,9 +30,10 @@ async def handle_finance_command(task_data: Dict[str, Any]):
     # Check permissions
     member = await database.get_team_member_by_user_id(user_id)
     if not member or member.role not in ['manager', 'admin']:
+        lang = await _get_lang(user_id)
         await telegram_handler.send_message(
             chat_id,
-            "❌ 此功能仅限管理员和经理使用。\nThis feature is only for managers and admins."
+            t('err_manager_only', lang)
         )
         return
 
@@ -35,38 +43,39 @@ async def handle_finance_command(task_data: Dict[str, Any]):
         try:
             target_date = datetime.strptime(args[0], '%Y-%m-%d').date()
         except ValueError:
+            lang = await _get_lang(user_id)
             await telegram_handler.send_message(
                 chat_id,
-                "❌ 日期格式错误。请使用格式：YYYY-MM-DD\nInvalid date format. Use: YYYY-MM-DD"
+                t('err_invalid_date_format', lang)
             )
             return
 
     # Generate financial overview
     finance_data = await generate_financial_overview(target_date)
 
+    lang = await _get_lang(user_id)
     overview_text = f"""
-💰 **财务概览 / Financial Overview**
+{t('finance_title', lang)}
 
-📅 **日期 / Date:** {target_date.strftime('%Y-%m-%d')} ({target_date.strftime('%m月%d日')})
+{t('finance_date_label', lang)} {target_date.strftime('%Y-%m-%d')} ({target_date.strftime('%m月%d日')})
 
-{format_financial_overview(finance_data)}
+{format_financial_overview(finance_data, lang)}
 
-点击按钮查看详细信息：
-Click buttons for detailed information:
+{t('finance_click_buttons', lang)}
     """.strip()
 
     keyboard = telegram_handler.create_inline_keyboard([
         [
-            {'text': '📊 今日明细 / Today Details', 'callback_data': f'finance_details_{target_date}'},
-            {'text': '📈 趋势分析 / Trend Analysis', 'callback_data': f'finance_trends_{target_date}'}
+            {'text': t('btn_today_details', lang), 'callback_data': f'finance_details_{target_date}'},
+            {'text': t('btn_trend_analysis', lang), 'callback_data': f'finance_trends_{target_date}'}
         ],
         [
-            {'text': '👥 按前台 / By Frontdesk', 'callback_data': f'finance_by_frontdesk_{target_date}'},
-            {'text': '🏢 按平台 / By Platform', 'callback_data': f'finance_by_platform_{target_date}'}
+            {'text': t('btn_by_frontdesk', lang), 'callback_data': f'finance_by_frontdesk_{target_date}'},
+            {'text': t('btn_by_platform', lang), 'callback_data': f'finance_by_platform_{target_date}'}
         ],
         [
-            {'text': '📋 添加记录 / Add Record', 'callback_data': 'add_financial_record'},
-            {'text': '🔄 刷新 / Refresh', 'callback_data': f'refresh_finance_{target_date}'}
+            {'text': t('btn_add_record', lang), 'callback_data': 'add_financial_record'},
+            {'text': t('btn_refresh', lang), 'callback_data': f'refresh_finance_{target_date}'}
         ]
     ])
 
@@ -143,25 +152,25 @@ async def generate_financial_overview(target_date: date) -> Dict[str, Any]:
     }
 
 
-def format_financial_overview(data: Dict[str, Any]) -> str:
+def format_financial_overview(data: Dict[str, Any], lang: str = 'zh') -> str:
     """Format financial overview for display."""
     totals = data['totals']
 
     overview = f"""
-**📊 今日汇总 / Today's Summary:**
-• 记录数量 / Records: {data['records_count']}
-• 新单总额 / New Orders: ${totals['new_orders']:.2f}
-• 承压总额 / Pressure: ${totals['pressure']:.2f}
-• 刀数总额 / Knives Total: ${totals['knives']:.2f}
-• 总收入 / Total Income: ${totals['total_income']:.2f}
+{t('today_summary_title', lang)}
+{t('finance_records_count', lang)} {data['records_count']}
+{t('finance_new_orders_total', lang)} ${totals['new_orders']:.2f}
+{t('finance_pressure_total', lang)} ${totals['pressure']:.2f}
+{t('finance_knives_total', lang)} ${totals['knives']:.2f}
+{t('finance_income_total', lang)} ${totals['total_income']:.2f}
 
-**👥 按前台分组 / By Frontdesk:**
+{t('by_frontdesk_title', lang)}
 """
 
     for frontdesk, stats in data['by_frontdesk'].items():
         overview += f"• {frontdesk}: {stats['count']}单, ${stats['total_in']:.2f}\n"
 
-    overview += "\n**🏢 按平台分组 / By Platform:**\n"
+    overview += f"\n{t('by_platform_title', lang)}\n"
     for platform, stats in data['by_platform'].items():
         overview += f"• {platform}: {stats['count']}单, ${stats['total_amount']:.2f}\n"
 
@@ -176,23 +185,24 @@ async def handle_add_financial_record(task_data: Dict[str, Any]):
     # Check permissions
     member = await database.get_team_member_by_user_id(user_id)
     if not member or member.role not in ['manager', 'admin']:
+        lang = await _get_lang(user_id)
         await telegram_handler.send_message(
             chat_id,
-            "❌ 此功能仅限管理员和经理使用。\nThis feature is only for managers and admins."
+            t('err_manager_only', lang)
         )
         return
 
+    lang = await _get_lang(user_id)
     # Start financial record wizard
-    wizard_text = """
-💰 **添加财务记录 / Add Financial Record**
+    wizard_text = f"""
+{t('add_financial_record_title', lang)}
 
-请按步骤填写财务信息。点击开始：
-Please fill in financial information step by step. Click start:
+{t('add_financial_record_desc', lang)}
     """.strip()
 
     keyboard = telegram_handler.create_inline_keyboard([
-        [{'text': '🚀 开始填写 / Start Filling', 'callback_data': 'start_financial_wizard'}],
-        [{'text': '❌ 取消 / Cancel', 'callback_data': 'cancel_financial'}]
+        [{'text': t('btn_start_filling', lang), 'callback_data': 'start_financial_wizard'}],
+        [{'text': t('btn_cancel', lang), 'callback_data': 'cancel_financial'}]
     ])
 
     await telegram_handler.send_message(
@@ -216,19 +226,18 @@ async def handle_start_financial_wizard(task_data: Dict[str, Any]):
 
     telegram_handler.set_conversation_state(user_id, wizard_state)
 
+    lang = await _get_lang(user_id)
     date_text = f"""
-📅 **步骤 1/10: 日期 / Step 1/10: Date**
+{t('finance_step_date', lang)}
 
-请输入日期（格式：X月X日，例如：3月15日）
-Please enter date (format: X月X日, e.g., 3月15日):
+{t('finance_enter_date', lang)}
 
-当前时间：{datetime.now().strftime('%m月%d日')}
-Current time: {datetime.now().strftime('%m月%d日')}
+{t('finance_current_time', lang)}{datetime.now().strftime('%m月%d日')}
     """.strip()
 
     keyboard = telegram_handler.create_inline_keyboard([
-        [{'text': f'使用今日 / Use Today ({datetime.now().strftime("%m月%d日")})', 'callback_data': 'use_today_financial_date'}],
-        [{'text': '取消 / Cancel', 'callback_data': 'cancel_financial'}]
+        [{'text': f'{t("finance_use_today", lang)} ({datetime.now().strftime("%m月%d日")})', 'callback_data': 'use_today_financial_date'}],
+        [{'text': t('btn_cancel', lang), 'callback_data': 'cancel_financial'}]
     ])
 
     await telegram_handler.edit_message(
@@ -269,11 +278,11 @@ async def handle_financial_date_input(user_id: int, chat_id: int, date_input: st
     state['step'] = 'account_id'
     telegram_handler.set_conversation_state(user_id, state)
 
-    account_text = """
-🆔 **步骤 2/10: 账号ID / Step 2/10: Account ID**
+    lang = await _get_lang(user_id)
+    account_text = f"""
+{t('finance_step_account', lang)}
 
-请输入账号ID（格式：123456 / 123456）：
-Please enter account ID (format: 123456 / 123456):
+{t('finance_enter_account', lang)}
     """.strip()
 
     await telegram_handler.send_message(chat_id, account_text)
@@ -285,11 +294,11 @@ async def handle_financial_account_input(user_id: int, chat_id: int, account_inp
     state['step'] = 'group_id'
     telegram_handler.set_conversation_state(user_id, state)
 
-    group_text = """
-👥 **步骤 3/10: 群号ID / Step 3/10: Group ID**
+    lang = await _get_lang(user_id)
+    group_text = f"""
+{t('finance_step_group', lang)}
 
-请输入群号ID（格式：1234 / 12345678910）：
-Please enter group ID (format: 1234 / 12345678910):
+{t('finance_enter_group', lang)}
     """.strip()
 
     await telegram_handler.send_message(chat_id, group_text)
@@ -301,11 +310,11 @@ async def handle_financial_group_input(user_id: int, chat_id: int, group_input: 
     state['step'] = 'frontdesk'
     telegram_handler.set_conversation_state(user_id, state)
 
-    frontdesk_text = """
-👤 **步骤 4/10: 前台 / Step 4/10: Frontdesk**
+    lang = await _get_lang(user_id)
+    frontdesk_text = f"""
+{t('finance_step_frontdesk', lang)}
 
-请输入前台姓名：
-Please enter frontdesk name:
+{t('finance_enter_frontdesk', lang)}
     """.strip()
 
     await telegram_handler.send_message(chat_id, frontdesk_text)
@@ -317,11 +326,11 @@ async def handle_financial_frontdesk_input(user_id: int, chat_id: int, frontdesk
     state['step'] = 'platform'
     telegram_handler.set_conversation_state(user_id, state)
 
-    platform_text = """
-🏢 **步骤 5/10: 平台 / Step 5/10: Platform**
+    lang = await _get_lang(user_id)
+    platform_text = f"""
+{t('finance_step_platform', lang)}
 
-请选择平台：
-Please select platform:
+{t('finance_select_platform', lang)}
     """.strip()
 
     keyboard = telegram_handler.create_inline_keyboard([
@@ -331,9 +340,9 @@ Please select platform:
         ],
         [
             {'text': 'TradingView', 'callback_data': 'platform_tradingview'},
-            {'text': '其他 / Other', 'callback_data': 'platform_other'}
+            {'text': t('btn_platform_other', lang), 'callback_data': 'platform_other'}
         ],
-        [{'text': '取消 / Cancel', 'callback_data': 'cancel_financial'}]
+        [{'text': t('btn_cancel', lang), 'callback_data': 'cancel_financial'}]
     ])
 
     await telegram_handler.send_message(chat_id, platform_text, reply_markup=keyboard)
@@ -352,9 +361,10 @@ async def handle_platform_selection(task_data: Dict[str, Any]):
     platform = callback_data.split('platform_')[1]
     if platform == 'other':
         # Ask for custom platform
+        lang = await _get_lang(user_id)
         await telegram_handler.send_message(
             chat_id,
-            "请输入平台名称：\nPlease enter platform name:"
+            t('finance_enter_platform_name', lang)
         )
         return
 
@@ -362,18 +372,13 @@ async def handle_platform_selection(task_data: Dict[str, Any]):
     state['step'] = 'amounts'
     telegram_handler.set_conversation_state(user_id, state)
 
-    amounts_text = """
-💰 **步骤 6/10: 金额信息 / Step 6/10: Amount Information**
+    lang = await _get_lang(user_id)
+    amounts_text = f"""
+{t('finance_step_amounts', lang)}
 
-请输入金额信息（可选，输入"跳过"跳过某项）：
-Please enter amount information (optional, enter "skip" to skip):
+{t('finance_amounts_desc', lang)}
 
-格式 / Format:
-新单金额,承压金额,总收入
-例如 / Example: 100.50,200.75,500.00
-
-输入 "0" 表示无金额
-Enter "0" for no amount
+{t('finance_amounts_format', lang)}
     """.strip()
 
     await telegram_handler.send_message(chat_id, amounts_text)
@@ -389,15 +394,17 @@ async def handle_financial_amounts_input(user_id: int, chat_id: int, amounts_inp
                 state['record_data']['pressure_amount'] = float(parts[1]) if parts[1] != '0' else None
                 state['record_data']['total_in'] = float(parts[2]) if parts[2] != '0' else None
             else:
+                lang = await _get_lang(user_id)
                 await telegram_handler.send_message(
                     chat_id,
-                    "❌ 格式错误。请使用格式：新单金额,承压金额,总收入\nInvalid format. Use: new_amount,pressure_amount,total_amount"
+                    t('finance_amounts_format_error', lang)
                 )
                 return
     except ValueError:
+        lang = await _get_lang(user_id)
         await telegram_handler.send_message(
             chat_id,
-            "❌ 金额格式错误。请输入有效数字。\nInvalid amount format. Please enter valid numbers."
+            t('finance_amounts_number_error', lang)
         )
         return
 
@@ -409,28 +416,28 @@ async def show_financial_confirmation(user_id: int, chat_id: int, state: Dict[st
     """Show financial record confirmation."""
     record_data = state['record_data']
 
+    lang = await _get_lang(user_id)
     confirmation_text = f"""
-✅ **确认财务记录 / Confirm Financial Record**
+{t('finance_confirm_title', lang)}
 
-请确认以下信息：
-Please confirm the following information:
+{t('finance_confirm_desc', lang)}
 
-• 日期 / Date: {record_data['date']}
-• 账号ID / Account: {record_data['account_id']}
-• 群号ID / Group: {record_data['group_id']}
-• 前台 / Frontdesk: {record_data['frontdesk']}
-• 平台 / Platform: {record_data['platform']}
-• 新单金额 / New Order: ${record_data.get('new_order_amount', 0):.2f}
-• 承压金额 / Pressure: ${record_data.get('pressure_amount', 0):.2f}
-• 总收入 / Total: ${record_data.get('total_in', 0):.2f}
+{t('finance_date_field', lang)} {record_data['date']}
+{t('finance_account_field', lang)} {record_data['account_id']}
+{t('finance_group_field', lang)} {record_data['group_id']}
+{t('finance_frontdesk_field', lang)} {record_data['frontdesk']}
+{t('finance_platform_field', lang)} {record_data['platform']}
+{t('finance_new_order_field', lang)} ${record_data.get('new_order_amount', 0):.2f}
+{t('finance_pressure_field', lang)} ${record_data.get('pressure_amount', 0):.2f}
+{t('finance_total_field', lang)} ${record_data.get('total_in', 0):.2f}
     """.strip()
 
     keyboard = telegram_handler.create_inline_keyboard([
         [
-            {'text': '✅ 确认提交 / Confirm Submit', 'callback_data': 'confirm_financial_record'},
-            {'text': '✏️ 修改 / Edit', 'callback_data': 'edit_financial_record'}
+            {'text': t('btn_confirm_submit', lang), 'callback_data': 'confirm_financial_record'},
+            {'text': t('btn_edit', lang), 'callback_data': 'edit_financial_record'}
         ],
-        [{'text': '❌ 取消 / Cancel', 'callback_data': 'cancel_financial'}]
+        [{'text': t('btn_cancel', lang), 'callback_data': 'cancel_financial'}]
     ])
 
     await telegram_handler.send_message(
@@ -471,23 +478,23 @@ async def handle_confirm_financial_record(task_data: Dict[str, Any]):
         # Clear conversation state
         telegram_handler.clear_conversation_state(user_id)
 
+        lang = await _get_lang(user_id)
         success_text = f"""
-✅ **财务记录添加成功！/ Financial Record Added Successfully!**
+{t('finance_success_title', lang)}
 
 记录ID: {record_id}
 账户: {record_data['account_id']}
 平台: {record_data['platform']}
 总金额: ${record_data.get('total_in', 0):.2f}
 
-感谢您的录入！
-Thank you for your input!
+{t('finance_success_thanks', lang)}
         """.strip()
 
         await telegram_handler.send_message(chat_id, success_text)
 
         # Notify managers
         manager_notification = f"""
-💰 **新财务记录 / New Financial Record**
+{t('finance_new_record_notification', lang)}
 
 前台: {record_data['frontdesk']}
 平台: {record_data['platform']}

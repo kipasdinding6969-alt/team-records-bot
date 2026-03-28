@@ -11,6 +11,12 @@ from telegram_handler import telegram_handler
 from utils.formatting import format_client_record, format_date_chinese
 from utils.validators import validate_phone_number, validate_date_format
 from config import config, CATEGORY_TYPES, STATUS_TYPES
+from i18n import t
+
+
+async def _get_lang(user_id):
+    from database import database
+    return (await database.get_user_language(user_id)) or 'zh'
 
 logger = logging.getLogger(__name__)
 
@@ -22,28 +28,28 @@ async def handle_report_command(task_data: Dict[str, Any]):
 
     # Check if user is registered frontdesk staff
     member = await database.get_team_member_by_user_id(user_id)
+    lang = await _get_lang(user_id)
     if not member or member.role not in ['frontdesk', 'manager', 'admin']:
         await telegram_handler.send_message(
             chat_id,
-            "❌ 此功能仅限前台员工使用。\nThis feature is only for frontdesk staff."
+            t('err_frontdesk_only', lang)
         )
         return
 
     # Start client record wizard
     welcome_text = f"""
-📋 **客户记录提交 / Client Record Submission**
+{t('client_record_submission_title', lang)}
 
 您好 {member.frontdesk_name or member.first_name}！
 Hello {member.frontdesk_name or member.first_name}!
 
-请按步骤填写客户信息。点击开始：
-Please fill in client information step by step. Click start:
+{t('fill_client_info_step', lang)}
     """.strip()
 
     keyboard = telegram_handler.create_inline_keyboard([
-        [{'text': '🚀 开始填写 / Start Filling', 'callback_data': 'start_report_wizard'}],
-        [{'text': '📊 查看今日记录 / View Today\'s Records', 'callback_data': 'view_today_records'}],
-        [{'text': '❌ 取消 / Cancel', 'callback_data': 'cancel_report'}]
+        [{'text': t('btn_start_filling', lang), 'callback_data': 'start_report_wizard'}],
+        [{'text': t('btn_view_today_records', lang), 'callback_data': 'view_today_records'}],
+        [{'text': t('btn_cancel', lang), 'callback_data': 'cancel_report'}]
     ])
 
     await telegram_handler.send_message(

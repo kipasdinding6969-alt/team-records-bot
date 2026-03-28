@@ -9,6 +9,12 @@ from database import database
 from models import Reminder, BotTask
 from telegram_handler import telegram_handler
 from utils.formatting import format_reminder, format_datetime_chinese
+from i18n import t
+
+
+async def _get_lang(user_id):
+    from database import database
+    return (await database.get_user_language(user_id)) or 'zh'
 
 logger = logging.getLogger(__name__)
 
@@ -21,20 +27,20 @@ async def handle_remind_command(task_data: Dict[str, Any]):
 
     # Check permissions
     member = await database.get_team_member_by_user_id(user_id)
+    lang = await _get_lang(user_id)
     if not member or member.role not in ['admin']:
         await telegram_handler.send_message(
             chat_id,
-            "❌ 此功能仅限管理员使用。\nThis feature is only for administrators."
+            t('err_admin_only', lang)
         )
         return
 
     if not args:
         # Show reminder management options
-        options_text = """
-🔔 **提醒管理 / Reminder Management**
+        options_text = f"""
+{t('reminder_management_title', lang)}
 
-选择操作类型：
-Choose operation type:
+{t('choose_operation_type', lang)}
 
 使用方法 / Usage:
 • /remind [成员名] - 发送手动提醒给特定成员
@@ -68,11 +74,11 @@ async def show_pending_reminders(task_data: Dict[str, Any]):
     reminders = await database.get_pending_reminders()
 
     if not reminders:
-        no_reminders_text = """
-✅ **无待处理提醒 / No Pending Reminders**
+        lang = await _get_lang(task_data['user_id'])
+        no_reminders_text = f"""
+{t('no_pending_reminders_title', lang)}
 
-当前没有待处理的提醒。
-No pending reminders at this time.
+{t('no_pending_reminders_desc', lang)}
         """.strip()
 
         await telegram_handler.send_message(chat_id, no_reminders_text, parse_mode='markdown')

@@ -51,6 +51,7 @@ class RalphLoop:
         self.last_sync = None
         self.last_reminder_check = None
         self.last_report_generation = None
+        self.last_channel_post = None
 
         # Command and callback handlers registry
         self.command_handlers = {}
@@ -115,6 +116,10 @@ class RalphLoop:
         # Validate Telegram configuration
         if not config.telegram.api_id or not config.telegram.api_hash or not config.telegram.phone:
             errors.append("Missing required Telegram configuration (TG_API_ID, TG_API_HASH, TG_PHONE)")
+
+        # Bot token is optional - if not provided, will run in user-only mode
+        if not config.telegram.bot_token:
+            logger.warning("No bot token provided - running in user-only mode (inline buttons will not work)")
 
         # Validate Google Sheets configuration
         if not config.google_sheets.spreadsheet_id:
@@ -294,6 +299,8 @@ class RalphLoop:
                 success = await self._handle_sync_task(task)
             elif task.task_type == 'maintenance':
                 success = await self._handle_maintenance_task(task)
+            elif task.task_type == 'channel_post':
+                success = await self._handle_channel_post_task(task)
             else:
                 logger.warning(f"Unknown task type: {task.task_type}")
                 success = False
@@ -355,25 +362,29 @@ class RalphLoop:
             else:
                 # Unknown command - send help message
                 chat_id = data.get('chat_id')
+                user_id = data.get('user_id')
                 if chat_id:
-                    help_text = """
-❓ **未知命令 / Unknown Command**
+                    from i18n import t
+                    # Get user language preference
+                    user_language = await database.get_user_language(user_id) if user_id else None
+                    lang = user_language or config.bot.default_language
 
-可用命令 / Available Commands:
-• /start - 注册账户 / Register account
-• /menu - 主菜单 / Main menu
-• /report - 提交客户记录 / Submit client record
-• /status - 查看个人统计 / View personal stats
-• /clients - 查看客户列表 / View client list
-• /analytics - 数据分析图表 / Data analytics charts
-• /charts - 图表分析 / Chart analysis
-• /help - 帮助中心 / Help center
+                    help_text = f"""{t('unknown_command_title', lang)}
 
-管理命令 / Admin Commands:
-• /dashboard - 团队概览 / Team dashboard
-• /summary - 生成日报 / Generate daily report
-• /finance - 财务概览 / Financial overview
-                    """.strip()
+{t('available_commands', lang)}
+{t('cmd_start', lang)}
+{t('cmd_menu', lang)}
+{t('cmd_report', lang)}
+{t('cmd_status', lang)}
+{t('cmd_clients', lang)}
+{t('cmd_analytics', lang)}
+{t('cmd_charts', lang)}
+{t('cmd_help', lang)}
+
+{t('admin_commands', lang)}
+{t('cmd_dashboard', lang)}
+{t('cmd_summary', lang)}
+{t('cmd_finance', lang)}"""
 
                     await telegram_handler.send_message(chat_id, help_text, parse_mode='markdown')
 
@@ -458,6 +469,10 @@ class RalphLoop:
                 return True
             elif action == 'process_overdue':
                 results = await reminder_engine.process_overdue_reminders()
+                return True
+            elif action == 'scan_stale_clients':
+                results = await reminder_engine.scan_stale_clients()
+                self.metrics['reminders_sent'] += results.get('reminders_created', 0)
                 return True
             else:
                 logger.warning(f"Unknown reminder action: {action}")
@@ -555,6 +570,22 @@ class RalphLoop:
             logger.error(f"Error handling maintenance task: {e}")
             return False
 
+    async def _handle_channel_post_task(self, task: BotTask) -> bool:
+        """Handle channel posting tasks."""
+        try:
+            action = task.data.get('action')
+
+            if action == 'post_summary':
+                results = await telegram_handler.post_channel_summary()
+                return results.get('success', False)
+            else:
+                logger.warning(f"Unknown channel post action: {action}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error handling channel post task: {e}")
+            return False
+
     async def perform_maintenance(self):
         """Perform periodic maintenance operations when no urgent tasks."""
         current_time = datetime.now()
@@ -571,6 +602,14 @@ class RalphLoop:
                     data={'action': 'process_pending'}
                 )
                 await database.create_task(reminder_task)
+
+            # Scan for stale clients during working hours
+            stale_scan_task = BotTask(
+                task_type='reminder',
+                priority=3,
+                data={'action': 'scan_stale_clients'}
+            )
+            await database.create_task(stale_scan_task)
 
             self.last_reminder_check = current_time
 
@@ -601,12 +640,22 @@ class RalphLoop:
                 priority=2,
                 data={
                     'report_type': 'daily_summary',
-                    'parameters': {'date': current_time.date()},
+                    'parameters': {'date': current_time.strftime('%Y-%m-%d')},
                     'recipients': config.bot.manager_chat_ids
                 }
             )
             await database.create_task(daily_report_task)
             self.last_report_generation = current_time.date()
+
+        # Schedule channel posts during working hours
+        if config.bot.report_channel_id and self._should_post_channel_summary():
+            channel_post_task = BotTask(
+                task_type='channel_post',
+                priority=3,
+                data={'action': 'post_summary'}
+            )
+            await database.create_task(channel_post_task)
+            self.last_channel_post = current_time
 
     def _should_generate_daily_report(self) -> bool:
         """Check if daily report should be generated."""
@@ -625,6 +674,27 @@ class RalphLoop:
         )
 
         return is_time
+
+    def _should_post_channel_summary(self) -> bool:
+        """Check if channel summary should be posted."""
+        from working_hours import is_working_hours
+
+        if not is_working_hours():
+            return False
+
+        if not config.bot.report_channel_id or not config.bot.report_interval_hours:
+            return False
+
+        current_time = datetime.now()
+        interval_seconds = config.bot.report_interval_hours * 3600
+
+        # Check if enough time has passed since last post
+        should_post = (
+            not self.last_channel_post or
+            (current_time - self.last_channel_post).total_seconds() >= interval_seconds
+        )
+
+        return should_post
 
     async def shutdown(self):
         """Perform graceful shutdown with transaction safety."""
@@ -671,7 +741,7 @@ class RalphLoop:
 
             # Clear any remaining conversation states
             try:
-                await database.cleanup_old_conversation_states(hours_old=0)  # Clear all
+                await database.cleanup_old_conversation_states(hours_old=1)  # Clear old states
             except Exception as e:
                 logger.error(f"Error clearing conversation states: {e}")
 

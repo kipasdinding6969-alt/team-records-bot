@@ -198,6 +198,14 @@ class Database:
             )
         """)
 
+        # Migration: add language column if missing
+        try:
+            await db.execute("ALTER TABLE team_members ADD COLUMN language TEXT DEFAULT NULL")
+            await db.commit()
+            logger.info("Added 'language' column to team_members")
+        except Exception:
+            pass  # Column already exists
+
         # Reminders
         await db.execute("""
             CREATE TABLE IF NOT EXISTS reminders (
@@ -242,6 +250,17 @@ class Database:
             )
         """)
 
+        # Bot Settings (key-value pairs for global configuration)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS bot_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # Create indexes for better performance
         await db.execute("CREATE INDEX IF NOT EXISTS idx_client_records_frontdesk ON client_records(frontdesk)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_client_records_date ON client_records(date)")
@@ -251,6 +270,7 @@ class Database:
         await db.execute("CREATE INDEX IF NOT EXISTS idx_reminders_scheduled ON reminders(scheduled_time, is_sent)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_bot_tasks_status ON bot_tasks(status, priority)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_conversation_states_user_id ON conversation_states(user_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_bot_settings_key ON bot_settings(key)")
 
     # Client Records CRUD
     async def create_client_record(self, record: ClientRecord) -> int:
@@ -431,6 +451,22 @@ class Database:
             """, (user_id,))
             await db.commit()
 
+    async def get_user_language(self, user_id: int) -> str:
+        """Get user's preferred language. Returns None if not set."""
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT language FROM team_members WHERE user_id = ?", (user_id,))
+            row = await cursor.fetchone()
+            return row[0] if row and row[0] else None
+
+    async def set_user_language(self, user_id: int, language: str):
+        """Set user's preferred language."""
+        async with self.get_connection() as db:
+            await db.execute(
+                "UPDATE team_members SET language = ? WHERE user_id = ?",
+                (language, user_id))
+            await db.commit()
+
     # Reminders CRUD
     async def create_reminder(self, reminder: Reminder) -> int:
         """Create a new reminder."""
@@ -603,6 +639,36 @@ class Database:
             status=row[4], scheduled_time=datetime.fromisoformat(row[5]) if row[5] else None,
             attempts=row[6], max_attempts=row[7], error_message=row[8]
         )
+
+    # Bot Settings CRUD
+    async def get_bot_setting(self, key: str) -> Optional[str]:
+        """Get a bot setting value by key."""
+        async with self.get_connection() as db:
+            cursor = await db.execute("SELECT value FROM bot_settings WHERE key = ?", (key,))
+            row = await cursor.fetchone()
+            return row[0] if row else None
+
+    async def set_bot_setting(self, key: str, value: str, description: str = None):
+        """Set a bot setting."""
+        async with self.get_connection() as db:
+            await db.execute("""
+                INSERT OR REPLACE INTO bot_settings (key, value, description, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            """, (key, value, description))
+            await db.commit()
+
+    async def get_all_bot_settings(self) -> Dict[str, str]:
+        """Get all bot settings as a dictionary."""
+        async with self.get_connection() as db:
+            cursor = await db.execute("SELECT key, value FROM bot_settings")
+            rows = await cursor.fetchall()
+            return {row[0]: row[1] for row in rows}
+
+    async def delete_bot_setting(self, key: str):
+        """Delete a bot setting."""
+        async with self.get_connection() as db:
+            await db.execute("DELETE FROM bot_settings WHERE key = ?", (key,))
+            await db.commit()
 
     # Utility methods
     async def backup_database(self) -> str:

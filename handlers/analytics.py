@@ -15,47 +15,50 @@ logger = logging.getLogger(__name__)
 
 async def handle_analytics_command(task_data: Dict[str, Any]):
     """Handle /analytics command - show analytics menu."""
+    from i18n import t
+
     user_id = task_data['user_id']
     chat_id = task_data['chat_id']
+
+    # Get user language
+    user_language = await database.get_user_language(user_id)
+    lang = user_language or 'zh'
 
     # Check if user is registered
     member = await database.get_team_member_by_user_id(user_id)
     if not member:
         await telegram_handler.send_message(
             chat_id,
-            "❌ 请先使用 /start 注册。\nPlease register using /start first."
+            t('err_not_registered', lang)
         )
         return
 
-    analytics_text = f"""
-📈 **数据分析 / Analytics Dashboard**
+    analytics_text = f"""{t('analytics_title', lang)}
 
-📅 **日期 / Date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+📅 **{t('today_date', lang)}** {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
-欢迎来到数据分析中心！选择您需要的图表类型：
-Welcome to the Analytics Center! Select the chart type you need:
-    """.strip()
+{t('analytics_select', lang)}"""
 
     keyboard = telegram_handler.create_inline_keyboard([
         [
-            {'text': '📊 日报图表 / Daily Charts', 'callback_data': 'analytics_daily_charts'},
-            {'text': '📈 趋势分析 / Trend Analysis', 'callback_data': 'analytics_trends'}
+            {'text': t('btn_daily_charts', lang), 'callback_data': 'analytics_daily_charts'},
+            {'text': t('btn_trends', lang), 'callback_data': 'analytics_trends'}
         ],
         [
-            {'text': '🏆 排行榜 / Leaderboard', 'callback_data': 'analytics_leaderboard'},
-            {'text': '🔥 转化漏斗 / Conversion Funnel', 'callback_data': 'analytics_daily_funnel'}
+            {'text': t('btn_leaderboard', lang), 'callback_data': 'analytics_leaderboard'},
+            {'text': t('btn_funnel', lang), 'callback_data': 'analytics_daily_funnel'}
         ],
         [
-            {'text': '📉 对比分析 / Comparison', 'callback_data': 'analytics_frontdesk_comparison'},
-            {'text': '🌡️ 热力图 / Heatmap', 'callback_data': 'analytics_heatmap'}
+            {'text': t('btn_comparison', lang), 'callback_data': 'analytics_frontdesk_comparison'},
+            {'text': t('btn_heatmap', lang), 'callback_data': 'analytics_heatmap'}
         ],
         [
-            {'text': '🎯 个人表现 / Personal Performance', 'callback_data': 'analytics_personal'},
-            {'text': '👥 团队分析 / Team Analysis', 'callback_data': 'analytics_team'}
+            {'text': t('btn_personal_perf', lang), 'callback_data': 'analytics_personal'},
+            {'text': t('btn_team_analysis', lang), 'callback_data': 'analytics_team'}
         ],
         [
-            {'text': '💰 财务分析 / Financial Analysis', 'callback_data': 'analytics_financial'},
-            {'text': '📋 自定义图表 / Custom Charts', 'callback_data': 'analytics_custom'}
+            {'text': t('btn_financial_analysis', lang), 'callback_data': 'analytics_financial'},
+            {'text': t('btn_custom_charts', lang), 'callback_data': 'analytics_custom'}
         ]
     ])
 

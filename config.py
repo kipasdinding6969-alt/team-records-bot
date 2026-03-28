@@ -14,6 +14,7 @@ class TelegramConfig:
     api_hash: str = None
     phone: str = None
     session_file: str = "team_records_bot.session"
+    bot_token: str = None  # Bot token for dual-mode architecture
 
     # SOCKS5 proxy for Tor
     proxy_host: str = "127.0.0.1"
@@ -116,6 +117,16 @@ class BotConfig:
     default_language: str = "zh"  # Chinese
     supported_languages: List[str] = None
 
+    # Working hours settings
+    timezone: str = "Europe/Paris"
+    work_start_hour: int = 10
+    work_end_hour: int = 22
+
+    # Channel and reporting settings
+    report_channel_id: int = None
+    report_interval_hours: int = 3
+    stale_client_days: int = 3
+
     def __post_init__(self):
         if self.admin_chat_ids is None:
             self.admin_chat_ids = []
@@ -153,6 +164,7 @@ class Config:
         self.telegram.api_id = int(os.getenv("TG_API_ID") or os.getenv("API_ID") or "0")
         self.telegram.api_hash = os.getenv("TG_API_HASH") or os.getenv("API_HASH") or ""
         self.telegram.phone = os.getenv("TG_PHONE") or os.getenv("PHONE") or ""
+        self.telegram.bot_token = os.getenv("BOT_TOKEN") or ""
 
         if os.getenv("TG_SESSION_FILE"):
             self.telegram.session_file = os.getenv("TG_SESSION_FILE")
@@ -183,6 +195,23 @@ class Config:
                 self.bot.manager_chat_ids = [int(x.strip()) for x in os.getenv("MANAGER_CHAT_IDS").split(",") if x.strip()]
             except ValueError as e:
                 raise ValueError(f"Invalid MANAGER_CHAT_IDS format: {e}")
+
+        # Working hours config
+        if os.getenv("TIMEZONE"):
+            self.bot.timezone = os.getenv("TIMEZONE")
+        if os.getenv("WORK_START_HOUR"):
+            self.bot.work_start_hour = int(os.getenv("WORK_START_HOUR"))
+        if os.getenv("WORK_END_HOUR"):
+            self.bot.work_end_hour = int(os.getenv("WORK_END_HOUR"))
+
+        # Channel and reporting config
+        report_ch = os.getenv("REPORT_CHANNEL_ID", "").strip()
+        if report_ch and report_ch.lstrip('-').isdigit():
+            self.bot.report_channel_id = int(report_ch)
+        if os.getenv("REPORT_INTERVAL_HOURS"):
+            self.bot.report_interval_hours = int(os.getenv("REPORT_INTERVAL_HOURS"))
+        if os.getenv("STALE_CLIENT_DAYS"):
+            self.bot.stale_client_days = int(os.getenv("STALE_CLIENT_DAYS"))
 
     def _get_required_env(self, key: str, default: str = None) -> str:
         """Get required environment variable."""

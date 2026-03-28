@@ -8,6 +8,12 @@ from database import database
 from models import Reminder, BotTask, ClientRecord
 from telegram_handler import telegram_handler
 from config import config
+from i18n import t
+
+
+async def _get_lang(user_id):
+    from database import database
+    return (await database.get_user_language(user_id)) or 'zh'
 
 logger = logging.getLogger(__name__)
 
@@ -134,70 +140,67 @@ class ReminderEngine:
         # Get client record details
         client_record = await self._get_client_record(reminder.client_record_id)
 
+        # Get user language
+        lang = await _get_lang(reminder.frontdesk_user_id)
+
         if not client_record:
-            return """
-🔔 **第一天状态提醒 / Day 1 Status Reminder**
+            return f"""
+{t('reminder_day1_title', lang)}
 
-请更新客户的第一天注册状态。
-Please update the client's Day 1 registration status.
+{t('update_day1_status', lang)}
 
-使用 /clients 查看待处理客户。
-Use /clients to view pending clients.
+{t('use_clients_view_pending', lang)}
             """.strip()
 
         return f"""
-🔔 **第一天状态提醒 / Day 1 Status Reminder**
+{t('reminder_day1_title', lang)}
 
-客户信息 / Client Info:
-• 客户号 / Client: {client_record.client_number}
-• 账户ID / Account: {client_record.account_id}
-• 类别 / Category: {client_record.category}
-• 录入日期 / Date: {client_record.date}
+{t('client_info_label', lang)}:
+{t('client_number_label', lang)}: {client_record.client_number}
+{t('account_id_label', lang)}: {client_record.account_id}
+{t('category_label', lang)}: {client_record.category}
+{t('date_entered_label', lang)}: {client_record.date}
 
-请及时更新该客户的第一天注册状态！
-Please promptly update this client's Day 1 registration status!
+{t('update_day1_status_prompt', lang)}
 
-当前状态 / Current Status: {client_record.first_day}
+{t('current_status_label', lang)}: {client_record.first_day}
 
-使用 /report 或联系管理员更新状态。
-Use /report or contact admin to update status.
+{t('update_status_instruction', lang)}
         """.strip()
 
     async def _create_day2_reminder_message(self, reminder: Reminder) -> str:
         """Create Day 2 reminder message."""
         client_record = await self._get_client_record(reminder.client_record_id)
 
+        # Get user language
+        lang = await _get_lang(reminder.frontdesk_user_id)
+
         if not client_record:
-            return """
-🔔 **第二天状态提醒 / Day 2 Status Reminder**
+            return f"""
+{t('reminder_day2_title', lang)}
 
-请更新客户的第二天注册状态。
-Please update the client's Day 2 registration status.
+{t('update_day2_status', lang)}
 
-使用 /clients 查看待处理客户。
-Use /clients to view pending clients.
+{t('use_clients_view_pending', lang)}
             """.strip()
 
         return f"""
-🔔 **第二天状态提醒 / Day 2 Status Reminder**
+{t('reminder_day2_title', lang)}
 
-客户信息 / Client Info:
-• 客户号 / Client: {client_record.client_number}
-• 账户ID / Account: {client_record.account_id}
-• 第一天状态 / Day 1: {client_record.first_day}
-• 录入日期 / Date: {client_record.date}
+{t('client_info_label', lang)}:
+{t('client_number_label', lang)}: {client_record.client_number}
+{t('account_id_label', lang)}: {client_record.account_id}
+{t('day1_status_label', lang)}: {client_record.first_day}
+{t('date_entered_label', lang)}: {client_record.date}
 
-请及时更新该客户的第二天注册状态！
-Please promptly update this client's Day 2 registration status!
+{t('update_day2_status_prompt', lang)}
 
-当前状态 / Current Status: {client_record.second_day}
+{t('current_status_label', lang)}: {client_record.second_day}
 
-💡 **提示 / Tips:**
-如果客户已完成培训，请更新为"注册"
-If client completed training, update to "注册"
+{t('reminder_tips_label', lang)}
+{t('training_complete_tip', lang)}
 
-使用 /report 或联系管理员更新状态。
-Use /report or contact admin to update status.
+{t('update_status_instruction', lang)}
         """.strip()
 
     async def _create_followup_reminder_message(self, reminder: Reminder) -> str:
@@ -484,6 +487,159 @@ Please follow up promptly.
 
         except Exception as e:
             logger.error(f"Failed to escalate reminder {reminder.id}: {e}")
+
+    async def scan_stale_clients(self) -> Dict[str, Any]:
+        """Scan for stale clients and create auto-reminders for responsible frontdesk."""
+        try:
+            from working_hours import is_working_hours
+
+            # Only run during working hours
+            if not is_working_hours():
+                return {'processed': 0, 'message': 'Outside working hours, skipping stale client scan'}
+
+            cutoff_date = datetime.now() - timedelta(days=config.bot.stale_client_days)
+            results = {'processed': 0, 'reminders_created': 0, 'errors': []}
+
+            logger.info(f"Scanning for stale clients older than {config.bot.stale_client_days} days")
+
+            async with database.get_connection() as db:
+                # Find records with stale status
+                cursor = await db.execute("""
+                    SELECT * FROM client_records
+                    WHERE (
+                        (first_day IN ('不注册', '') OR first_day IS NULL OR
+                         second_day IN ('不注册', '') OR second_day IS NULL)
+                        AND created_at < ?
+                    )
+                    ORDER BY frontdesk, created_at DESC
+                """, (cutoff_date.isoformat(),))
+
+                stale_records = await cursor.fetchall()
+
+            if not stale_records:
+                logger.info("No stale client records found")
+                return results
+
+            # Group by frontdesk to avoid spam
+            frontdesk_groups = {}
+            for row in stale_records:
+                record = database._row_to_client_record(row)
+                if not record:
+                    continue
+
+                frontdesk = record.frontdesk
+                if frontdesk not in frontdesk_groups:
+                    frontdesk_groups[frontdesk] = []
+                frontdesk_groups[frontdesk].append(record)
+
+            # Create reminders for each frontdesk
+            for frontdesk, records in frontdesk_groups.items():
+                try:
+                    # Get frontdesk user ID
+                    member = await self._get_frontdesk_member(frontdesk)
+                    if not member:
+                        logger.warning(f"Frontdesk member not found: {frontdesk}")
+                        results['errors'].append(f"Frontdesk member not found: {frontdesk}")
+                        continue
+
+                    # Create stale client reminder
+                    stale_count = len(records)
+                    message = await self._create_stale_client_reminder_message(frontdesk, records)
+
+                    reminder_id = await self.create_manual_reminder(
+                        frontdesk_user_id=member.user_id,
+                        reminder_type='stale_client',
+                        scheduled_time=datetime.now(),  # Send immediately
+                        message=message
+                    )
+
+                    if reminder_id:
+                        results['reminders_created'] += 1
+                        logger.info(f"Created stale client reminder for {frontdesk}: {stale_count} clients")
+                    else:
+                        results['errors'].append(f"Failed to create reminder for {frontdesk}")
+
+                    results['processed'] += stale_count
+
+                except Exception as e:
+                    error_msg = f"Failed to process stale clients for {frontdesk}: {e}"
+                    logger.error(error_msg)
+                    results['errors'].append(error_msg)
+
+            logger.info(f"Stale client scan complete: {results}")
+            return results
+
+        except Exception as e:
+            logger.error(f"Failed to scan stale clients: {e}")
+            return {'error': str(e), 'processed': 0, 'reminders_created': 0}
+
+    async def _get_frontdesk_member(self, frontdesk_name: str) -> Optional[Any]:
+        """Get team member by frontdesk name."""
+        try:
+            async with database.get_connection() as db:
+                cursor = await db.execute("""
+                    SELECT * FROM team_members
+                    WHERE frontdesk_name = ? AND is_active = TRUE
+                    LIMIT 1
+                """, (frontdesk_name,))
+                row = await cursor.fetchone()
+                return database._row_to_team_member(row) if row else None
+
+        except Exception as e:
+            logger.error(f"Failed to get frontdesk member {frontdesk_name}: {e}")
+            return None
+
+    async def _create_stale_client_reminder_message(self, frontdesk: str, stale_records: List[ClientRecord]) -> str:
+        """Create stale client reminder message."""
+        stale_count = len(stale_records)
+
+        # Get user's language preference if available
+        if stale_records:
+            member = await self._get_frontdesk_member(frontdesk)
+            user_language = await database.get_user_language(member.user_id) if member else None
+        else:
+            user_language = None
+
+        # Use i18n when available, fallback to dual-language for now
+        from i18n import t
+
+        if user_language:
+            message = f"""⚠️ **{t('stale_clients_title', user_language)}**
+
+{t('stale_clients_found', user_language).format(count=stale_count, days=config.bot.stale_client_days)}
+
+{t('stale_clients_list', user_language)}:"""
+        else:
+            # Fallback dual-language message
+            message = f"""⚠️ **逾期客户提醒 / Stale Clients Reminder**
+
+发现 {stale_count} 个超过 {config.bot.stale_client_days} 天未更新状态的客户。
+Found {stale_count} clients with no status updates for over {config.bot.stale_client_days} days.
+
+客户列表 / Client List:"""
+
+        # Add up to 5 client details
+        for i, record in enumerate(stale_records[:5]):
+            days_old = (datetime.now() - datetime.fromisoformat(record.created_at if hasattr(record, 'created_at') else datetime.now().isoformat())).days
+            message += f"\n• {record.client_number} ({record.account_id}) - {days_old}天前 / {days_old}d ago"
+
+        if len(stale_records) > 5:
+            remaining = len(stale_records) - 5
+            if user_language:
+                message += f"\n{t('and_more_clients', user_language).format(count=remaining)}"
+            else:
+                message += f"\n...还有 {remaining} 个客户 / ...and {remaining} more clients"
+
+        if user_language:
+            message += f"\n\n{t('please_update_status', user_language)}"
+            message += f"\n{t('use_clients_command', user_language)}"
+        else:
+            message += "\n\n请及时更新这些客户的注册状态！"
+            message += "\nPlease update the registration status of these clients promptly!"
+            message += "\n\n使用 /clients 查看详细信息。"
+            message += "\nUse /clients to view details."
+
+        return message
 
 
 # Global reminder engine instance
