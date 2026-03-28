@@ -7,6 +7,7 @@ from enum import Enum
 
 class StaffRole(str, Enum):
     FRONTDESK = 'frontdesk'
+    MAINTENANCE = 'maintenance'
     MANAGER = 'manager'
     ADMIN = 'admin'
 
@@ -96,8 +97,10 @@ class Staff:
     created_at: Optional[datetime] = None
     last_active_at: Optional[datetime] = None
 
+    maintenance_id: Optional[int] = None  # NULL if they ARE maintenance
+
     def is_manager_or_above(self) -> bool:
-        return self.role in (StaffRole.MANAGER, StaffRole.ADMIN)
+        return self.role in (StaffRole.MAINTENANCE, StaffRole.MANAGER, StaffRole.ADMIN)
 
     def is_admin(self) -> bool:
         return self.role == StaffRole.ADMIN
@@ -125,6 +128,9 @@ class Client:
     followup_count: int = 0
     platform: Optional[str] = None
     total_deposited: float = 0.0
+    maintenance_id: Optional[int] = None   # auto-set from frontdesk's team
+    handoff_at: Optional[datetime] = None  # when client was handed to maintenance
+    handoff_note: Optional[str] = None     # notes during handoff
     sheet_gid: Optional[int] = None
     sheet_row: Optional[int] = None
     created_at: Optional[datetime] = None

@@ -107,14 +107,20 @@ class TestStaff:
     @pytest.mark.asyncio
     async def test_get_all_staff(self, db, staff_row, manager_row):
         all_s = await db.get_all_staff()
-        assert len(all_s) == 2
+        # seed_team_structure adds 2 maintenance staff (阿俊 + 何军) on every init
+        names = {s.display_name for s in all_s}
+        assert staff_row.display_name in names
+        assert manager_row.display_name in names
+        assert len(all_s) >= 2
 
     @pytest.mark.asyncio
     async def test_staff_role_checks(self):
         fd = Staff(tg_user_id=1, tg_chat_id=1, display_name='FD', role=StaffRole.FRONTDESK)
-        mgr = Staff(tg_user_id=2, tg_chat_id=2, display_name='MGR', role=StaffRole.MANAGER)
-        adm = Staff(tg_user_id=3, tg_chat_id=3, display_name='ADM', role=StaffRole.ADMIN)
+        maint = Staff(tg_user_id=2, tg_chat_id=2, display_name='MAINT', role=StaffRole.MAINTENANCE)
+        mgr = Staff(tg_user_id=3, tg_chat_id=3, display_name='MGR', role=StaffRole.MANAGER)
+        adm = Staff(tg_user_id=4, tg_chat_id=4, display_name='ADM', role=StaffRole.ADMIN)
         assert not fd.is_manager_or_above()
+        assert maint.is_manager_or_above()
         assert mgr.is_manager_or_above()
         assert adm.is_manager_or_above()
         assert adm.is_admin()
@@ -544,9 +550,14 @@ class TestMigration:
 
     @pytest.mark.asyncio
     async def test_migration_empty_old_db(self, tmp_path):
-        """Migration with no old DB creates clean V2 DB."""
+        """Migration with no old DB creates clean V2 DB (only seeded maintenance staff)."""
         new_db = str(tmp_path / 'new.db')
         db = DatabaseV2(new_db)
         await db.initialize()
         staff = await db.get_all_staff(active_only=False)
-        assert staff == []
+        # seed_team_structure creates 阿俊 and 何军 as maintenance staff
+        names = {s.display_name for s in staff}
+        assert '阿俊' in names
+        assert '何军' in names
+        maintenance_roles = [s for s in staff if s.role.value == 'maintenance']
+        assert len(maintenance_roles) == 2

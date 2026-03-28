@@ -1294,6 +1294,24 @@ STRINGS = {
         'en': '✅ Name updated: {old} → {new}',
     },
 
+    # === V2 HANDOFF ===
+    'handoff_usage': {
+        'zh': '用法: /handoff <手机号> [备注]\n将客户移交给维护人员',
+        'en': 'Usage: /handoff <phone> [note]\nHand off client to maintenance person',
+    },
+    'handoff_success': {
+        'zh': '✅ 客户 {phone} 已移交给 {maintenance}\n📝 备注: {note}',
+        'en': '✅ Client {phone} handed off to {maintenance}\n📝 Note: {note}',
+    },
+    'handoff_no_maintenance': {
+        'zh': '❌ 您未分配维护人员，请联系管理员',
+        'en': '❌ No maintenance person assigned to you, contact admin',
+    },
+    'handoff_notification': {
+        'zh': '🔔 新移交来自 {frontdesk}\n📱 客户: {phone}\n📊 状态: {status}\n📝 备注: {note}',
+        'en': '🔔 New handoff from {frontdesk}\n📱 Client: {phone}\n📊 Status: {status}\n📝 Note: {note}',
+    },
+
     # === V2 AUTO-REMINDER MESSAGES ===
     'auto_reminder_stale': {
         'zh': '⚠️ **自动提醒**\n客户 {phone} 已超过 {hours}小时未更新状态\n当前状态: {status}\n请及时跟进！',

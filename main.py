@@ -36,6 +36,7 @@ from handlers_v2.management import MANAGEMENT_COMMANDS, MANAGEMENT_CALLBACKS, MA
 from handlers_v2.registration_v2 import REGISTRATION_V2_COMMANDS, REGISTRATION_V2_CALLBACKS, REGISTRATION_V2_CONVERSATIONS
 from database_v2 import database_v2
 import engines.sheet_sync_v2 as _sheet_sync_v2_mod
+import engines.dashboard_sheets as _dashboard_mod
 
 logging.basicConfig(
     level=logging.INFO,
@@ -108,14 +109,16 @@ class RalphLoop:
                 await report_engine.initialize()
             await sheet_sync_engine.initialize()
 
-            # Initialize V2 bidirectional sheet sync
+            # Initialize V2 bidirectional sheet sync + dashboard
             try:
                 from engines.gsheet_writer import GSheetWriter
                 from engines.sheet_sync_v2 import SheetSyncV2
+                from engines.dashboard_sheets import DashboardSheets
                 _writer = GSheetWriter()
                 _writer.initialize()
                 _sheet_sync_v2_mod.sheet_sync_v2 = SheetSyncV2(_writer)
-                logger.info("SheetSyncV2 initialized")
+                _dashboard_mod.dashboard_sheets = DashboardSheets(_writer)
+                logger.info("SheetSyncV2 + DashboardSheets initialized")
             except Exception as e:
                 logger.warning(f"SheetSyncV2 init failed (sheets may be unavailable): {e}")
 
@@ -780,6 +783,15 @@ class RalphLoop:
                 )
             except Exception as e:
                 logger.error(f'V2 Sheets full_sync error: {e}')
+
+            # Refresh all 5 dashboard tabs after sync
+            if _dashboard_mod.dashboard_sheets is not None:
+                try:
+                    await _dashboard_mod.dashboard_sheets.refresh_all_tabs()
+                    logger.info('V2: Dashboard tabs refreshed')
+                except Exception as e:
+                    logger.error(f'V2 dashboard refresh error: {e}')
+
             self.last_v2_sheet_sync = current_time
 
     def _should_generate_daily_report(self) -> bool:

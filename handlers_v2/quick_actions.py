@@ -274,6 +274,64 @@ async def handle_remind(task_data: Dict[str, Any]):
     await telegram_handler.send_message(chat_id, msg)
 
 
+async def handle_handoff(task_data: Dict[str, Any]):
+    """
+    /handoff <phone> [note]
+    Frontdesk marks client as ready for maintenance.
+    Sets handoff_at, copies maintenance_id from frontdesk's team, notifies maintenance.
+    """
+    chat_id = task_data.get('chat_id')
+    user_id = task_data.get('user_id')
+    args = task_data.get('args', '').strip()
+
+    staff = await _get_staff(user_id)
+    if not staff:
+        await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
+        return
+
+    lang = staff.language
+    parts = args.split(None, 1)
+    if not parts:
+        await telegram_handler.send_message(chat_id, t('handoff_usage', lang))
+        return
+
+    phone = parts[0]
+    note = parts[1] if len(parts) > 1 else ''
+
+    client = await database_v2.get_client_by_phone(phone, staff.id)
+    if not client:
+        await telegram_handler.send_message(chat_id, t('client_not_found', lang, phone=phone))
+        return
+
+    # Get maintenance person for this frontdesk
+    maintenance = await database_v2.get_maintenance_for_staff(staff.id)
+    if not maintenance:
+        await telegram_handler.send_message(chat_id, t('handoff_no_maintenance', lang))
+        return
+
+    await database_v2.set_client_handoff(client.id, maintenance.id, note or None)
+
+    # Confirm to frontdesk
+    await telegram_handler.send_message(
+        chat_id,
+        t('handoff_success', lang, phone=phone, maintenance=maintenance.display_name,
+          note=note or '-'))
+
+    # Notify maintenance person (if they have a real chat_id)
+    if maintenance.tg_chat_id and maintenance.tg_chat_id > 0:
+        notify_msg = t('handoff_notification', lang,
+                       frontdesk=staff.display_name, phone=phone,
+                       status=client.status.value, note=note or '-')
+        try:
+            await telegram_handler.send_message(maintenance.tg_chat_id, notify_msg)
+        except Exception as e:
+            logger.debug(f'Handoff notification to maintenance failed: {e}')
+
+    logger.info(
+        f'{staff.display_name} handed off {phone} to {maintenance.display_name}'
+        + (f' — {note}' if note else ''))
+
+
 async def handle_inline_status_callback(task_data: Dict[str, Any]):
     """
     Callback: v2_status_<client_id>_<status>
@@ -327,6 +385,7 @@ QUICK_ACTIONS_COMMANDS = {
     'u': handle_update_status,
     'note': handle_add_note,
     'remind': handle_remind,
+    'handoff': handle_handoff,
 }
 
 QUICK_ACTIONS_CALLBACKS = {

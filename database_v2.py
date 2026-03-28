@@ -1,5 +1,5 @@
 """V2 database — async SQLite with aiosqlite, 8-table schema."""
-import json
+import hashlib
 import logging
 import struct
 from contextlib import asynccontextmanager
@@ -12,6 +12,11 @@ from models_v2 import (
     Client, ClientNote, ClientStatus, DailyStat, Deposit, NoteType,
     PeriodType, Reminder, Staff, StaffRole, TeamTarget,
 )
+
+TEAM_STRUCTURE = {
+    '阿俊': ['阿YIM', 'ODDY', '燕燕', 'MEYMEY'],
+    '何军': ['大杰', '阿勇', '小龙', '小宏'],
+}
 
 logger = logging.getLogger(__name__)
 
@@ -209,20 +214,30 @@ class DatabaseV2:
             """)
             await db.commit()
 
-        # Safe migration: add sheet_row to clients if not yet present
+        # Safe migrations — each is idempotent via try/except
+        migrations = [
+            ('clients',  'ALTER TABLE clients ADD COLUMN sheet_row INTEGER'),
+            ('staff',    'ALTER TABLE staff ADD COLUMN maintenance_id INTEGER REFERENCES staff(id)'),
+            ('clients',  'ALTER TABLE clients ADD COLUMN maintenance_id INTEGER REFERENCES staff(id)'),
+            ('clients',  'ALTER TABLE clients ADD COLUMN handoff_at TIMESTAMP'),
+            ('clients',  'ALTER TABLE clients ADD COLUMN handoff_note TEXT'),
+        ]
         async with self.get_connection() as db:
-            try:
-                await db.execute('ALTER TABLE clients ADD COLUMN sheet_row INTEGER')
-                await db.commit()
-                logger.info('Migration: added sheet_row column to clients')
-            except Exception:
-                pass  # column already exists
+            for _tbl, sql in migrations:
+                try:
+                    await db.execute(sql)
+                    await db.commit()
+                    logger.info(f'Migration applied: {sql[:60]}')
+                except Exception:
+                    pass  # column already exists
 
+        await self.seed_team_structure()
         logger.info("DatabaseV2 initialized")
 
     # ─── Staff CRUD ─────────────────────────────────────────────────────────
 
     def _row_to_staff(self, row: aiosqlite.Row) -> Staff:
+        keys = row.keys()
         return Staff(
             id=row['id'],
             tg_user_id=row['tg_user_id'],
@@ -235,6 +250,7 @@ class DatabaseV2:
             language=row['language'] or 'zh',
             is_active=bool(row['is_active']),
             daily_target=row['daily_target'] or 40,
+            maintenance_id=row['maintenance_id'] if 'maintenance_id' in keys else None,
             created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None,
             last_active_at=datetime.fromisoformat(row['last_active_at']) if row['last_active_at'] else None,
         )
@@ -296,6 +312,7 @@ class DatabaseV2:
 
     def _row_to_client(self, row: aiosqlite.Row) -> Client:
         def _dt(v): return datetime.fromisoformat(v) if v else None
+        keys = row.keys()
         return Client(
             id=row['id'],
             frontdesk_id=row['frontdesk_id'],
@@ -317,8 +334,11 @@ class DatabaseV2:
             followup_count=row['followup_count'] or 0,
             platform=row['platform'],
             total_deposited=row['total_deposited'] or 0.0,
+            maintenance_id=row['maintenance_id'] if 'maintenance_id' in keys else None,
+            handoff_at=_dt(row['handoff_at']) if 'handoff_at' in keys else None,
+            handoff_note=row['handoff_note'] if 'handoff_note' in keys else None,
             sheet_gid=row['sheet_gid'],
-            sheet_row=row['sheet_row'] if 'sheet_row' in row.keys() else None,
+            sheet_row=row['sheet_row'] if 'sheet_row' in keys else None,
             created_at=_dt(row['created_at']),
             updated_at=_dt(row['updated_at']),
         )
@@ -855,6 +875,96 @@ class DatabaseV2:
                  client.recruiter, client.status_note, client.id)
             )
             await db.commit()
+
+    async def set_client_handoff(self, client_id: int, maintenance_id: int,
+                                  note: Optional[str] = None):
+        """Mark client as handed off to maintenance person."""
+        async with self.get_connection() as db:
+            await db.execute(
+                """UPDATE clients SET handoff_at=CURRENT_TIMESTAMP, handoff_note=?,
+                   maintenance_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                (note, maintenance_id, client_id))
+            await db.commit()
+
+    # ─── Team helpers ────────────────────────────────────────────────────────
+
+    async def get_team_by_maintenance(self, maintenance_id: int) -> List[Staff]:
+        """Return all frontdesk staff assigned to a maintenance person."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT * FROM staff WHERE maintenance_id=? AND is_active=1 ORDER BY display_name',
+                (maintenance_id,))
+            rows = await cur.fetchall()
+            return [self._row_to_staff(r) for r in rows]
+
+    async def get_maintenance_for_staff(self, staff_id: int) -> Optional[Staff]:
+        """Return the maintenance person for a given frontdesk staff member."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT maintenance_id FROM staff WHERE id=?', (staff_id,))
+            row = await cur.fetchone()
+            if not row or not row['maintenance_id']:
+                return None
+            return await self.get_staff_by_id(row['maintenance_id'])
+
+    async def get_all_clients_active(self, limit: int = 500) -> List[Client]:
+        """All non-terminal clients across all staff, sorted by staleness."""
+        terminal = ['blocked', 'scammed', 'dead']
+        placeholders = ','.join('?' * len(terminal))
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                f"""SELECT * FROM clients WHERE status NOT IN ({placeholders})
+                    ORDER BY updated_at ASC LIMIT ?""",
+                (*terminal, limit))
+            rows = await cur.fetchall()
+            return [self._row_to_client(r) for r in rows]
+
+    # ─── Seed ────────────────────────────────────────────────────────────────
+
+    async def seed_team_structure(self):
+        """Create maintenance staff and wire frontdesk assignments (idempotent)."""
+        seeded = await self.get_setting('team_structure_seeded')
+        if seeded == '1':
+            return
+
+        async with self.get_connection() as db:
+            maintenance_ids: Dict[str, int] = {}
+
+            for maint_name in TEAM_STRUCTURE.keys():
+                # Find existing staff by display_name
+                cur = await db.execute(
+                    'SELECT id FROM staff WHERE display_name=? LIMIT 1', (maint_name,))
+                row = await cur.fetchone()
+
+                if row:
+                    maint_id = row['id']
+                    await db.execute(
+                        "UPDATE staff SET role='maintenance' WHERE id=?", (maint_id,))
+                else:
+                    # Create synthetic staff — deterministic negative TG ID
+                    h = int(hashlib.md5(f'maint_{maint_name}'.encode()).hexdigest()[:8], 16)
+                    synthetic_id = -(h % 900_000_000 + 1)
+                    cur = await db.execute(
+                        """INSERT INTO staff (tg_user_id, tg_chat_id, display_name, role, language, is_active)
+                           VALUES (?, 0, ?, 'maintenance', 'zh', 1)
+                           ON CONFLICT(tg_user_id) DO UPDATE SET role='maintenance'""",
+                        (synthetic_id, maint_name))
+                    maint_id = cur.lastrowid
+
+                maintenance_ids[maint_name] = maint_id
+
+            # Wire frontdesk staff to their maintenance person
+            for maint_name, frontdesk_names in TEAM_STRUCTURE.items():
+                maint_id = maintenance_ids[maint_name]
+                for fd_name in frontdesk_names:
+                    await db.execute(
+                        'UPDATE staff SET maintenance_id=? WHERE display_name=?',
+                        (maint_id, fd_name))
+
+            await db.commit()
+
+        await self.set_setting('team_structure_seeded', '1', 'Team structure seeded')
+        logger.info('Team structure seeded: 阿俊 and 何军 assigned as maintenance')
 
 
 # Global singleton
