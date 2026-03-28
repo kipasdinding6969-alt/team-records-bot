@@ -6,7 +6,7 @@ from datetime import datetime, date
 from typing import Any, Dict, List, Optional, Tuple
 
 from engines.gsheet_writer import GSheetWriter, FRONTDESK_SHEETS, SHEET_MAP
-from database_v2 import database_v2
+from database_v2 import database_v2, NAME_ALIASES
 from models_v2 import Client, ClientStatus, Deposit, Staff, StaffRole
 
 # Module-level singleton — initialized by main.py
@@ -105,7 +105,17 @@ class SheetSyncV2:
     ) -> bool:
         """Upsert a single sheet row into V2 clients table."""
         phone = row.get('client_number', '').strip()
-        if not phone:
+        date_val = row.get('date', '').strip()
+
+        # Skip template placeholder rows
+        if not phone or phone.upper().replace('X', '') == '':
+            return False
+        if set(phone.upper()) <= {'X', '-', ' '}:
+            return False
+        if 'X月' in date_val and ('X日' in date_val or date_val.endswith('X')):
+            return False
+        frontdesk_raw = row.get('frontdesk', '').strip()
+        if frontdesk_raw and set(frontdesk_raw.upper()) <= {'X', '-', ' '}:
             return False
 
         status = _map_days_to_status(
@@ -207,6 +217,9 @@ class SheetSyncV2:
 
                 if not frontdesk_name:
                     continue
+
+                # Normalize romanized names (e.g. "Ah YIM" → "阿YIM")
+                frontdesk_name = NAME_ALIASES.get(frontdesk_name, frontdesk_name)
 
                 staff = await database_v2.get_staff_by_display_name(frontdesk_name)
                 if not staff:

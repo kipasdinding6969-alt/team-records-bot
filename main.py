@@ -134,6 +134,18 @@ class RalphLoop:
             # Perform initial health checks
             await self._perform_health_checks()
 
+            # Seed additional staff (TINO, KUYA, 阿文) — idempotent
+            try:
+                await database_v2.seed_additional_staff()
+            except Exception as e:
+                logger.warning(f"seed_additional_staff failed: {e}")
+
+            # Register V2 bot commands with Telegram (visible in command menu)
+            await self._register_bot_commands()
+
+            # First-boot: populate dashboard tabs if never done
+            await self._init_dashboard_if_needed()
+
             logger.info("Team Records Bot initialization completed successfully")
 
         except Exception as e:
@@ -264,6 +276,59 @@ class RalphLoop:
 
         except Exception as e:
             logger.error(f"Health check failed: {e}")
+
+    async def _register_bot_commands(self):
+        """Register V2 bot commands with Telegram so they appear in the command menu."""
+        bot_client = telegram_handler.bot_client
+        if bot_client is None:
+            logger.warning("_register_bot_commands: no bot_client, skipping")
+            return
+        try:
+            from telethon.tl.functions.bots import SetBotCommandsRequest
+            from telethon.tl.types import BotCommand, BotCommandScopeDefault
+
+            commands = [
+                BotCommand('start',    '🚀 Start / Register'),
+                BotCommand('me',       '📊 My dashboard (all-in-one)'),
+                BotCommand('overview', '🏢 Team overview (managers)'),
+                BotCommand('add',      '➕ Add client: /add <phone> <source>'),
+                BotCommand('u',        '🔄 Update status: /u <phone> <status>'),
+                BotCommand('pipeline', '📊 Pipeline funnel view'),
+                BotCommand('followup', '🔥 Clients needing follow-up'),
+                BotCommand('today',    '📈 Today\'s stats'),
+                BotCommand('search',   '🔍 Search: /search <query>'),
+                BotCommand('note',     '📝 Add note: /note <phone> <text>'),
+                BotCommand('remind',   '⏰ Set reminder: /remind <phone> <time> <msg>'),
+                BotCommand('handoff',  '🤝 Handoff to maintenance'),
+                BotCommand('export',   '📥 Export CSV'),
+                BotCommand('profile',  '👤 View profile'),
+                BotCommand('sync',     '🔄 Force sync (managers)'),
+                BotCommand('help',     '❓ Help guide'),
+                BotCommand('menu',     '📋 Legacy menu'),
+            ]
+            await bot_client(SetBotCommandsRequest(
+                scope=BotCommandScopeDefault(),
+                lang_code='',
+                commands=commands,
+            ))
+            logger.info(f"Registered {len(commands)} bot commands with Telegram")
+        except Exception as e:
+            logger.warning(f"_register_bot_commands failed: {e}")
+
+    async def _init_dashboard_if_needed(self):
+        """On first boot (or reset), populate all 5 dashboard tabs immediately."""
+        if _dashboard_mod.dashboard_sheets is None:
+            return
+        initialized = await database_v2.get_setting('dashboard_initialized')
+        if initialized == '1':
+            return
+        logger.info("First-boot: running dashboard initialization...")
+        try:
+            await _dashboard_mod.dashboard_sheets.refresh_all_tabs()
+            await database_v2.set_setting('dashboard_initialized', '1', 'Dashboard tabs created on first boot')
+            logger.info("First-boot dashboard initialization complete")
+        except Exception as e:
+            logger.error(f"First-boot dashboard init failed: {e}")
 
     async def run(self):
         """Main Ralph Loop - single process, one task per iteration."""

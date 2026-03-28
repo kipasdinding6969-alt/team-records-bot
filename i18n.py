@@ -1325,6 +1325,20 @@ STRINGS = {
         'zh': '✅ 今日统计已自动计算',
         'en': '✅ Daily stats auto-calculated',
     },
+
+    # === SYNC COMMAND ===
+    'sync_started': {
+        'zh': '🔄 正在同步 Google Sheets + 刷新仪表板，请稍候...',
+        'en': '🔄 Starting full sync + dashboard refresh, please wait...',
+    },
+    'sync_complete': {
+        'zh': '✅ 同步完成\n📥 导入: {imported} 条\n📤 导出: {exported} 条\n📊 仪表板: {tabs} 个标签已刷新',
+        'en': '✅ Sync complete\n📥 Imported: {imported}\n📤 Exported: {exported}\n📊 Dashboard: {tabs} tabs refreshed',
+    },
+    'sync_error': {
+        'zh': '❌ 同步出错: {error}',
+        'en': '❌ Sync error: {error}',
+    },
 }
 
 

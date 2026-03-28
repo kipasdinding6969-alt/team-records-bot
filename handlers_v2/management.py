@@ -229,11 +229,64 @@ async def handle_export(task_data: Dict[str, Any]):
         await telegram_handler.send_message(chat_id, '\n'.join(preview_lines))
 
 
+async def handle_sync(task_data: Dict[str, Any]):
+    """/sync — force full Sheets sync + dashboard refresh (manager+)."""
+    chat_id = task_data.get('chat_id')
+    user_id = task_data.get('user_id')
+
+    staff = await _get_staff(user_id)
+    if not staff:
+        await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
+        return
+
+    if not staff.is_manager_or_above():
+        await telegram_handler.send_message(chat_id, t('err_manager_only', staff.language))
+        return
+
+    lang = staff.language
+    await telegram_handler.send_message(chat_id, t('sync_started', lang))
+
+    import engines.sheet_sync_v2 as _sync_mod
+    import engines.dashboard_sheets as _dash_mod
+
+    imported = exported = 0
+    tabs_refreshed = 0
+    errors = []
+
+    if _sync_mod.sheet_sync_v2 is not None:
+        try:
+            stats = await _sync_mod.sheet_sync_v2.full_sync()
+            imported = stats.get('total_imported', 0)
+            exported = stats.get('total_exported', 0)
+        except Exception as e:
+            errors.append(f'sync: {e}')
+            logger.error(f'handle_sync: full_sync error: {e}')
+    else:
+        errors.append('Sheets not connected')
+
+    if _dash_mod.dashboard_sheets is not None:
+        try:
+            await _dash_mod.dashboard_sheets.refresh_all_tabs()
+            tabs_refreshed = 5
+        except Exception as e:
+            errors.append(f'dashboard: {e}')
+            logger.error(f'handle_sync: dashboard refresh error: {e}')
+
+    if errors:
+        await telegram_handler.send_message(
+            chat_id, t('sync_error', lang, error='; '.join(errors)))
+    else:
+        await telegram_handler.send_message(
+            chat_id,
+            t('sync_complete', lang, imported=imported, exported=exported, tabs=tabs_refreshed))
+
+
 MANAGEMENT_COMMANDS = {
     'dashboard': handle_dashboard,
     'team': handle_team_stats,
     'target': handle_target,
     'export': handle_export,
+    'sync': handle_sync,
 }
 
 MANAGEMENT_CALLBACKS = {}

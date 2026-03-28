@@ -15,7 +15,19 @@ from models_v2 import (
 
 TEAM_STRUCTURE = {
     '阿俊': ['阿YIM', 'ODDY', '燕燕', 'MEYMEY'],
-    '何军': ['大杰', '阿勇', '小龙', '小宏'],
+    '何军': ['大杰', '阿勇', '小龙', '小宏', 'TINO', 'KUYA'],
+}
+
+# Romanized → Chinese name mappings used across sheets
+NAME_ALIASES: dict = {
+    'Ah YIM': '阿YIM',
+    'Ah YONG': '阿勇',
+    'Ah Jun': '阿俊',
+    'Da Jie': '大杰',
+    'Xiao Long': '小龙',
+    'Xiao Hong': '小宏',
+    'Yan Yan': '燕燕',
+    'He Jun': '何军',
 }
 
 logger = logging.getLogger(__name__)
@@ -924,7 +936,7 @@ class DatabaseV2:
     async def seed_team_structure(self):
         """Create maintenance staff and wire frontdesk assignments (idempotent)."""
         seeded = await self.get_setting('team_structure_seeded')
-        if seeded == '1':
+        if seeded == '2':
             return
 
         async with self.get_connection() as db:
@@ -963,8 +975,27 @@ class DatabaseV2:
 
             await db.commit()
 
-        await self.set_setting('team_structure_seeded', '1', 'Team structure seeded')
-        logger.info('Team structure seeded: 阿俊 and 何军 assigned as maintenance')
+        await self.set_setting('team_structure_seeded', '2', 'Team structure seeded v2')
+        logger.info('Team structure seeded: 阿俊 and 何军 assigned as maintenance (v2 + TINO/KUYA)')
+
+
+    async def seed_additional_staff(self):
+        """Ensure extra staff (阿文 etc.) exist as unassigned frontdesk (idempotent)."""
+        EXTRA_FRONTDESK = ['阿文']
+        async with self.get_connection() as db:
+            for name in EXTRA_FRONTDESK:
+                cur = await db.execute('SELECT id FROM staff WHERE display_name=? LIMIT 1', (name,))
+                if await cur.fetchone():
+                    continue
+                h = int(hashlib.md5(f'extra_{name}'.encode()).hexdigest()[:8], 16)
+                synthetic_id = -(h % 900_000_000 + 1_000_000)
+                await db.execute(
+                    """INSERT INTO staff (tg_user_id, tg_chat_id, display_name, role, language, is_active)
+                       VALUES (?, 0, ?, 'frontdesk', 'zh', 1)
+                       ON CONFLICT(tg_user_id) DO NOTHING""",
+                    (synthetic_id, name))
+            await db.commit()
+        logger.info(f'seed_additional_staff: ensured {EXTRA_FRONTDESK}')
 
 
 # Global singleton

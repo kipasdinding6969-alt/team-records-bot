@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 TEAM_STRUCTURE = {
     '阿俊': ['阿YIM', 'ODDY', '燕燕', 'MEYMEY'],
-    '何军': ['大杰', '阿勇', '小龙', '小宏'],
+    '何军': ['大杰', '阿勇', '小龙', '小宏', 'TINO', 'KUYA'],
 }
 
 STATUS_EMOJIS = {
@@ -47,6 +47,37 @@ class DashboardSheets:
         return self.writer.spreadsheet
 
     # ─── Helpers ─────────────────────────────────────────────────────────────
+
+    def _protect_worksheet(self, ws):
+        """Apply warning-only protection + green tab color to a dashboard worksheet."""
+        try:
+            self.spreadsheet.batch_update({
+                'requests': [{
+                    'addProtectedRange': {
+                        'protectedRange': {
+                            'range': {'sheetId': ws.id},
+                            'description': 'Auto-generated dashboard — do not edit manually',
+                            'warningOnly': True,
+                        }
+                    }
+                }]
+            })
+        except Exception as e:
+            logger.debug(f'DashboardSheets: protection skipped for {ws.title}: {e}')
+        try:
+            self.spreadsheet.batch_update({
+                'requests': [{
+                    'updateSheetProperties': {
+                        'properties': {
+                            'sheetId': ws.id,
+                            'tabColor': {'red': 0.2, 'green': 0.6, 'blue': 0.2},
+                        },
+                        'fields': 'tabColor',
+                    }
+                }]
+            })
+        except Exception as e:
+            logger.debug(f'DashboardSheets: tab color skipped for {ws.title}: {e}')
 
     def _get_or_create_ws(self, title: str, rows: int = 200, cols: int = 20):
         try:
@@ -525,6 +556,12 @@ class DashboardSheets:
             try:
                 await fn()
                 logger.info(f'DashboardSheets: refreshed {name}')
+                # Apply protection + green tab after each write
+                try:
+                    ws = self.spreadsheet.worksheet(name)
+                    self._protect_worksheet(ws)
+                except Exception as pe:
+                    logger.debug(f'DashboardSheets: post-protect failed for {name}: {pe}')
             except Exception as e:
                 logger.error(f'DashboardSheets: failed to refresh {name}: {e}')
             await asyncio.sleep(1)  # rate-limit between sheet writes
