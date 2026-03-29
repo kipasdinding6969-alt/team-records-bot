@@ -1,7 +1,7 @@
 """V2 data models — pipeline-centric dataclasses."""
 from dataclasses import dataclass, field
 from datetime import datetime, date
-from typing import Optional, List
+from typing import Any, Dict, Optional, List
 from enum import Enum
 
 
@@ -302,3 +302,29 @@ class TeamTarget:
     target_deposit: Optional[float] = None
     created_by: Optional[int] = None
     created_at: Optional[datetime] = None
+
+
+@dataclass
+class BotTask:
+    """Task for Ralph Loop processing."""
+    id: Optional[int] = None
+    task_type: str = None  # "message", "reminder", "report", "sync"
+    priority: int = 1  # 1 = highest, 5 = lowest
+    data: Optional[Dict[str, Any]] = field(default_factory=dict)
+    status: str = 'pending'  # pending, processing, completed, failed
+    scheduled_time: Optional[datetime] = None
+    attempts: int = 0
+    max_attempts: int = 3
+    error_message: Optional[str] = None
+    created_at: Optional[datetime] = field(default_factory=datetime.now)
+    updated_at: Optional[datetime] = field(default_factory=datetime.now)
+
+
+@dataclass
+class ReportTemplate:
+    """Report generation template."""
+    template_type: str  # "daily_summary", "weekly_assessment", "performance", "financial"
+    frontdesk: Optional[str] = None
+    team_name: Optional[str] = None
+    date_range: Optional[str] = None
+    parameters: Dict[str, Any] = field(default_factory=dict)

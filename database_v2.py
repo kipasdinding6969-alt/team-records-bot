@@ -241,6 +241,29 @@ class DatabaseV2:
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_groups_tg_id ON groups(tg_group_id);
+
+                CREATE TABLE IF NOT EXISTS bot_tasks (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_type       TEXT NOT NULL,
+                    priority        INTEGER DEFAULT 1,
+                    data            TEXT,
+                    status          TEXT DEFAULT 'pending',
+                    scheduled_time  TIMESTAMP,
+                    attempts        INTEGER DEFAULT 0,
+                    max_attempts    INTEGER DEFAULT 3,
+                    error_message   TEXT,
+                    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_bot_tasks_status ON bot_tasks(status, priority);
+
+                CREATE TABLE IF NOT EXISTS conversation_states (
+                    user_id         INTEGER PRIMARY KEY,
+                    state_data      TEXT,
+                    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
             """)
             await db.commit()
 
@@ -1117,6 +1140,171 @@ class DatabaseV2:
             if not row:
                 return None
             return dict(row)
+
+    # ─── Task Queue ──────────────────────────────────────────────────────────
+
+    async def create_task(self, task: Any) -> int:
+        import json
+        scheduled = task.scheduled_time.strftime('%Y-%m-%d %H:%M:%S') if task.scheduled_time else None
+        data_json = json.dumps(task.data) if task.data else None
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """INSERT INTO bot_tasks (task_type, priority, data, status, scheduled_time, max_attempts)
+                   VALUES (?,?,?,?,?,?)""",
+                (task.task_type, task.priority, data_json,
+                 getattr(task, 'status', 'pending'), scheduled,
+                 getattr(task, 'max_attempts', 3))
+            )
+            await db.commit()
+            return cur.lastrowid
+
+    async def get_next_task(self) -> Optional[Any]:
+        import json
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT * FROM bot_tasks WHERE status='pending'
+                   AND (scheduled_time IS NULL OR scheduled_time <= CURRENT_TIMESTAMP)
+                   ORDER BY priority ASC, created_at ASC LIMIT 1""")
+            row = await cur.fetchone()
+            if not row:
+                return None
+        from models_v2 import BotTask
+        return BotTask(
+            id=row['id'],
+            task_type=row['task_type'],
+            priority=row['priority'],
+            data=json.loads(row['data']) if row['data'] else {},
+            status=row['status'],
+            scheduled_time=datetime.fromisoformat(row['scheduled_time']) if row['scheduled_time'] else None,
+            attempts=row['attempts'],
+            max_attempts=row['max_attempts'],
+            error_message=row['error_message'],
+        )
+
+    async def update_task_status(self, task_id: int, status: str, error: str = None):
+        async with self.get_connection() as db:
+            await db.execute(
+                """UPDATE bot_tasks SET status=?, error_message=?, updated_at=CURRENT_TIMESTAMP
+                   WHERE id=?""",
+                (status, error, task_id)
+            )
+            if status == 'processing':
+                await db.execute(
+                    'UPDATE bot_tasks SET attempts=attempts+1 WHERE id=?', (task_id,))
+            await db.commit()
+
+    async def cleanup_old_tasks(self, days_old: int = 1):
+        async with self.get_connection() as db:
+            await db.execute(
+                """DELETE FROM bot_tasks WHERE status IN ('completed','failed')
+                   AND updated_at <= datetime('now', ? || ' days')""",
+                (f'-{days_old}',)
+            )
+            await db.commit()
+
+    # ─── Conversation States ─────────────────────────────────────────────────
+
+    async def set_conversation_state(self, user_id: int, state: Dict[str, Any]):
+        import json
+        async with self.get_connection() as db:
+            await db.execute(
+                """INSERT INTO conversation_states (user_id, state_data, updated_at)
+                   VALUES (?,?,CURRENT_TIMESTAMP)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                       state_data=excluded.state_data,
+                       updated_at=CURRENT_TIMESTAMP""",
+                (user_id, json.dumps(state))
+            )
+            await db.commit()
+
+    async def get_conversation_state(self, user_id: int) -> Optional[Dict[str, Any]]:
+        import json
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT state_data FROM conversation_states WHERE user_id=?', (user_id,))
+            row = await cur.fetchone()
+            if not row:
+                return None
+            return json.loads(row['state_data']) if row['state_data'] else None
+
+    async def clear_conversation_state(self, user_id: int):
+        async with self.get_connection() as db:
+            await db.execute('DELETE FROM conversation_states WHERE user_id=?', (user_id,))
+            await db.commit()
+
+    async def cleanup_old_conversation_states(self, hours_old: int = 24):
+        async with self.get_connection() as db:
+            await db.execute(
+                "DELETE FROM conversation_states WHERE updated_at <= datetime('now', ? || ' hours')",
+                (f'-{hours_old}',)
+            )
+            await db.commit()
+
+    # ─── User Activity ───────────────────────────────────────────────────────
+
+    async def register_or_update_activity(
+        self, tg_user_id: int, tg_chat_id: int,
+        username: Optional[str], first_name: Optional[str], last_name: Optional[str]
+    ) -> 'Staff':
+        display = first_name or username or str(tg_user_id)
+        if first_name and last_name:
+            display = f'{first_name} {last_name}'
+        existing = await self.get_staff_by_tg_id(tg_user_id)
+        if existing:
+            async with self.get_connection() as db:
+                await db.execute(
+                    'UPDATE staff SET tg_chat_id=?, tg_username=?, last_active_at=CURRENT_TIMESTAMP WHERE tg_user_id=?',
+                    (tg_chat_id, username, tg_user_id)
+                )
+                await db.commit()
+            return existing
+        async with self.get_connection() as db:
+            await db.execute(
+                """INSERT INTO staff (tg_user_id, tg_chat_id, tg_username, display_name, role, language, is_active)
+                   VALUES (?,?,?,?,'viewer','zh',1)""",
+                (tg_user_id, tg_chat_id, username, display)
+            )
+            await db.commit()
+        return await self.get_staff_by_tg_id(tg_user_id)
+
+    async def get_user_language(self, user_id: int) -> Optional[str]:
+        async with self.get_connection() as db:
+            cur = await db.execute('SELECT language FROM staff WHERE tg_user_id=?', (user_id,))
+            row = await cur.fetchone()
+            return row['language'] if row else None
+
+    async def set_user_language(self, user_id: int, language: str):
+        async with self.get_connection() as db:
+            await db.execute('UPDATE staff SET language=? WHERE tg_user_id=?', (language, user_id))
+            await db.commit()
+
+    # ─── Health / Stats / Backup ─────────────────────────────────────────────
+
+    async def get_stats(self) -> Dict[str, int]:
+        tables = [
+            'staff', 'clients', 'client_notes', 'daily_stats', 'deposits',
+            'reminders', 'team_targets', 'bot_settings', 'bot_tasks', 'conversation_states',
+        ]
+        stats: Dict[str, int] = {}
+        async with self.get_connection() as db:
+            for table in tables:
+                try:
+                    cur = await db.execute(f'SELECT COUNT(*) FROM {table}')
+                    stats[table] = (await cur.fetchone())[0]
+                except Exception:
+                    stats[table] = 0
+        return stats
+
+    async def backup_database(self) -> str:
+        import shutil
+        backup_path = self.db_path + '.bak'
+        try:
+            shutil.copy2(self.db_path, backup_path)
+            logger.info(f'Database backed up to {backup_path}')
+            return backup_path
+        except Exception as e:
+            logger.error(f'Database backup failed: {e}')
+            return ''
 
 
 # Global singleton

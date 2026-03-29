@@ -13,8 +13,8 @@ from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError
 from telethon.tl.types import User, Chat, Channel
 
 from config import config
-from database import database
-from models import TeamMember, BotTask
+from database_v2 import database_v2
+from models_v2 import BotTask
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +195,7 @@ class TelegramHandler:
             data=task_data
         )
 
-        await database.create_task(task)
+        await database_v2.create_task(task)
         logger.info(f"Created task for command /{command} from user {user.id} (chat_type={chat_type})")
 
     async def _handle_conversation(self, event):
@@ -222,7 +222,7 @@ class TelegramHandler:
                 data=task_data
             )
 
-            await database.create_task(task)
+            await database_v2.create_task(task)
             logger.info(f"Created conversation task for user {user.id}")
 
     async def _handle_callback(self, event):
@@ -246,26 +246,14 @@ class TelegramHandler:
             data=task_data
         )
 
-        await database.create_task(task)
+        await database_v2.create_task(task)
         await event.answer()  # Answer callback to remove loading state
 
     async def _update_user_activity(self, user: User, chat_id: int):
-        """Update or create team member record."""
-        member = await database.get_team_member_by_user_id(user.id)
-
-        if member:
-            await database.update_team_member_activity(user.id)
-        else:
-            # New user - create basic record (role will be assigned later)
-            new_member = TeamMember(
-                user_id=user.id,
-                chat_id=chat_id,
-                username=user.username,
-                first_name=user.first_name,
-                last_name=user.last_name,
-                role='unregistered'
-            )
-            await database.create_team_member(new_member)
+        """Update or create staff record in V2 database."""
+        await database_v2.register_or_update_activity(
+            user.id, chat_id, user.username, user.first_name, user.last_name
+        )
 
     async def _rate_limit_check(self):
         """Check and enforce rate limiting for async safety."""
@@ -455,18 +443,18 @@ class TelegramHandler:
             logger.error(f"Failed to check permissions for {user_id} in {chat_id}: {e}")
             return {}
 
-    # Conversation state management - now database-backed
+    # Conversation state management - database_v2 backed
     async def set_conversation_state(self, user_id: int, state: Dict[str, Any]):
         """Set conversation state for a user."""
-        await database.set_conversation_state(user_id, state)
+        await database_v2.set_conversation_state(user_id, state)
 
     async def get_conversation_state(self, user_id: int) -> Optional[Dict[str, Any]]:
         """Get conversation state for a user."""
-        return await database.get_conversation_state(user_id)
+        return await database_v2.get_conversation_state(user_id)
 
     async def clear_conversation_state(self, user_id: int):
         """Clear conversation state for a user."""
-        await database.clear_conversation_state(user_id)
+        await database_v2.clear_conversation_state(user_id)
 
     # Keyboard helpers
     @staticmethod
@@ -516,16 +504,13 @@ class TelegramHandler:
                 logger.error(f"Failed to send manager broadcast to {manager_id}: {e}")
 
     async def broadcast_to_team(self, message: str, role: str = None):
-        """Send message to team members with optional role filter."""
-        async with database.get_connection() as db:
-            query = "SELECT chat_id FROM team_members WHERE is_active = TRUE"
-            params = []
-
+        """Send message to staff members with optional role filter."""
+        async with database_v2.get_connection() as db:
             if role:
-                query += " AND role = ?"
-                params.append(role)
-
-            cursor = await db.execute(query, params)
+                cursor = await db.execute(
+                    'SELECT tg_chat_id FROM staff WHERE is_active=1 AND role=?', (role,))
+            else:
+                cursor = await db.execute('SELECT tg_chat_id FROM staff WHERE is_active=1')
             chat_ids = [row[0] for row in await cursor.fetchall()]
 
         for chat_id in chat_ids:
@@ -727,48 +712,38 @@ class TelegramHandler:
             return f"📊 <b>管理层总报表</b>\n\n❌ 数据生成失败: {e}"
 
     async def _get_daily_stats(self, date_str: str) -> Dict[str, int]:
-        """Get daily statistics for channel summary."""
+        """Get daily statistics for channel summary (V2 schema)."""
         try:
             stats = {}
-            async with database.get_connection() as db:
-                # New clients today
-                cursor = await db.execute("""
-                    SELECT COUNT(*) FROM client_records
-                    WHERE date(created_at) = ?
-                """, (date_str,))
+            async with database_v2.get_connection() as db:
+                cursor = await db.execute(
+                    'SELECT COUNT(*) FROM clients WHERE DATE(created_at) = ?', (date_str,))
                 stats['new_clients'] = (await cursor.fetchone())[0]
 
-                # Registrations today (updated today to 注册)
-                cursor = await db.execute("""
-                    SELECT COUNT(*) FROM client_records
-                    WHERE (first_day = '注册' OR second_day = '注册')
-                    AND date(updated_at) = ?
-                """, (date_str,))
+                cursor = await db.execute(
+                    """SELECT COUNT(*) FROM clients
+                       WHERE status IN ('registered','training','ordered')
+                       AND DATE(registered_at) = ?""", (date_str,))
                 stats['registrations'] = (await cursor.fetchone())[0]
 
-                # Pending clients (不注册 or empty)
-                cursor = await db.execute("""
-                    SELECT COUNT(*) FROM client_records
-                    WHERE (first_day IN ('不注册', '') OR first_day IS NULL)
-                    AND date(created_at) >= date('now', '-7 days')
-                """)
+                cursor = await db.execute(
+                    """SELECT COUNT(*) FROM clients
+                       WHERE status IN ('new','contacted','replied')
+                       AND DATE(created_at) >= DATE('now', '-7 days')""")
                 stats['pending_clients'] = (await cursor.fetchone())[0]
 
-                # Training complete today
-                cursor = await db.execute("""
-                    SELECT COUNT(*) FROM client_records
-                    WHERE second_day = '注册' AND date(updated_at) = ?
-                """, (date_str,))
+                cursor = await db.execute(
+                    """SELECT COUNT(*) FROM clients
+                       WHERE status='training'
+                       AND DATE(training_at) = ?""", (date_str,))
                 stats['training_complete'] = (await cursor.fetchone())[0]
 
-                # Stale clients (>3 days, still 不注册)
                 stale_days = config.bot.stale_client_days if hasattr(config.bot, 'stale_client_days') else 3
-                cursor = await db.execute(f"""
-                    SELECT COUNT(*) FROM client_records
-                    WHERE (first_day IN ('不注册', '') OR first_day IS NULL)
-                    AND created_at <= datetime('now', '-{stale_days} days')
-                    AND created_at >= datetime('now', '-30 days')
-                """)
+                cursor = await db.execute(
+                    f"""SELECT COUNT(*) FROM clients
+                        WHERE status IN ('new','contacted','replied')
+                        AND updated_at <= datetime('now', '-{stale_days} days')
+                        AND updated_at >= datetime('now', '-30 days')""")
                 stats['stale_clients'] = (await cursor.fetchone())[0]
 
             return stats
@@ -778,29 +753,29 @@ class TelegramHandler:
             return {}
 
     async def _get_top_performers(self, date_str: str) -> List[Dict[str, Any]]:
-        """Get top performing frontdesk staff for today."""
+        """Get top performing frontdesk staff for today (V2 schema)."""
         try:
-            async with database.get_connection() as db:
-                cursor = await db.execute("""
-                    SELECT frontdesk,
-                           COUNT(CASE WHEN (first_day = '注册' OR second_day = '注册')
-                                      AND date(updated_at) = ? THEN 1 END) as registrations,
-                           COUNT(*) as total_clients
-                    FROM client_records
-                    WHERE frontdesk IS NOT NULL AND frontdesk != ''
-                    GROUP BY frontdesk
-                    ORDER BY registrations DESC, total_clients DESC
-                    LIMIT 5
-                """, (date_str,))
+            async with database_v2.get_connection() as db:
+                cursor = await db.execute(
+                    """SELECT s.display_name,
+                              COUNT(CASE WHEN c.registered_at IS NOT NULL
+                                         AND DATE(c.registered_at) = ? THEN 1 END) AS registrations,
+                              COUNT(c.id) AS total_clients
+                       FROM staff s
+                       LEFT JOIN clients c ON c.frontdesk_id = s.id
+                       WHERE s.role NOT IN ('maintenance','manager','admin','leader')
+                       GROUP BY s.id, s.display_name
+                       ORDER BY registrations DESC, total_clients DESC
+                       LIMIT 5""",
+                    (date_str,))
 
                 performers = []
                 for row in await cursor.fetchall():
                     performers.append({
                         'name': row[0],
                         'registrations': row[1],
-                        'total_clients': row[2]
+                        'total_clients': row[2],
                     })
-
                 return performers
 
         except Exception as e:

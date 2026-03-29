@@ -9,25 +9,12 @@ import traceback
 import os
 
 from config import config
-from database import database
+from database_v2 import database_v2
 from telegram_handler import telegram_handler
-from models import BotTask, ReportTemplate
+from models_v2 import BotTask, ReportTemplate
 from engines.report_engine import report_engine
 from engines.reminder_engine import reminder_engine
 from engines.chart_engine import chart_engine
-
-# Import all handlers
-from handlers.registration import REGISTRATION_COMMANDS, REGISTRATION_CALLBACKS, REGISTRATION_CONVERSATIONS
-from handlers.reporting import REPORTING_COMMANDS, REPORTING_CALLBACKS, REPORTING_CONVERSATIONS
-from handlers.dashboard import DASHBOARD_COMMANDS, DASHBOARD_CALLBACKS, DASHBOARD_CONVERSATIONS
-from handlers.finance import FINANCE_COMMANDS, FINANCE_CALLBACKS, FINANCE_CONVERSATIONS
-from handlers.performance import PERFORMANCE_COMMANDS, PERFORMANCE_CALLBACKS, PERFORMANCE_CONVERSATIONS
-from handlers.reminders import REMINDERS_COMMANDS, REMINDERS_CALLBACKS, REMINDERS_CONVERSATIONS
-
-# Import new chart and UI handlers
-from handlers.menu import MENU_COMMANDS, MENU_CALLBACKS, MENU_CONVERSATIONS
-from handlers.analytics import ANALYTICS_COMMANDS, ANALYTICS_CALLBACKS, ANALYTICS_CONVERSATIONS
-from handlers.help_guide import HELP_COMMANDS, HELP_CALLBACKS, HELP_CONVERSATIONS
 
 # Import V2 handlers
 from handlers_v2.quick_actions import QUICK_ACTIONS_COMMANDS, QUICK_ACTIONS_CALLBACKS, QUICK_ACTIONS_CONVERSATIONS
@@ -35,7 +22,6 @@ from handlers_v2.pipeline import PIPELINE_COMMANDS, PIPELINE_CALLBACKS, PIPELINE
 from handlers_v2.management import MANAGEMENT_COMMANDS, MANAGEMENT_CALLBACKS, MANAGEMENT_CONVERSATIONS
 from handlers_v2.registration_v2 import REGISTRATION_V2_COMMANDS, REGISTRATION_V2_CALLBACKS, REGISTRATION_V2_CONVERSATIONS
 from handlers_v2.group_chat import GROUP_COMMANDS, GROUP_CALLBACKS, GROUP_CONVERSATIONS
-from database_v2 import database_v2
 import engines.sheet_sync_v2 as _sheet_sync_v2_mod
 import engines.dashboard_sheets as _dashboard_mod
 
@@ -101,10 +87,6 @@ class RalphLoop:
             # Validate configuration first
             await self._validate_configuration()
             logger.info("Configuration validated")
-
-            # Initialize database
-            await database.initialize()
-            logger.info("Database initialized")
 
             # Initialize V2 database with persistent connection
             await database_v2.initialize()
@@ -204,7 +186,7 @@ class RalphLoop:
 
         # Test database connection
         try:
-            async with database.get_connection() as db:
+            async with database_v2.get_connection() as db:
                 await db.execute("SELECT 1")
         except Exception as e:
             errors.append(f"Database connection failed: {e}")
@@ -229,58 +211,22 @@ class RalphLoop:
         signal.signal(signal.SIGTERM, signal_handler)
 
     async def _register_handlers(self):
-        """Register all command, callback, and conversation handlers."""
-        # Merge all command handlers
+        """Register all V2 command, callback, and conversation handlers."""
         all_commands = {}
-        all_commands.update(REGISTRATION_COMMANDS)
-        all_commands.update(REPORTING_COMMANDS)
-        all_commands.update(DASHBOARD_COMMANDS)
-        all_commands.update(FINANCE_COMMANDS)
-        all_commands.update(PERFORMANCE_COMMANDS)
-        all_commands.update(REMINDERS_COMMANDS)
-        # Add new handlers
-        all_commands.update(MENU_COMMANDS)
-        all_commands.update(ANALYTICS_COMMANDS)
-        all_commands.update(HELP_COMMANDS)
-        # V2 handlers
         all_commands.update(QUICK_ACTIONS_COMMANDS)
         all_commands.update(PIPELINE_COMMANDS)
         all_commands.update(MANAGEMENT_COMMANDS)
         all_commands.update(REGISTRATION_V2_COMMANDS)
         all_commands.update(GROUP_COMMANDS)
 
-        # Merge all callback handlers
         all_callbacks = {}
-        all_callbacks.update(REGISTRATION_CALLBACKS)
-        all_callbacks.update(REPORTING_CALLBACKS)
-        all_callbacks.update(DASHBOARD_CALLBACKS)
-        all_callbacks.update(FINANCE_CALLBACKS)
-        all_callbacks.update(PERFORMANCE_CALLBACKS)
-        all_callbacks.update(REMINDERS_CALLBACKS)
-        # Add new handlers
-        all_callbacks.update(MENU_CALLBACKS)
-        all_callbacks.update(ANALYTICS_CALLBACKS)
-        all_callbacks.update(HELP_CALLBACKS)
-        # V2 handlers
         all_callbacks.update(QUICK_ACTIONS_CALLBACKS)
         all_callbacks.update(PIPELINE_CALLBACKS)
         all_callbacks.update(MANAGEMENT_CALLBACKS)
         all_callbacks.update(REGISTRATION_V2_CALLBACKS)
         all_callbacks.update(GROUP_CALLBACKS)
 
-        # Merge all conversation handlers
         all_conversations = {}
-        all_conversations.update(REGISTRATION_CONVERSATIONS)
-        all_conversations.update(REPORTING_CONVERSATIONS)
-        all_conversations.update(DASHBOARD_CONVERSATIONS)
-        all_conversations.update(FINANCE_CONVERSATIONS)
-        all_conversations.update(PERFORMANCE_CONVERSATIONS)
-        all_conversations.update(REMINDERS_CONVERSATIONS)
-        # Add new handlers
-        all_conversations.update(MENU_CONVERSATIONS)
-        all_conversations.update(ANALYTICS_CONVERSATIONS)
-        all_conversations.update(HELP_CONVERSATIONS)
-        # V2 handlers
         all_conversations.update(QUICK_ACTIONS_CONVERSATIONS)
         all_conversations.update(PIPELINE_CONVERSATIONS)
         all_conversations.update(MANAGEMENT_CONVERSATIONS)
@@ -297,7 +243,7 @@ class RalphLoop:
         """Perform initial health checks."""
         try:
             # Check database connection
-            stats = await database.get_stats()
+            stats = await database_v2.get_stats()
             logger.info(f"Database health check: {stats}")
 
             # Check Telegram connection
@@ -413,11 +359,11 @@ class RalphLoop:
         """Select the next highest priority task to execute."""
         try:
             # Get the next task from database (ordered by priority and creation time)
-            task = await database.get_next_task()
+            task = await database_v2.get_next_task()
 
             if task:
                 # Mark task as processing
-                await database.update_task_status(task.id, 'processing')
+                await database_v2.update_task_status(task.id, 'processing')
                 logger.debug(f"Selected task {task.id}: {task.task_type}")
 
             return task
@@ -451,21 +397,21 @@ class RalphLoop:
 
             # Update task status
             if success:
-                await database.update_task_status(task.id, 'completed')
+                await database_v2.update_task_status(task.id, 'completed')
                 self.metrics['tasks_processed'] += 1
                 logger.info(f"Task {task.id} completed successfully")
             else:
                 # Check if we should retry
                 if task.attempts < task.max_attempts:
-                    await database.update_task_status(task.id, 'pending')
+                    await database_v2.update_task_status(task.id, 'pending')
                     logger.info(f"Task {task.id} failed, will retry (attempt {task.attempts + 1})")
                 else:
-                    await database.update_task_status(task.id, 'failed', 'Max attempts exceeded')
+                    await database_v2.update_task_status(task.id, 'failed', 'Max attempts exceeded')
                     logger.error(f"Task {task.id} failed permanently after {task.attempts} attempts")
 
         except Exception as e:
             logger.error(f"Error executing task {task.id}: {e}")
-            await database.update_task_status(task.id, 'failed', str(e))
+            await database_v2.update_task_status(task.id, 'failed', str(e))
             self.metrics['tasks_failed'] += 1
 
     async def _handle_message_task(self, task: BotTask) -> bool:
@@ -510,7 +456,7 @@ class RalphLoop:
                 if chat_id:
                     from i18n import t
                     # Get user language preference
-                    user_language = await database.get_user_language(user_id) if user_id else None
+                    user_language = await database_v2.get_user_language(user_id) if user_id else None
                     lang = user_language or config.bot.default_language
 
                     help_text = f"""{t('unknown_command_title', lang)}
@@ -683,11 +629,11 @@ class RalphLoop:
             action = task.data.get('action')
 
             if action == 'cleanup_old_tasks':
-                await database.cleanup_old_tasks()
+                await database_v2.cleanup_old_tasks()
             elif action == 'cleanup_old_reminders':
                 await reminder_engine.cleanup_old_reminders()
             elif action == 'backup_database':
-                await database.backup_database()
+                await database_v2.backup_database()
             elif action == 'health_check':
                 await self._perform_health_checks()
             else:
@@ -719,7 +665,6 @@ class RalphLoop:
     async def perform_maintenance(self):
         """Perform periodic maintenance operations when no urgent tasks."""
         current_time = datetime.now()
-        await self._maint_v1_reminders(current_time)
         await self._maint_health_check(current_time)
         await self._maint_schedule_daily_report(current_time)
         await self._maint_schedule_channel_post(current_time)
@@ -733,19 +678,6 @@ class RalphLoop:
         await self._maint_v2_sheet_sync(current_time)
         await self._maint_task_cleanup(current_time)
 
-    async def _maint_v1_reminders(self, current_time: datetime):
-        """Check V1 pending reminders on reminder_check_interval."""
-        if not self.last_reminder_check or (current_time - self.last_reminder_check).total_seconds() > config.bot.reminder_check_interval:
-            pending_reminders = await database.get_pending_reminders(current_time)
-            if pending_reminders:
-                reminder_task = BotTask(
-                    task_type='reminder',
-                    priority=2,
-                    data={'action': 'process_pending'}
-                )
-                await database.create_task(reminder_task)
-            self.last_reminder_check = current_time
-
     async def _maint_health_check(self, current_time: datetime):
         """Schedule periodic health check task."""
         if not self.last_health_check or (current_time - self.last_health_check).total_seconds() > config.bot.health_check_interval:
@@ -754,7 +686,7 @@ class RalphLoop:
                 priority=4,
                 data={'action': 'health_check'}
             )
-            await database.create_task(health_task)
+            await database_v2.create_task(health_task)
             self.last_health_check = current_time
 
     async def _maint_schedule_daily_report(self, current_time: datetime):
@@ -769,7 +701,7 @@ class RalphLoop:
                     'recipients': config.bot.manager_chat_ids
                 }
             )
-            await database.create_task(daily_report_task)
+            await database_v2.create_task(daily_report_task)
             self.last_report_generation = current_time.date()
 
     async def _maint_schedule_channel_post(self, current_time: datetime):
@@ -781,7 +713,7 @@ class RalphLoop:
                 priority=3,
                 data={'action': 'post_summary'}
             )
-            await database.create_task(channel_post_task)
+            await database_v2.create_task(channel_post_task)
             self.last_channel_post = current_time
 
     async def _maint_v2_reminders(self, current_time: datetime):
@@ -942,7 +874,7 @@ class RalphLoop:
         """Cleanup completed/failed tasks older than 24 hours."""
         if not self.last_task_cleanup or (current_time - self.last_task_cleanup).total_seconds() > 86400:
             try:
-                await database.cleanup_old_tasks(days_old=1)
+                await database_v2.cleanup_old_tasks(days_old=1)
                 logger.debug('Task queue: cleaned up completed tasks older than 24h')
             except Exception as e:
                 logger.error(f'Task cleanup error: {e}')
@@ -1000,24 +932,17 @@ class RalphLoop:
 
             # Mark any processing tasks as pending for retry on restart
             try:
-                async with database.get_connection() as db:
-                    # Use a transaction for safety
-                    await db.execute("BEGIN TRANSACTION")
-
-                    # Get count of tasks being reset
-                    cursor = await db.execute("""
-                        SELECT COUNT(*) FROM bot_tasks WHERE status = 'processing'
-                    """)
+                async with database_v2.get_connection() as db:
+                    cursor = await db.execute(
+                        "SELECT COUNT(*) FROM bot_tasks WHERE status = 'processing'")
                     count = (await cursor.fetchone())[0]
 
                     if count > 0:
-                        await db.execute("""
-                            UPDATE bot_tasks SET status = 'pending', updated_at = CURRENT_TIMESTAMP
-                            WHERE status = 'processing'
-                        """)
+                        await db.execute(
+                            "UPDATE bot_tasks SET status = 'pending', updated_at = CURRENT_TIMESTAMP"
+                            " WHERE status = 'processing'")
+                        await db.commit()
                         logger.info(f"Reset {count} processing tasks to pending")
-
-                    await db.execute("COMMIT")
 
             except Exception as e:
                 logger.error(f"Error resetting tasks during shutdown: {e}")
@@ -1048,7 +973,7 @@ class RalphLoop:
 
             # Clear any remaining conversation states
             try:
-                await database.cleanup_old_conversation_states(hours_old=1)  # Clear old states
+                await database_v2.cleanup_old_conversation_states(hours_old=1)
             except Exception as e:
                 logger.error(f"Error clearing conversation states: {e}")
 
@@ -1077,8 +1002,8 @@ class RalphLoop:
             'last_health_check': self.last_health_check.isoformat() if self.last_health_check else None,
             'last_sync': self.last_sync.isoformat() if self.last_sync else None,
             'telegram_connected': await telegram_handler.health_check(),
-            'database_stats': await database.get_stats(),
-            'task_queue_size': len(await database.get_pending_reminders()) + 1  # Approximate
+            'database_stats': await database_v2.get_stats(),
+            'task_queue_size': (await database_v2.get_stats()).get('bot_tasks', 0)
         }
 
         return status
@@ -1094,7 +1019,7 @@ class RalphLoop:
 
         # Check database
         try:
-            stats = await database.get_stats()
+            stats = await database_v2.get_stats()
             health['checks']['database'] = {
                 'status': 'healthy',
                 'tables': len(stats),
