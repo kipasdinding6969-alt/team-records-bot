@@ -1019,3 +1019,136 @@ class TestNocoDBWebhook:
             await process_webhook_event(event)
         still_there = await db.get_client_by_id(client_row.id)
         assert still_there is not None
+
+
+# ─── Feature 6: NocoDB shared views ──────────────────────────────────────────
+
+class TestNocoDBViews:
+    """Tests for engines/nocodb_views.py — all API calls mocked."""
+
+    def _make_session_mock(self, create_view_resp, share_resp):
+        """Return a mock aiohttp.ClientSession context manager."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
+
+        async def _post_ctx(url, **kwargs):
+            mock_resp = MagicMock()
+            if 'views' in url and 'share' not in url:
+                mock_resp.status = 201
+                mock_resp.json = AsyncMock(return_value=create_view_resp)
+            else:
+                mock_resp.status = 200
+                mock_resp.json = AsyncMock(return_value=share_resp)
+            return mock_resp
+
+        class FakePost:
+            def __init__(self, url, **kwargs):
+                self.url = url
+                self._kwargs = kwargs
+            async def __aenter__(self):
+                return await _post_ctx(self.url, **self._kwargs)
+            async def __aexit__(self, *a):
+                pass
+
+        session_mock = MagicMock()
+        session_mock.post = lambda url, **kw: FakePost(url, **kw)
+        return session_mock
+
+    def test_view_specs_defined(self):
+        from engines.nocodb_views import VIEW_SPECS
+        keys = {s['key'] for s in VIEW_SPECS}
+        assert 'pipeline_dashboard' in keys
+        assert 'deposits_tracker' in keys
+        assert 'team_scoreboard' in keys
+
+    @pytest.mark.asyncio
+    async def test_create_shared_views_returns_urls(self):
+        """All three views get created and return public URLs."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        table_ids = {
+            'clients': 'tbl_clients',
+            'deposits': 'tbl_deposits',
+            'daily_stats': 'tbl_stats',
+        }
+
+        async def fake_create_view(session, base, token, table_id, title, view_type='grid'):
+            return f'view_{table_id}'
+
+        async def fake_share_view(session, base, token, view_id):
+            return f'uuid_{view_id}'
+
+        with patch('engines.nocodb_views._create_view', side_effect=fake_create_view):
+            with patch('engines.nocodb_views._enable_shared_view', side_effect=fake_share_view):
+                with patch('engines.nocodb_views.aiohttp'):
+                    from engines.nocodb_views import create_shared_views
+                    urls = await create_shared_views(
+                        'https://nocodb.test', 'token123', table_ids)
+
+        assert 'pipeline_dashboard' in urls
+        assert 'deposits_tracker' in urls
+        assert 'team_scoreboard' in urls
+        for url in urls.values():
+            assert url.startswith('https://nocodb.test/nc/v/')
+
+    @pytest.mark.asyncio
+    async def test_create_shared_views_missing_table(self):
+        """Missing table ID causes that view to be skipped."""
+        from unittest.mock import patch
+
+        async def fake_create_view(*a, **kw):
+            return 'view_id'
+
+        async def fake_share_view(*a, **kw):
+            return 'uuid123'
+
+        with patch('engines.nocodb_views._create_view', side_effect=fake_create_view):
+            with patch('engines.nocodb_views._enable_shared_view', side_effect=fake_share_view):
+                with patch('engines.nocodb_views.aiohttp'):
+                    from engines.nocodb_views import create_shared_views
+                    # Only clients table provided
+                    urls = await create_shared_views(
+                        'https://nocodb.test', 'token123',
+                        {'clients': 'tbl_c'})
+
+        assert 'pipeline_dashboard' in urls
+        assert 'deposits_tracker' not in urls
+        assert 'team_scoreboard' not in urls
+
+    @pytest.mark.asyncio
+    async def test_create_view_api_failure_skips_view(self):
+        """If create_view fails, that view is not in the result."""
+        from unittest.mock import patch
+
+        async def fake_create_view(*a, **kw):
+            return None  # simulate failure
+
+        with patch('engines.nocodb_views._create_view', side_effect=fake_create_view):
+            with patch('engines.nocodb_views.aiohttp'):
+                from engines.nocodb_views import create_shared_views
+                urls = await create_shared_views(
+                    'https://nocodb.test', 'token123',
+                    {'clients': 'tbl_c', 'deposits': 'tbl_d', 'daily_stats': 'tbl_s'})
+
+        assert urls == {}
+
+    @pytest.mark.asyncio
+    async def test_enable_shared_view_failure_skips_url(self):
+        """If share fails, that view is not in the result."""
+        from unittest.mock import patch
+
+        async def fake_create_view(*a, **kw):
+            return 'some_view_id'
+
+        async def fake_share_view(*a, **kw):
+            return None  # simulate share failure
+
+        with patch('engines.nocodb_views._create_view', side_effect=fake_create_view):
+            with patch('engines.nocodb_views._enable_shared_view', side_effect=fake_share_view):
+                with patch('engines.nocodb_views.aiohttp'):
+                    from engines.nocodb_views import create_shared_views
+                    urls = await create_shared_views(
+                        'https://nocodb.test', 'token123',
+                        {'clients': 'tbl_c', 'deposits': 'tbl_d', 'daily_stats': 'tbl_s'})
+
+        assert urls == {}
