@@ -1,0 +1,119 @@
+{
+  "broadcast": {
+    "title": "📢 QianHub 总频道",
+    "chat_id": -1003749533993,
+    "type": "channel"
+  },
+  "quanxian": {
+    "title": "🏢 全线小组 | 阿毛",
+    "chat_id": -1003628500634,
+    "type": "forum",
+    "leader": "阿毛",
+    "members": [
+      "TINO",
+      "KUYA"
+    ],
+    "support": [
+      "客服阿毛",
+      "小白Dyson"
+    ],
+    "topics": {
+      "📊 日报 Daily Reports": 3,
+      "💬 讨论 Discussion": 4,
+      "❓ 问题 Issues": 5,
+      "📋 任务 Tasks": 6,
+      "🔔 通知 Notices": 7
+    }
+  },
+  "ajun": {
+    "title": "🏢 阿俊小组 | 前台",
+    "chat_id": -1003705867153,
+    "type": "forum",
+    "leader": "阿俊",
+    "members": [
+      "阿YIM",
+      "ODDY",
+      "燕燕",
+      "MEYMEY"
+    ],
+    "support": [
+      "客服阿毛",
+      "小白Dyson"
+    ],
+    "topics": {
+      "📊 日报 Daily Reports": 3,
+      "💬 讨论 Discussion": 4,
+      "❓ 问题 Issues": 5,
+      "📋 任务 Tasks": 6,
+      "🔔 通知 Notices": 7
+    }
+  },
+  "hejun": {
+    "title": "🏢 何军小组 | 前台",
+    "chat_id": -1003888936825,
+    "type": "forum",
+    "leader": "何军",
+    "members": [
+      "大杰",
+      "阿勇",
+      "小龙",
+      "小宏"
+    ],
+    "support": [
+      "客服阿毛",
+      "小白Dyson"
+    ],
+    "topics": {
+      "📊 日报 Daily Reports": 3,
+      "💬 讨论 Discussion": 4,
+      "❓ 问题 Issues": 5,
+      "📋 任务 Tasks": 6,
+      "🔔 通知 Notices": 7
+    }
+  },
+  "chaoqun": {
+    "title": "🔥 炒群小组 | Juan Juan",
+    "chat_id": -1003839450365,
+    "type": "forum",
+    "leader": "Juan Juan",
+    "members": [
+      "阿YIM",
+      "ODDY",
+      "燕燕",
+      "MEYMEY",
+      "大杰",
+      "阿勇",
+      "小龙",
+      "小宏"
+    ],
+    "support": [
+      "客服阿毛",
+      "小白Dyson"
+    ],
+    "topics": {
+      "📊 日报 Daily Reports": 3,
+      "💬 讨论 Discussion": 4,
+      "❓ 问题 Issues": 5,
+      "📋 任务 Tasks": 6,
+      "🔔 通知 Notices": 7,
+      "📈 战报 Battle Reports": 8
+    }
+  },
+  "management": {
+    "title": "🎯 管理层 | QianHub",
+    "chat_id": -1003484637046,
+    "type": "forum",
+    "topics": {
+      "📊 总报表 Summary": 3,
+      "💰 财务 Finance": 4,
+      "🔑 决策 Decisions": 5,
+      "📋 会议 Meetings": 6,
+      "🚨 紧急 Urgent": 7
+    }
+  },
+  "kefu": {
+    "title": "🛎️ 客服中心 | QianHub",
+    "chat_id": -1003863384888,
+    "type": "supergroup"
+  }
+}
