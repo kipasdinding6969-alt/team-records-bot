@@ -261,8 +261,12 @@ class TelegramHandler:
 
     # Message sending methods
     async def send_message(self, chat_id: int, text: str, parse_mode: str = None,
-                          reply_markup: Any = None, disable_web_page_preview: bool = True):
-        """Send a text message with rate limiting."""
+                          reply_markup: Any = None, disable_web_page_preview: bool = True,
+                          reply_to: int = None):
+        """Send a text message with rate limiting.
+
+        reply_to: forum topic message-thread-id (Telethon reply_to param).
+        """
         await self._rate_limit_check()
 
         try:
@@ -273,11 +277,61 @@ class TelegramHandler:
                 text,
                 parse_mode=parse_mode,
                 buttons=reply_markup,
-                link_preview=not disable_web_page_preview
+                link_preview=not disable_web_page_preview,
+                reply_to=reply_to,
             )
         except Exception as e:
             logger.error(f"Failed to send message to {chat_id}: {e}")
             raise
+
+    async def send_to_team(self, team_id: str, message: str, topic: str = 'daily',
+                           parse_mode: str = 'html'):
+        """Send a message to a team's forum topic.
+
+        topic: partial name used to look up the topic id (e.g. '日报').
+        """
+        try:
+            from team_config import team_config
+            chat_id = team_config.get_team_chat_id(team_id)
+            if not chat_id:
+                logger.warning(f"send_to_team: no chat_id for team '{team_id}'")
+                return
+            topic_id = team_config.get_team_topic_id(team_id, topic)
+            await self.send_message(chat_id, message, parse_mode=parse_mode, reply_to=topic_id)
+            logger.info(f"Sent message to team '{team_id}' topic '{topic}' (topic_id={topic_id})")
+        except Exception as e:
+            logger.error(f"send_to_team({team_id}) failed: {e}")
+
+    async def send_to_broadcast(self, message: str, parse_mode: str = 'html'):
+        """Send a message to the broadcast channel."""
+        try:
+            from team_config import team_config
+            channel_id = team_config.get_broadcast_id() or config.bot.broadcast_channel_id
+            if not channel_id:
+                logger.warning("send_to_broadcast: no broadcast channel configured")
+                return
+            await self.send_message(channel_id, message, parse_mode=parse_mode)
+            logger.info(f"Sent message to broadcast channel {channel_id}")
+        except Exception as e:
+            logger.error(f"send_to_broadcast failed: {e}")
+
+    async def send_to_management(self, message: str, topic: str = 'summary',
+                                  parse_mode: str = 'html'):
+        """Send a message to the management group forum topic.
+
+        topic: partial name (e.g. '总报表' or 'summary').
+        """
+        try:
+            from team_config import team_config
+            chat_id = team_config.get_management_id()
+            if not chat_id:
+                logger.warning("send_to_management: no management chat configured")
+                return
+            topic_id = team_config.get_management_topic_id(topic)
+            await self.send_message(chat_id, message, parse_mode=parse_mode, reply_to=topic_id)
+            logger.info(f"Sent message to management topic '{topic}' (topic_id={topic_id})")
+        except Exception as e:
+            logger.error(f"send_to_management failed: {e}")
 
     async def send_photo(self, chat_id: int, photo, caption: str = None,
                         reply_markup: Any = None):
@@ -443,7 +497,7 @@ class TelegramHandler:
 
     # Channel auto-posting
     async def post_channel_summary(self, channel_id: int = None) -> Dict[str, Any]:
-        """Post summary to channel/supergroup with today's stats and team performance."""
+        """Post summary to broadcast channel and per-team 日报 topics + management 总报表."""
         try:
             from working_hours import is_working_hours
 
@@ -451,31 +505,47 @@ class TelegramHandler:
             if not is_working_hours():
                 return {'success': False, 'message': 'Outside working hours, skipping channel post'}
 
-            # Use configured channel ID if not provided
-            if channel_id is None:
-                channel_id = config.bot.report_channel_id
+            # Resolve broadcast channel: prefer team_config, then explicit arg, then fallback
+            try:
+                from team_config import team_config as _tc
+                broadcast_id = _tc.get_broadcast_id()
+            except Exception:
+                broadcast_id = None
+            if not broadcast_id:
+                broadcast_id = config.bot.broadcast_channel_id or channel_id or config.bot.report_channel_id
 
-            if not channel_id:
-                logger.warning("No report channel ID configured")
+            if not broadcast_id:
+                logger.warning("No broadcast channel ID configured")
                 return {'success': False, 'message': 'No channel ID configured'}
 
-            # Generate summary message
+            # Generate full summary message
             summary_message = await self._generate_channel_summary()
 
-            # Send to channel using bot client (or user client as fallback)
+            # 1. Post to broadcast channel
             client = self.bot_client if self.bot_client else self.client
+            await client.send_message(broadcast_id, summary_message, parse_mode='html')
+            logger.info(f"Posted broadcast summary to {broadcast_id}")
 
-            await client.send_message(
-                channel_id,
-                summary_message,
-                parse_mode='html'
-            )
+            # 2. Post per-team stats to each team's 日报 topic
+            try:
+                from team_config import team_config as _tc
+                for team_id in _tc.get_all_team_ids():
+                    team_summary = await self._generate_team_summary(team_id)
+                    await self.send_to_team(team_id, team_summary, topic='日报', parse_mode='html')
+            except Exception as e:
+                logger.error(f"Failed to post per-team summaries: {e}")
 
-            logger.info(f"Posted channel summary to {channel_id}")
+            # 3. Post management summary to 总报表 topic
+            try:
+                mgmt_summary = await self._generate_management_summary()
+                await self.send_to_management(mgmt_summary, topic='总报表', parse_mode='html')
+            except Exception as e:
+                logger.error(f"Failed to post management summary: {e}")
+
             return {
                 'success': True,
-                'channel_id': channel_id,
-                'message_length': len(summary_message)
+                'channel_id': broadcast_id,
+                'message_length': len(summary_message),
             }
 
         except Exception as e:
@@ -528,6 +598,94 @@ class TelegramHandler:
         except Exception as e:
             logger.error(f"Failed to generate channel summary: {e}")
             return f"📊 <b>团队日报 / Daily Report</b>\n\n❌ 数据生成失败 / Failed to generate stats\n错误: {str(e)}"
+
+    async def _generate_team_summary(self, team_id: str) -> str:
+        """Generate per-team daily summary for posting to the team's 日报 topic."""
+        try:
+            from datetime import date
+            from team_config import team_config as _tc
+            today = date.today()
+            today_str = today.strftime('%Y-%m-%d')
+            team_info = _tc.get_team_info(team_id) or {}
+            title = team_info.get('title', team_id)
+            leader = team_info.get('leader', '')
+            members = team_info.get('members', [])
+
+            stats = await self._get_daily_stats(today_str)
+            top = await self._get_top_performers(today_str)
+
+            # Filter top performers to this team's members
+            team_names = set(m.lower() for m in members)
+            team_top = [p for p in top if p['name'].lower() in team_names]
+
+            summary = f"""📊 <b>{title} — 日报</b>
+🗓 {today.strftime('%Y年%m月%d日')}
+
+<b>📈 今日数据:</b>
+• 新增客户: {stats.get('new_clients', 0)}
+• 完成注册: {stats.get('registrations', 0)}
+• 待处理: {stats.get('pending_clients', 0)}
+
+<b>👥 本组排名:</b>"""
+
+            if team_top:
+                medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣']
+                for i, p in enumerate(team_top[:5]):
+                    summary += f"\n{medals[i]} {p['name']} — {p['registrations']}单"
+            else:
+                summary += "\n暂无数据"
+
+            return summary
+
+        except Exception as e:
+            logger.error(f"Failed to generate team summary for {team_id}: {e}")
+            return f"📊 <b>{team_id} 日报</b>\n\n❌ 数据生成失败: {e}"
+
+    async def _generate_management_summary(self) -> str:
+        """Generate management-level summary for the 总报表 topic."""
+        try:
+            from datetime import date
+            from team_config import team_config as _tc
+            today = date.today()
+            today_str = today.strftime('%Y-%m-%d')
+
+            stats = await self._get_daily_stats(today_str)
+            top = await self._get_top_performers(today_str)
+
+            summary = f"""📊 <b>管理层总报表</b>
+🗓 {today.strftime('%Y年%m月%d日')}
+
+<b>📈 全线数据:</b>
+• 新增客户: {stats.get('new_clients', 0)}
+• 完成注册: {stats.get('registrations', 0)}
+• 待处理客户: {stats.get('pending_clients', 0)}
+• 完成培训: {stats.get('training_complete', 0)}
+• 超时警告: {stats.get('stale_clients', 0)}
+
+<b>🏆 全线排名 TOP 5:</b>"""
+
+            if top:
+                medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣']
+                for i, p in enumerate(top[:5]):
+                    summary += f"\n{medals[i]} {p['name']} — {p['registrations']}单 / {p['total_clients']}客"
+            else:
+                summary += "\n暂无数据"
+
+            # Per-team breakdown
+            summary += "\n\n<b>📋 各组概览:</b>"
+            for team_id in _tc.get_all_team_ids():
+                info = _tc.get_team_info(team_id) or {}
+                title = info.get('title', team_id)
+                members = info.get('members', [])
+                team_names = set(m.lower() for m in members)
+                team_regs = sum(p['registrations'] for p in top if p['name'].lower() in team_names)
+                summary += f"\n• {title}: {team_regs}单"
+
+            return summary
+
+        except Exception as e:
+            logger.error(f"Failed to generate management summary: {e}")
+            return f"📊 <b>管理层总报表</b>\n\n❌ 数据生成失败: {e}"
 
     async def _get_daily_stats(self, date_str: str) -> Dict[str, int]:
         """Get daily statistics for channel summary."""

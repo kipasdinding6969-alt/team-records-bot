@@ -532,13 +532,16 @@ Please follow up promptly.
                     frontdesk_groups[frontdesk] = []
                 frontdesk_groups[frontdesk].append(record)
 
+            # Collect missing members before logging (avoids per-member spam)
+            missing_members = []
+
             # Create reminders for each frontdesk
             for frontdesk, records in frontdesk_groups.items():
                 try:
                     # Get frontdesk user ID
                     member = await self._get_frontdesk_member(frontdesk)
                     if not member:
-                        logger.warning(f"Frontdesk member not found: {frontdesk}")
+                        missing_members.append(frontdesk)
                         results['errors'].append(f"Frontdesk member not found: {frontdesk}")
                         continue
 
@@ -565,6 +568,9 @@ Please follow up promptly.
                     error_msg = f"Failed to process stale clients for {frontdesk}: {e}"
                     logger.error(error_msg)
                     results['errors'].append(error_msg)
+
+            if missing_members:
+                logger.warning(f"Frontdesk members not found ({len(missing_members)}): {missing_members}")
 
             logger.info(f"Stale client scan complete: {results}")
             return results

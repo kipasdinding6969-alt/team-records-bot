@@ -766,7 +766,9 @@ class RalphLoop:
             self.last_report_generation = current_time.date()
 
         # Schedule channel posts during working hours
-        if config.bot.report_channel_id and self._should_post_channel_summary():
+        # Use broadcast_channel_id first; fall back to report_channel_id
+        _post_channel_id = config.bot.broadcast_channel_id or config.bot.report_channel_id
+        if _post_channel_id and self._should_post_channel_summary():
             channel_post_task = BotTask(
                 task_type='channel_post',
                 priority=3,
@@ -949,7 +951,7 @@ class RalphLoop:
         if not is_working_hours():
             return False
 
-        if not config.bot.report_channel_id or not config.bot.report_interval_hours:
+        if not (config.bot.broadcast_channel_id or config.bot.report_channel_id) or not config.bot.report_interval_hours:
             return False
 
         current_time = datetime.now()

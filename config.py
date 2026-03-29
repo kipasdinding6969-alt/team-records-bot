@@ -124,6 +124,7 @@ class BotConfig:
 
     # Channel and reporting settings
     report_channel_id: int = None
+    broadcast_channel_id: int = None
     report_interval_hours: int = 3
     stale_client_days: int = 3
 
@@ -147,6 +148,13 @@ class Config:
 
         # Load environment variables
         self._load_env_vars()
+
+        # Load team structure (lazy import to avoid circular deps)
+        try:
+            from team_config import team_config as _tc
+            self.teams = _tc
+        except Exception:
+            self.teams = None
 
         # Validate only if running as main bot (not during import/testing)
         # self._validate_config()
@@ -208,6 +216,9 @@ class Config:
         report_ch = os.getenv("REPORT_CHANNEL_ID", "").strip()
         if report_ch and report_ch.lstrip('-').isdigit():
             self.bot.report_channel_id = int(report_ch)
+        broadcast_ch = os.getenv("BROADCAST_CHANNEL_ID", "").strip()
+        if broadcast_ch and broadcast_ch.lstrip('-').isdigit():
+            self.bot.broadcast_channel_id = int(broadcast_ch)
         if os.getenv("REPORT_INTERVAL_HOURS"):
             self.bot.report_interval_hours = int(os.getenv("REPORT_INTERVAL_HOURS"))
         if os.getenv("STALE_CLIENT_DAYS"):
