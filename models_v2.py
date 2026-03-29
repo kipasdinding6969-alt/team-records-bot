@@ -24,9 +24,9 @@ CS_COMMANDS = {'/search', '/note', '/pipeline', '/dashboard', '/rag', '/export',
 LEADER_COMMANDS = 'all'  # scoped to their team
 
 # Internal command names (without leading slash) for policy_engine compatibility
-_VIEWER_CMDS = {'me', 'dashboard', 'pipeline', 'search', 'rag', 'export', 'help', 'today'}
+_VIEWER_CMDS = {'me', 'dashboard', 'pipeline', 'search', 'rag', 'export', 'help', 'today', 'leaderboard'}
 _NEWBIE_CMDS = {'add', 'me', 'note', 'help'}
-_CS_CMDS = {'search', 'note', 'pipeline', 'dashboard', 'rag', 'export', 'me', 'help', 'today'}
+_CS_CMDS = {'search', 'note', 'pipeline', 'dashboard', 'rag', 'export', 'me', 'help', 'today', 'leaderboard', 'hot', 'summary', 'template'}
 
 
 def check_permission(staff: 'Staff', command: str) -> bool:

@@ -264,6 +264,39 @@ class DatabaseV2:
                     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
+
+                CREATE TABLE IF NOT EXISTS message_templates (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name        TEXT NOT NULL,
+                    content     TEXT NOT NULL,
+                    category    TEXT DEFAULT 'general',
+                    created_by  INTEGER REFERENCES staff(id),
+                    is_default  INTEGER DEFAULT 0,
+                    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS contests (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title       TEXT NOT NULL,
+                    metric      TEXT NOT NULL,
+                    target      REAL,
+                    team        TEXT,
+                    start_date  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    end_date    TIMESTAMP NOT NULL,
+                    status      TEXT DEFAULT 'active',
+                    winner_id   INTEGER REFERENCES staff(id),
+                    created_by  INTEGER REFERENCES staff(id),
+                    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS contest_scores (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    contest_id  INTEGER NOT NULL REFERENCES contests(id),
+                    staff_id    INTEGER NOT NULL REFERENCES staff(id),
+                    score       REAL DEFAULT 0,
+                    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(contest_id, staff_id)
+                );
             """)
             await db.commit()
 
@@ -274,6 +307,7 @@ class DatabaseV2:
             ('clients',  'ALTER TABLE clients ADD COLUMN maintenance_id INTEGER REFERENCES staff(id)'),
             ('clients',  'ALTER TABLE clients ADD COLUMN handoff_at TIMESTAMP'),
             ('clients',  'ALTER TABLE clients ADD COLUMN handoff_note TEXT'),
+            ('staff',    'ALTER TABLE staff ADD COLUMN tg_username TEXT'),
         ]
         async with self.get_connection() as db:
             for _tbl, sql in migrations:
@@ -1305,6 +1339,304 @@ class DatabaseV2:
         except Exception as e:
             logger.error(f'Database backup failed: {e}')
             return ''
+
+    # ─── Gamification: Leaderboard ───────────────────────────────────────────────
+
+    async def get_leaderboard(self, period: str = 'today', team: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Return staff ranked by leads/orders/deposits/reply_rate for period.
+        period: 'today' | 'week' | 'month'
+        """
+        today = _utc_today()
+        if period == 'today':
+            date_filter = today.isoformat()
+            where_clause = 'ds.stat_date = ?'
+            params_date = [date_filter]
+        elif period == 'week':
+            week_start = (today - timedelta(days=today.weekday())).isoformat()
+            where_clause = 'ds.stat_date >= ?'
+            params_date = [week_start]
+        else:  # month
+            month_start = today.replace(day=1).isoformat()
+            where_clause = 'ds.stat_date >= ?'
+            params_date = [month_start]
+
+        async with self.get_connection() as db:
+            team_filter = 'AND s.team = ?' if team else ''
+            params = params_date + ([team] if team else [])
+            cur = await db.execute(
+                f"""SELECT s.id, s.display_name, s.team,
+                           COALESCE(SUM(ds.new_leads), 0) as total_leads,
+                           COALESCE(SUM(ds.new_orders), 0) as total_orders,
+                           COALESCE(SUM(ds.total_deposit), 0) as total_deposits,
+                           COALESCE(AVG(ds.reply_rate), 0) as avg_reply_rate
+                    FROM staff s
+                    LEFT JOIN daily_stats ds ON s.id = ds.staff_id AND {where_clause}
+                    WHERE s.is_active = 1 AND s.role IN ('frontdesk','newbie','customer_service') {team_filter}
+                    GROUP BY s.id, s.display_name, s.team
+                    ORDER BY total_orders DESC, total_leads DESC, total_deposits DESC""",
+                params
+            )
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+    # ─── Gamification: Hot Leads ─────────────────────────────────────────────────
+
+    async def get_hot_leads(self, frontdesk_id: Optional[int] = None,
+                             team_staff_ids: Optional[List[int]] = None,
+                             limit: int = 10) -> List[Dict[str, Any]]:
+        """Score and return top hot leads.
+        Score = 10 (base) + 20 (replied) + 30 (registered) + 15 (deposit>0)
+                + 10 (updated<24h) - 5*stale_days + 5*deposit_count, capped 100.
+        """
+        async with self.get_connection() as db:
+            if frontdesk_id:
+                cur = await db.execute(
+                    """SELECT c.id, c.phone, c.nickname, c.status, c.total_deposited,
+                              c.replied_at, c.registered_at, c.updated_at, c.frontdesk_id,
+                              s.display_name as frontdesk_name,
+                              (SELECT COUNT(*) FROM deposits d WHERE d.client_id = c.id) as deposit_count
+                       FROM clients c
+                       JOIN staff s ON c.frontdesk_id = s.id
+                       WHERE c.frontdesk_id = ?
+                       AND c.status NOT IN ('blocked','scammed','dead')""",
+                    (frontdesk_id,)
+                )
+            elif team_staff_ids:
+                placeholders = ','.join('?' * len(team_staff_ids))
+                cur = await db.execute(
+                    f"""SELECT c.id, c.phone, c.nickname, c.status, c.total_deposited,
+                               c.replied_at, c.registered_at, c.updated_at, c.frontdesk_id,
+                               s.display_name as frontdesk_name,
+                               (SELECT COUNT(*) FROM deposits d WHERE d.client_id = c.id) as deposit_count
+                        FROM clients c
+                        JOIN staff s ON c.frontdesk_id = s.id
+                        WHERE c.frontdesk_id IN ({placeholders})
+                        AND c.status NOT IN ('blocked','scammed','dead')""",
+                    team_staff_ids
+                )
+            else:
+                cur = await db.execute(
+                    """SELECT c.id, c.phone, c.nickname, c.status, c.total_deposited,
+                              c.replied_at, c.registered_at, c.updated_at, c.frontdesk_id,
+                              s.display_name as frontdesk_name,
+                              (SELECT COUNT(*) FROM deposits d WHERE d.client_id = c.id) as deposit_count
+                       FROM clients c
+                       JOIN staff s ON c.frontdesk_id = s.id
+                       WHERE c.status NOT IN ('blocked','scammed','dead')"""
+                )
+            rows = await cur.fetchall()
+
+        now = datetime.now()
+        scored = []
+        for r in rows:
+            score = 10  # base
+            if r['replied_at']:
+                score += 20
+            if r['registered_at']:
+                score += 30
+            if r['total_deposited'] and r['total_deposited'] > 0:
+                score += 15
+            updated = datetime.fromisoformat(r['updated_at']) if r['updated_at'] else now
+            hours_since = (now - updated).total_seconds() / 3600
+            if hours_since < 24:
+                score += 10
+            else:
+                stale_days = int(hours_since / 24) - 1
+                score -= stale_days * 5
+            deposit_count = r['deposit_count'] or 0
+            score += deposit_count * 5
+            score = min(100, max(0, score))
+            d = dict(r)
+            d['score'] = score
+            scored.append(d)
+
+        scored.sort(key=lambda x: x['score'], reverse=True)
+        return scored[:limit]
+
+    # ─── Gamification: Templates ─────────────────────────────────────────────────
+
+    async def get_templates(self, team: Optional[str] = None) -> List[Dict[str, Any]]:
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT id, name, content, category, is_default, created_at FROM message_templates ORDER BY is_default DESC, name ASC'
+            )
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+    async def get_template_by_id(self, template_id: int) -> Optional[Dict[str, Any]]:
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT id, name, content, category, is_default, created_at FROM message_templates WHERE id=?',
+                (template_id,)
+            )
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+    async def create_template(self, name: str, content: str, category: str,
+                               created_by: int, is_default: bool = False) -> int:
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'INSERT INTO message_templates (name, content, category, created_by, is_default) VALUES (?,?,?,?,?)',
+                (name, content, category, created_by, 1 if is_default else 0)
+            )
+            await db.commit()
+            return cur.lastrowid
+
+    async def delete_template(self, template_id: int) -> bool:
+        async with self.get_connection() as db:
+            cur = await db.execute('DELETE FROM message_templates WHERE id=? AND is_default=0', (template_id,))
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def seed_default_templates(self):
+        """Seed 5 default Chinese message templates (idempotent)."""
+        seeded = await self.get_setting('default_templates_seeded')
+        if seeded == '1':
+            return
+        defaults = [
+            ('初次问候', '你好！我是平台客服，请问您有什么可以帮您的吗？😊', 'greeting'),
+            ('注册引导', '欢迎加入！请点击以下链接完成注册，只需2分钟即可开始赚钱：', 'onboarding'),
+            ('跟进提醒', '您好，我们已经准备好了您的专属资料，方便现在为您介绍吗？', 'followup'),
+            ('存款引导', '恭喜您完成注册！首次存款即可获得额外奖励，立即体验！💰', 'deposit'),
+            ('复活跟进', '好久不见！最近平台有新活动，您是否有兴趣了解一下？🎁', 'reactivate'),
+        ]
+        async with self.get_connection() as db:
+            for name, content, category in defaults:
+                await db.execute(
+                    'INSERT INTO message_templates (name, content, category, created_by, is_default) VALUES (?,?,?,NULL,1)',
+                    (name, content, category)
+                )
+            await db.commit()
+        await self.set_setting('default_templates_seeded', '1', 'Default templates seeded')
+
+    # ─── Gamification: Contests ──────────────────────────────────────────────────
+
+    async def create_contest(self, title: str, metric: str, target: Optional[float],
+                              team: Optional[str], end_date: datetime, created_by: int) -> int:
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """INSERT INTO contests (title, metric, target, team, end_date, status, created_by)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (title, metric, target, team, end_date.strftime('%Y-%m-%d %H:%M:%S'), 'active', created_by)
+            )
+            await db.commit()
+            return cur.lastrowid
+
+    async def get_active_contest(self, team: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        async with self.get_connection() as db:
+            if team:
+                cur = await db.execute(
+                    """SELECT * FROM contests
+                       WHERE status='active' AND (team=? OR team IS NULL)
+                       AND end_date > CURRENT_TIMESTAMP
+                       ORDER BY created_at DESC LIMIT 1""",
+                    (team,)
+                )
+            else:
+                cur = await db.execute(
+                    """SELECT * FROM contests
+                       WHERE status='active' AND end_date > CURRENT_TIMESTAMP
+                       ORDER BY created_at DESC LIMIT 1"""
+                )
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+    async def end_contest(self, contest_id: int) -> Optional[Dict[str, Any]]:
+        """Mark contest ended, compute winner from contest_scores."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT cs.staff_id, cs.score, s.display_name
+                   FROM contest_scores cs
+                   JOIN staff s ON cs.staff_id = s.id
+                   WHERE cs.contest_id = ?
+                   ORDER BY cs.score DESC LIMIT 1""",
+                (contest_id,)
+            )
+            winner_row = await cur.fetchone()
+            winner_id = winner_row['staff_id'] if winner_row else None
+            await db.execute(
+                'UPDATE contests SET status=?, winner_id=? WHERE id=?',
+                ('ended', winner_id, contest_id)
+            )
+            await db.commit()
+            return dict(winner_row) if winner_row else None
+
+    async def get_contest_scores(self, contest_id: int) -> List[Dict[str, Any]]:
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT cs.staff_id, cs.score, cs.updated_at, s.display_name
+                   FROM contest_scores cs
+                   JOIN staff s ON cs.staff_id = s.id
+                   WHERE cs.contest_id = ?
+                   ORDER BY cs.score DESC""",
+                (contest_id,)
+            )
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+    async def upsert_contest_score(self, contest_id: int, staff_id: int, score: float):
+        async with self.get_connection() as db:
+            await db.execute(
+                """INSERT INTO contest_scores (contest_id, staff_id, score, updated_at)
+                   VALUES (?,?,?,CURRENT_TIMESTAMP)
+                   ON CONFLICT(contest_id, staff_id) DO UPDATE SET
+                   score=excluded.score, updated_at=CURRENT_TIMESTAMP""",
+                (contest_id, staff_id, score)
+            )
+            await db.commit()
+
+    async def refresh_contest_scores(self, contest_id: int):
+        """Recalculate scores for all staff in an active contest based on metric."""
+        contest = await self.get_active_contest()
+        if not contest or contest['id'] != contest_id:
+            return
+        metric = contest['metric']
+        today = _utc_today()
+        start = datetime.fromisoformat(contest['start_date']).date() if contest.get('start_date') else today
+        all_staff = await self.get_all_staff()
+        for s in all_staff:
+            if contest.get('team') and s.team != contest['team']:
+                continue
+            if s.role.value not in ('frontdesk', 'newbie', 'customer_service'):
+                continue
+            async with self.get_connection() as db:
+                if metric == 'leads':
+                    cur = await db.execute(
+                        'SELECT COALESCE(SUM(new_leads),0) FROM daily_stats WHERE staff_id=? AND stat_date >= ?',
+                        (s.id, start.isoformat())
+                    )
+                elif metric == 'orders':
+                    cur = await db.execute(
+                        'SELECT COALESCE(SUM(new_orders),0) FROM daily_stats WHERE staff_id=? AND stat_date >= ?',
+                        (s.id, start.isoformat())
+                    )
+                elif metric == 'deposits':
+                    cur = await db.execute(
+                        'SELECT COALESCE(SUM(total_deposit),0) FROM daily_stats WHERE staff_id=? AND stat_date >= ?',
+                        (s.id, start.isoformat())
+                    )
+                elif metric == 'reply_rate':
+                    cur = await db.execute(
+                        'SELECT COALESCE(AVG(reply_rate),0) FROM daily_stats WHERE staff_id=? AND stat_date >= ?',
+                        (s.id, start.isoformat())
+                    )
+                else:
+                    continue
+                score = (await cur.fetchone())[0] or 0
+            await self.upsert_contest_score(contest_id, s.id, score)
+
+    async def auto_end_expired_contests(self) -> int:
+        """End all contests whose end_date has passed. Returns count ended."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                "SELECT id FROM contests WHERE status='active' AND end_date <= CURRENT_TIMESTAMP"
+            )
+            rows = await cur.fetchall()
+        count = 0
+        for row in rows:
+            await self.end_contest(row['id'])
+            count += 1
+        return count
 
 
 # Global singleton

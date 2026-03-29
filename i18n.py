@@ -1549,6 +1549,152 @@ STRINGS = {
         'zh': 'Webhook 签名无效',
         'en': 'Invalid webhook signature',
     },
+
+    # === GAMIFICATION ===
+    'leaderboard_title': {
+        'zh': '🏆 **排行榜**',
+        'en': '🏆 **Leaderboard**',
+    },
+    'leaderboard_period_today': {
+        'zh': '今天',
+        'en': 'Today',
+    },
+    'leaderboard_period_week': {
+        'zh': '本周',
+        'en': 'This Week',
+    },
+    'leaderboard_period_month': {
+        'zh': '本月',
+        'en': 'This Month',
+    },
+    'leaderboard_empty': {
+        'zh': '暂无排行数据。',
+        'en': 'No leaderboard data yet.',
+    },
+    'leaderboard_row': {
+        'zh': '{rank}. {name} — 🆕{leads} ✅{orders} 💵{deposits:.0f}',
+        'en': '{rank}. {name} — 🆕{leads} ✅{orders} 💵{deposits:.0f}',
+    },
+    'leaderboard_usage': {
+        'zh': '用法: /leaderboard [today|week|month]',
+        'en': 'Usage: /leaderboard [today|week|month]',
+    },
+    'hot_leads_title': {
+        'zh': '🔥 **热门潜客**',
+        'en': '🔥 **Hot Leads**',
+    },
+    'hot_leads_empty': {
+        'zh': '暂无热门潜客。',
+        'en': 'No hot leads found.',
+    },
+    'hot_leads_row': {
+        'zh': '{rank}. {phone} ({name}) [{status}] 得分:{score}',
+        'en': '{rank}. {phone} ({name}) [{status}] score:{score}',
+    },
+    'summary_title': {
+        'zh': '📊 **团队摘要**',
+        'en': '📊 **Team Summary**',
+    },
+    'summary_period': {
+        'zh': '周期: {period}',
+        'en': 'Period: {period}',
+    },
+    'summary_leads': {
+        'zh': '🆕 新客: {count}',
+        'en': '🆕 New Leads: {count}',
+    },
+    'summary_orders': {
+        'zh': '🎯 成单: {count}',
+        'en': '🎯 Orders: {count}',
+    },
+    'summary_deposits': {
+        'zh': '💵 存款: ${amount:.2f}',
+        'en': '💵 Deposits: ${amount:.2f}',
+    },
+    'summary_reply_rate': {
+        'zh': '💬 回复率: {rate:.1f}%',
+        'en': '💬 Reply Rate: {rate:.1f}%',
+    },
+    'template_list_title': {
+        'zh': '📝 **消息模板**',
+        'en': '📝 **Message Templates**',
+    },
+    'template_list_empty': {
+        'zh': '暂无模板。使用 /template add <名称> <内容> 添加。',
+        'en': 'No templates yet. Use /template add <name> <content> to add.',
+    },
+    'template_row': {
+        'zh': '{id}. [{category}] **{name}**',
+        'en': '{id}. [{category}] **{name}**',
+    },
+    'template_added': {
+        'zh': '✅ 模板 "{name}" 已添加 (ID: {id})',
+        'en': '✅ Template "{name}" added (ID: {id})',
+    },
+    'template_deleted': {
+        'zh': '✅ 模板 {id} 已删除。',
+        'en': '✅ Template {id} deleted.',
+    },
+    'template_not_found': {
+        'zh': '❌ 模板 {id} 不存在或无法删除。',
+        'en': '❌ Template {id} not found or cannot be deleted.',
+    },
+    'template_view': {
+        'zh': '📄 **{name}** [{category}]\n\n{content}',
+        'en': '📄 **{name}** [{category}]\n\n{content}',
+    },
+    'template_usage': {
+        'zh': '用法:\n/template list — 列出全部\n/template view <id> — 查看\n/template add <名称> <内容> — 添加\n/template del <id> — 删除',
+        'en': 'Usage:\n/template list — list all\n/template view <id> — view\n/template add <name> <content> — add\n/template del <id> — delete',
+    },
+    'contest_title': {
+        'zh': '🏅 **比赛**',
+        'en': '🏅 **Contest**',
+    },
+    'contest_active': {
+        'zh': '🏅 **{title}**\n指标: {metric} | 截止: {end_date}\n\n',
+        'en': '🏅 **{title}**\nMetric: {metric} | Ends: {end_date}\n\n',
+    },
+    'contest_no_active': {
+        'zh': '暂无进行中的比赛。',
+        'en': 'No active contest.',
+    },
+    'contest_scores_header': {
+        'zh': '排名:\n',
+        'en': 'Rankings:\n',
+    },
+    'contest_score_row': {
+        'zh': '{rank}. {name}: {score:.1f}',
+        'en': '{rank}. {name}: {score:.1f}',
+    },
+    'contest_created': {
+        'zh': '✅ 比赛 "{title}" 已创建 (ID: {id})，截止: {end_date}',
+        'en': '✅ Contest "{title}" created (ID: {id}), ends: {end_date}',
+    },
+    'contest_ended': {
+        'zh': '✅ 比赛已结束！🏆 获胜者: {winner}',
+        'en': '✅ Contest ended! 🏆 Winner: {winner}',
+    },
+    'contest_ended_no_winner': {
+        'zh': '✅ 比赛已结束，暂无参赛数据。',
+        'en': '✅ Contest ended with no scores.',
+    },
+    'contest_not_found': {
+        'zh': '❌ 未找到活跃的比赛。',
+        'en': '❌ No active contest found.',
+    },
+    'contest_usage': {
+        'zh': '用法:\n/contest — 查看当前比赛\n/contest new <标题> <指标> <天数> — 创建 (管理员)\n/contest end — 结束当前比赛 (管理员)',
+        'en': 'Usage:\n/contest — view current\n/contest new <title> <metric> <days> — create (admin)\n/contest end — end current (admin)',
+    },
+    'contest_invalid_metric': {
+        'zh': '❌ 无效指标。可选: leads, orders, deposits, reply_rate',
+        'en': '❌ Invalid metric. Options: leads, orders, deposits, reply_rate',
+    },
+    'contest_invalid_days': {
+        'zh': '❌ 天数必须为正整数。',
+        'en': '❌ Days must be a positive integer.',
+    },
 }
 
 

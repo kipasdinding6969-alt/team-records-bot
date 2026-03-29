@@ -19,6 +19,7 @@ from handlers_v2.pipeline import PIPELINE_COMMANDS, PIPELINE_CALLBACKS, PIPELINE
 from handlers_v2.management import MANAGEMENT_COMMANDS, MANAGEMENT_CALLBACKS, MANAGEMENT_CONVERSATIONS
 from handlers_v2.registration_v2 import REGISTRATION_V2_COMMANDS, REGISTRATION_V2_CALLBACKS, REGISTRATION_V2_CONVERSATIONS
 from handlers_v2.group_chat import GROUP_COMMANDS, GROUP_CALLBACKS, GROUP_CONVERSATIONS
+from handlers_v2.gamification import GAMIFICATION_COMMANDS, GAMIFICATION_CALLBACKS, GAMIFICATION_CONVERSATIONS
 import engines.sheet_sync_v2 as _sheet_sync_v2_mod
 import engines.dashboard_sheets as _dashboard_mod
 
@@ -59,6 +60,7 @@ class RalphLoop:
         self.last_policy_target_check = None
         self.last_obsidian_daily_report = None
         self.last_task_cleanup = None
+        self.last_contest_maintenance = None
 
         # Command and callback handlers registry
         self.command_handlers = {}
@@ -136,6 +138,12 @@ class RalphLoop:
             except Exception as e:
                 logger.warning(f"seed_additional_staff failed: {e}")
 
+            # Seed default message templates — idempotent
+            try:
+                await database_v2.seed_default_templates()
+            except Exception as e:
+                logger.warning(f"seed_default_templates failed: {e}")
+
             # Register V2 bot commands with Telegram (visible in command menu)
             await self._register_bot_commands()
 
@@ -211,6 +219,7 @@ class RalphLoop:
         all_commands.update(MANAGEMENT_COMMANDS)
         all_commands.update(REGISTRATION_V2_COMMANDS)
         all_commands.update(GROUP_COMMANDS)
+        all_commands.update(GAMIFICATION_COMMANDS)
 
         all_callbacks = {}
         all_callbacks.update(QUICK_ACTIONS_CALLBACKS)
@@ -218,6 +227,7 @@ class RalphLoop:
         all_callbacks.update(MANAGEMENT_CALLBACKS)
         all_callbacks.update(REGISTRATION_V2_CALLBACKS)
         all_callbacks.update(GROUP_CALLBACKS)
+        all_callbacks.update(GAMIFICATION_CALLBACKS)
 
         all_conversations = {}
         all_conversations.update(QUICK_ACTIONS_CONVERSATIONS)
@@ -225,6 +235,7 @@ class RalphLoop:
         all_conversations.update(MANAGEMENT_CONVERSATIONS)
         all_conversations.update(REGISTRATION_V2_CONVERSATIONS)
         all_conversations.update(GROUP_CONVERSATIONS)
+        all_conversations.update(GAMIFICATION_CONVERSATIONS)
 
         self.command_handlers = all_commands
         self.callback_handlers = all_callbacks
@@ -633,6 +644,7 @@ class RalphLoop:
         await self._maint_obsidian_report(current_time)
         await self._maint_v2_sheet_sync(current_time)
         await self._maint_task_cleanup(current_time)
+        await self._maint_contest_maintenance(current_time)
 
     async def _maint_health_check(self, current_time: datetime):
         """Schedule periodic health check task."""
@@ -825,6 +837,20 @@ class RalphLoop:
                     logger.error(f'NocoDB sync error: {e}')
 
             self.last_v2_sheet_sync = current_time
+
+    async def _maint_contest_maintenance(self, current_time: datetime):
+        """Auto-end expired contests and refresh scores every 15 minutes."""
+        if not self.last_contest_maintenance or (current_time - self.last_contest_maintenance).total_seconds() > 900:
+            try:
+                ended = await database_v2.auto_end_expired_contests()
+                if ended > 0:
+                    logger.info(f'Contest: auto-ended {ended} expired contest(s)')
+                contest = await database_v2.get_active_contest()
+                if contest:
+                    await database_v2.refresh_contest_scores(contest['id'])
+            except Exception as e:
+                logger.error(f'Contest maintenance error: {e}')
+            self.last_contest_maintenance = current_time
 
     async def _maint_task_cleanup(self, current_time: datetime):
         """Cleanup completed/failed tasks older than 24 hours."""
