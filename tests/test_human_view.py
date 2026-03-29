@@ -568,3 +568,144 @@ class TestBindPolicies:
         seed_team(db)
         admins = db.execute("SELECT COUNT(*) FROM staff WHERE role='admin'").fetchone()[0]
         assert admins >= 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SCENARIO 10: /num, /info, /req commands
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestNumInfoReq:
+    """Test new /num, /info, /req commands and their policies."""
+
+    def test_add_with_account_id(self, db):
+        """'/add phone source 123' should store account_id."""
+        seed_team(db)
+        now = datetime.now().isoformat()
+        tino_id = db.execute("SELECT id FROM staff WHERE display_name='TINO'").fetchone()[0]
+        db.execute(
+            "INSERT INTO clients (frontdesk_id, phone, source, account_id, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+            (tino_id, '46999888777', '微信', '888', 'new', now, now))
+        db.commit()
+        row = db.execute("SELECT account_id FROM clients WHERE phone='46999888777'").fetchone()
+        assert row[0] == '888'
+
+    def test_num_updates_account_id(self, db):
+        """'/num phone 999' updates account_id for existing client."""
+        seed_team(db)
+        now = datetime.now().isoformat()
+        tino_id = db.execute("SELECT id FROM staff WHERE display_name='TINO'").fetchone()[0]
+        db.execute(
+            "INSERT INTO clients (frontdesk_id, phone, source, status, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+            (tino_id, '46111000222', '飞机', 'new', now, now))
+        db.commit()
+        # Simulate /num update
+        db.execute("UPDATE clients SET account_id='999' WHERE phone='46111000222'")
+        db.commit()
+        row = db.execute("SELECT account_id FROM clients WHERE phone='46111000222'").fetchone()
+        assert row[0] == '999'
+
+    def test_num_permission_check(self):
+        """Only roles with 'u' permission can use /num."""
+        from engines.policy_engine import check_permission
+        assert check_permission('frontdesk', 'num')
+        assert check_permission('leader', 'num')
+        assert not check_permission('newbie', 'num')
+        assert not check_permission('viewer', 'num')
+
+    def test_info_permission_check(self):
+        """/info is broadly available — even viewers and newbies can look up clients."""
+        from engines.policy_engine import check_permission
+        assert check_permission('frontdesk', 'info')
+        assert check_permission('viewer', 'info')
+        assert check_permission('newbie', 'info')
+        assert check_permission('customer_service', 'info')
+
+    def test_req_permission_check(self):
+        """/req is available to frontdesk, newbie, CS — anyone who needs help."""
+        from engines.policy_engine import check_permission
+        assert check_permission('frontdesk', 'req')
+        assert check_permission('newbie', 'req')
+        assert check_permission('customer_service', 'req')
+        assert not check_permission('viewer', 'req')
+
+    def test_bind_permission_check(self):
+        """/bind available to frontdesk and newbie."""
+        from engines.policy_engine import check_permission
+        assert check_permission('frontdesk', 'bind')
+        assert check_permission('newbie', 'bind')
+
+    def test_client_info_card_fields(self, db):
+        """Client info should include all key fields."""
+        seed_team(db)
+        now = datetime.now().isoformat()
+        tino_id = db.execute("SELECT id FROM staff WHERE display_name='TINO'").fetchone()[0]
+        db.execute(
+            """INSERT INTO clients (frontdesk_id, phone, source, account_id, status,
+               platform, total_deposited, created_at, updated_at, contacted_at, registered_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (tino_id, '46555666777', '飞机筛选', '456', 'registered', 'MT5', 1000.0, now, now, now, now))
+        db.commit()
+        row = db.execute("SELECT * FROM clients WHERE phone='46555666777'").fetchone()
+        assert row is not None
+        # Verify key fields are stored
+        col_names = [desc[0] for desc in db.execute("PRAGMA table_info(clients)").fetchall()]
+        data = dict(zip([c[1] for c in db.execute("PRAGMA table_info(clients)").fetchall()],
+                       [row[i] for i in range(len(row))]))
+        assert data['account_id'] == '456'
+        assert data['platform'] == 'MT5'
+        assert data['total_deposited'] == 1000.0
+        assert data['status'] == 'registered'
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SCENARIO 11: All new command permissions matrix
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestFullPermissionMatrix:
+    """Verify the complete permission matrix for all roles × all commands."""
+
+    def test_full_matrix(self):
+        from engines.policy_engine import check_permission, ROLE_PERMISSIONS
+
+        # Key commands that must be correctly assigned
+        matrix = {
+            # (role, command) → expected
+            ('frontdesk', 'add'): True,
+            ('frontdesk', 'u'): True,
+            ('frontdesk', 'num'): True,
+            ('frontdesk', 'info'): True,
+            ('frontdesk', 'req'): True,
+            ('frontdesk', 'bind'): True,
+            ('frontdesk', 'sync'): False,
+            ('frontdesk', 'target'): False,
+            ('newbie', 'add'): True,
+            ('newbie', 'req'): True,
+            ('newbie', 'bind'): True,
+            ('newbie', 'info'): True,
+            ('newbie', 'u'): False,
+            ('newbie', 'num'): False,
+            ('newbie', 'dashboard'): False,
+            ('viewer', 'info'): True,
+            ('viewer', 'dashboard'): True,
+            ('viewer', 'add'): False,
+            ('viewer', 'u'): False,
+            ('viewer', 'req'): False,
+            ('customer_service', 'info'): True,
+            ('customer_service', 'req'): True,
+            ('customer_service', 'search'): True,
+            ('customer_service', 'add'): False,
+            ('customer_service', 'u'): False,
+            ('leader', 'add'): True,
+            ('leader', 'bulkupdate'): True,
+            ('leader', 'target'): True,
+            ('admin', 'sync'): True,
+            ('admin', 'add'): True,
+        }
+
+        failures = []
+        for (role, cmd), expected in matrix.items():
+            actual = check_permission(role, cmd)
+            if actual != expected:
+                failures.append(f'{role}.{cmd}: expected={expected}, got={actual}')
+
+        assert not failures, f"Permission matrix failures:\n" + "\n".join(failures)

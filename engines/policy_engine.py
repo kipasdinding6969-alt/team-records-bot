@@ -8,15 +8,15 @@ logger = logging.getLogger(__name__)
 # ── Role Permissions ──────────────────────────────────────────────────────────
 
 _FRONTDESK_CMDS = [
-    'add', 'u', 'note', 'remind', 'me', 'pipeline', 'followup', 'today',
-    'search', 'rag', 'handoff', 'profile', 'export', 'sop',
+    'add', 'u', 'num', 'info', 'note', 'remind', 'req', 'me', 'pipeline', 'followup', 'today',
+    'search', 'rag', 'handoff', 'profile', 'export', 'sop', 'bind',
 ]
 _MAINTENANCE_CMDS = _FRONTDESK_CMDS + ['dashboard', 'team']
 _ALL_COMMANDS = _MAINTENANCE_CMDS + ['target', 'overview', 'setname', 'lang', 'setteam', 'teams', 'linkgroup', 'unlinkgroup', 'bulkupdate']
 _ADMIN_COMMANDS = _ALL_COMMANDS + ['sync']
-_VIEWER_CMDS = ['me', 'dashboard', 'pipeline', 'search', 'rag', 'export', 'help', 'today']
-_NEWBIE_CMDS = ['add', 'me', 'note', 'help']
-_CS_CMDS = ['search', 'note', 'pipeline', 'dashboard', 'rag', 'export', 'me', 'help', 'today']
+_VIEWER_CMDS = ['me', 'dashboard', 'pipeline', 'search', 'rag', 'export', 'help', 'today', 'info']
+_NEWBIE_CMDS = ['add', 'me', 'note', 'help', 'req', 'bind', 'info']
+_CS_CMDS = ['search', 'note', 'info', 'pipeline', 'dashboard', 'rag', 'export', 'me', 'help', 'today', 'req']
 # leader gets all commands (team-scoped)
 _LEADER_CMDS = _ALL_COMMANDS
 
