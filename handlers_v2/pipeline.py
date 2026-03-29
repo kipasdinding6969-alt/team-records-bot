@@ -41,7 +41,7 @@ def _build_pipeline_text(counts: Dict[str, int], staff_name: str, lang: str) -> 
 
 
 async def handle_pipeline(task_data: Dict[str, Any]):
-    """/pipeline — funnel view of own clients."""
+    """/pipeline — funnel view. In group: show team totals. In DM: show own clients."""
     chat_id = task_data.get('chat_id')
     user_id = task_data.get('user_id')
 
@@ -56,16 +56,48 @@ async def handle_pipeline(task_data: Dict[str, Any]):
         return
 
     lang = staff.language
-    counts = await database_v2.get_pipeline_counts(staff.id)
 
-    stale = await database_v2.get_stale_clients(staff.id, hours=72)
-    followup_due = await database_v2.get_followup_due(staff.id)
+    # In group context: show team-wide pipeline (sum all team members)
+    from handlers_v2 import resolve_team_scope, get_team_staff_ids, is_group_context
+    team_scope = resolve_team_scope(task_data, staff)
 
-    text = _build_pipeline_text(counts, staff.display_name, lang)
-    if stale:
-        text += f'\n\n⚠️ {t("stale_count", lang, count=len(stale))}'
-    if followup_due:
-        text += f'\n🔥 {t("followup_due_count", lang, count=len(followup_due))}'
+    if is_group_context(task_data) and team_scope:
+        # Team-wide pipeline
+        team_ids = await get_team_staff_ids(team_scope)
+        if not team_ids:
+            team_ids = [staff.id]
+
+        # Aggregate counts across all team members
+        from collections import Counter
+        total_counts: Counter = Counter()
+        for sid in team_ids:
+            c = await database_v2.get_pipeline_counts(sid)
+            for k, v in c.items():
+                total_counts[k] += v
+
+        all_stale = []
+        all_followup = []
+        for sid in team_ids:
+            all_stale.extend(await database_v2.get_stale_clients(sid, hours=72))
+            all_followup.extend(await database_v2.get_followup_due(sid))
+
+        text = _build_pipeline_text(dict(total_counts), f'{team_scope} 团队', lang)
+        if all_stale:
+            text += f'\n\n⚠️ {t("stale_count", lang, count=len(all_stale))}'
+        if all_followup:
+            text += f'\n🔥 {t("followup_due_count", lang, count=len(all_followup))}'
+        text += f'\n\n👥 团队成员: {len(team_ids)} 人'
+    else:
+        # Personal pipeline (DM or no team scope)
+        counts = await database_v2.get_pipeline_counts(staff.id)
+        stale = await database_v2.get_stale_clients(staff.id, hours=72)
+        followup_due = await database_v2.get_followup_due(staff.id)
+
+        text = _build_pipeline_text(counts, staff.display_name, lang)
+        if stale:
+            text += f'\n\n⚠️ {t("stale_count", lang, count=len(stale))}'
+        if followup_due:
+            text += f'\n🔥 {t("followup_due_count", lang, count=len(followup_due))}'
 
     text += f'\n\n/followup  /today  /add'
 

@@ -1,7 +1,7 @@
 """V2 handler package — shared utilities."""
 import functools
 import logging
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from database_v2 import database_v2
 from models_v2 import Staff, check_permission
@@ -12,6 +12,39 @@ logger = logging.getLogger(__name__)
 async def get_staff(user_id: int) -> Optional[Staff]:
     """Look up staff by Telegram user ID. Shared across all V2 handlers."""
     return await database_v2.get_staff_by_tg_id(user_id)
+
+
+def resolve_team_scope(task_data: Dict[str, Any], staff: Staff) -> Optional[str]:
+    """Determine the team scope for a command.
+
+    Priority:
+    1. group_team from task_data (set by group_middleware or auto-detect)
+    2. staff.team (the user's own team)
+
+    Returns team name (e.g. '阿俊', '何军', '全线') or None for no scope.
+    """
+    group_team = task_data.get('group_team')
+    if group_team:
+        # Map team_config IDs to DB team names
+        _ID_TO_TEAM = {
+            'quanxian': '全线',
+            'ajun': '阿俊',
+            'hejun': '何军',
+            'chaoqun': '炒群',
+        }
+        return _ID_TO_TEAM.get(group_team, group_team)
+    return staff.team if staff.team else None
+
+
+async def get_team_staff_ids(team: str) -> List[int]:
+    """Get all staff IDs for a team."""
+    all_staff = await database_v2.get_all_staff()
+    return [s.id for s in all_staff if s.team == team]
+
+
+def is_group_context(task_data: Dict[str, Any]) -> bool:
+    """Return True if this command came from a group/supergroup."""
+    return task_data.get('chat_type', 'private') in ('group', 'supergroup')
 
 
 def require_permission(command: str):

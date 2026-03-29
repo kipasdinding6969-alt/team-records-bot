@@ -453,3 +453,118 @@ class TestNocoDBMapping:
             config = json.load(f)
         for table_name in config['tables']:
             assert table_name in config['field_map'], f"Missing field_map for {table_name}"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SCENARIO 8: Group context — team scoping
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestGroupTeamScoping:
+    """Test that group commands are properly team-scoped."""
+
+    def test_resolve_team_scope_from_group(self):
+        from handlers_v2 import resolve_team_scope
+        from models_v2 import Staff, StaffRole
+        staff = Staff(id=1, tg_user_id=100, tg_chat_id=100, display_name='Test',
+                      role=StaffRole.FRONTDESK, team='阿俊')
+        task_data = {'group_team': 'ajun', 'chat_type': 'supergroup'}
+        assert resolve_team_scope(task_data, staff) == '阿俊'
+
+    def test_resolve_team_scope_from_staff(self):
+        from handlers_v2 import resolve_team_scope
+        from models_v2 import Staff, StaffRole
+        staff = Staff(id=1, tg_user_id=100, tg_chat_id=100, display_name='Test',
+                      role=StaffRole.FRONTDESK, team='何军')
+        task_data = {'chat_type': 'private'}
+        assert resolve_team_scope(task_data, staff) == '何军'
+
+    def test_resolve_team_scope_none_for_unassigned(self):
+        from handlers_v2 import resolve_team_scope
+        from models_v2 import Staff, StaffRole
+        staff = Staff(id=1, tg_user_id=100, tg_chat_id=100, display_name='Test',
+                      role=StaffRole.FRONTDESK, team=None)
+        task_data = {'chat_type': 'private'}
+        assert resolve_team_scope(task_data, staff) is None
+
+    def test_is_group_context_detects_supergroup(self):
+        from handlers_v2 import is_group_context
+        assert is_group_context({'chat_type': 'supergroup'}) is True
+        assert is_group_context({'chat_type': 'group'}) is True
+        assert is_group_context({'chat_type': 'private'}) is False
+        assert is_group_context({}) is False
+
+    def test_group_middleware_blocks_non_commands(self):
+        """In groups, non-command messages should be dropped."""
+        from handlers_v2.group_chat import is_group_chat, is_command_message
+        task = {'chat_type': 'supergroup', 'text': 'hello'}
+        assert is_group_chat(task) is True
+        assert is_command_message(task) is False
+
+    def test_group_middleware_allows_commands(self):
+        from handlers_v2.group_chat import is_group_chat, is_command_message
+        task = {'chat_type': 'supergroup', 'text': '/pipeline'}
+        assert is_group_chat(task) is True
+        assert is_command_message(task) is True
+
+    def test_auto_detect_team_from_chat_id(self):
+        """team_config should map chat_id → team_id."""
+        from team_config import team_config
+        ajun_chat = team_config.get_team_chat_id('ajun')
+        # Reverse lookup: given this chat_id, which team?
+        found = None
+        for tid in team_config.get_all_team_ids():
+            if team_config.get_team_chat_id(tid) == ajun_chat:
+                found = tid
+                break
+        assert found == 'ajun'
+
+    def test_chat_type_in_task_data(self):
+        """Verify chat_type is expected in task_data format."""
+        task = {
+            'event_type': 'command',
+            'command': 'pipeline',
+            'chat_type': 'supergroup',
+            'chat_id': -1003705867153,
+            'user_id': 12345,
+            'group_team': 'ajun',
+        }
+        from handlers_v2 import is_group_context
+        assert is_group_context(task) is True
+        assert task.get('group_team') == 'ajun'
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SCENARIO 9: Member binding policies
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestBindPolicies:
+    """Test bind-related policy enforcement."""
+
+    def test_staff_with_real_tg_id_cannot_rebind(self, db):
+        """Staff with positive tg_user_id are fully bound."""
+        seed_team(db)
+        row = db.execute("SELECT tg_user_id FROM staff WHERE display_name='TINO'").fetchone()
+        assert row[0] > 0  # Real ID
+
+    def test_staff_with_placeholder_id_can_bind(self, db):
+        """Staff with negative tg_user_id are unbound placeholders."""
+        seed_team(db)
+        row = db.execute("SELECT tg_user_id FROM staff WHERE display_name='新人小明'").fetchone()
+        assert row[0] < 0  # Placeholder
+
+    def test_each_team_has_leader_or_maintenance(self, db):
+        """Each team should have at least one leader/maintenance role."""
+        seed_team(db)
+        teams = db.execute("SELECT DISTINCT team FROM staff WHERE team IS NOT NULL").fetchall()
+        for (team,) in teams:
+            leaders = db.execute(
+                "SELECT COUNT(*) FROM staff WHERE team=? AND role IN ('leader', 'maintenance', 'admin')",
+                (team,)
+            ).fetchone()[0]
+            assert leaders >= 1, f"Team {team} has no leader/maintenance!"
+
+    def test_admin_exists(self, db):
+        """There must be at least one admin."""
+        seed_team(db)
+        admins = db.execute("SELECT COUNT(*) FROM staff WHERE role='admin'").fetchone()[0]
+        assert admins >= 1

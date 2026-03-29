@@ -133,17 +133,60 @@ class TelegramHandler:
         # Update user activity
         await self._update_user_activity(user, chat_id)
 
+        # Detect chat type (private, group, supergroup, channel)
+        chat = await event.get_chat()
+        if hasattr(chat, 'megagroup') and chat.megagroup:
+            chat_type = 'supergroup'
+        elif hasattr(chat, 'broadcast') and chat.broadcast:
+            chat_type = 'channel'
+        elif hasattr(chat, 'gigagroup') and chat.gigagroup:
+            chat_type = 'supergroup'
+        elif hasattr(chat, 'title'):
+            chat_type = 'group'
+        else:
+            chat_type = 'private'
+
+        # Get forum topic (message_thread_id) if present
+        reply_to_msg_id = None
+        if hasattr(event.message, 'reply_to') and event.message.reply_to:
+            reply_to_msg_id = getattr(event.message.reply_to, 'reply_to_top_id', None) or \
+                              getattr(event.message.reply_to, 'reply_to_msg_id', None)
+
         # Create task for Ralph Loop processing
         task_data = {
             'event_type': 'command',
             'command': command,
-            'args': args,
+            'args': ' '.join(args),  # Join args into string (handlers expect string)
             'user_id': user.id,
             'chat_id': chat_id,
+            'chat_type': chat_type,
+            'chat_title': getattr(chat, 'title', None),
+            'message_thread_id': reply_to_msg_id,
             'username': user.username,
             'first_name': user.first_name,
-            'last_name': user.last_name
+            'last_name': user.last_name,
         }
+
+        # Group middleware: detect team from linked group or team_config
+        if chat_type in ('group', 'supergroup'):
+            try:
+                from handlers_v2.group_chat import group_middleware
+                should_process = await group_middleware(task_data)
+                if not should_process:
+                    return  # Drop non-command messages in groups
+            except Exception as e:
+                logger.debug(f"Group middleware error: {e}")
+
+            # Also try auto-detecting team from team_config (by chat_id)
+            if 'group_team' not in task_data:
+                try:
+                    from team_config import team_config
+                    for tid in team_config.get_all_team_ids():
+                        if team_config.get_team_chat_id(tid) == chat_id:
+                            task_data['group_team'] = tid
+                            break
+                except Exception:
+                    pass
 
         task = BotTask(
             task_type='message',
@@ -152,7 +195,7 @@ class TelegramHandler:
         )
 
         await database.create_task(task)
-        logger.info(f"Created task for command /{command} from user {user.id}")
+        logger.info(f"Created task for command /{command} from user {user.id} (chat_type={chat_type})")
 
     async def _handle_conversation(self, event):
         """Handle conversation states for multi-step commands."""
