@@ -140,6 +140,18 @@ class TeamConfig:
         """Return full team dict."""
         return self._data.get(team_id)
 
+    def get_team_members(self, team_id: str) -> List[str]:
+        """Return member list for a team (leader first, then members)."""
+        info = self._data.get(team_id)
+        if not info:
+            return []
+        members = list(info.get("members", []))
+        leader = info.get("leader")
+        if leader and leader not in members:
+            members.insert(0, leader)
+        return members
+
+    @property
     def is_loaded(self) -> bool:
         return bool(self._data)
 
