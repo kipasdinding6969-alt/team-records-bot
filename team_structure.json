@@ -2,7 +2,8 @@
   "broadcast": {
     "title": "📢 QianHub 总频道",
     "chat_id": -1003749533993,
-    "type": "channel"
+    "type": "channel",
+    "invite_link": "https://t.me/+pufSOlTAm-BiMThk"
   },
   "quanxian": {
     "title": "🏢 全线小组 | 阿毛",
@@ -23,7 +24,8 @@
       "❓ 问题 Issues": 5,
       "📋 任务 Tasks": 6,
       "🔔 通知 Notices": 7
-    }
+    },
+    "invite_link": "https://t.me/+1Q58v85pCQ5lMjQ0"
   },
   "ajun": {
     "title": "🏢 阿俊小组 | 前台",
@@ -46,7 +48,8 @@
       "❓ 问题 Issues": 5,
       "📋 任务 Tasks": 6,
       "🔔 通知 Notices": 7
-    }
+    },
+    "invite_link": "https://t.me/+sXtk0Ta3Tg1mM2Q8"
   },
   "hejun": {
     "title": "🏢 何军小组 | 前台",
@@ -69,7 +72,8 @@
       "❓ 问题 Issues": 5,
       "📋 任务 Tasks": 6,
       "🔔 通知 Notices": 7
-    }
+    },
+    "invite_link": "https://t.me/+f8vjDz2Zrtc1YTY0"
   },
   "chaoqun": {
     "title": "🔥 炒群小组 | Juan Juan",
@@ -97,7 +101,8 @@
       "📋 任务 Tasks": 6,
       "🔔 通知 Notices": 7,
       "📈 战报 Battle Reports": 8
-    }
+    },
+    "invite_link": "https://t.me/+2RvNv6B0pr44MTU0"
   },
   "management": {
     "title": "🎯 管理层 | QianHub",
@@ -109,11 +114,13 @@
       "🔑 决策 Decisions": 5,
       "📋 会议 Meetings": 6,
       "🚨 紧急 Urgent": 7
-    }
+    },
+    "invite_link": "https://t.me/+KKbuwBe95xUwZDE0"
   },
   "kefu": {
     "title": "🛎️ 客服中心 | QianHub",
     "chat_id": -1003863384888,
-    "type": "supergroup"
+    "type": "supergroup",
+    "invite_link": "https://t.me/+uff7BP62JxcyZWU0"
   }
 }
