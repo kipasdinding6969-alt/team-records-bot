@@ -3,7 +3,12 @@ import hashlib
 import logging
 import struct
 from contextlib import asynccontextmanager
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
+
+
+def _utc_today() -> date:
+    """Return today's date in UTC — matches SQLite CURRENT_TIMESTAMP."""
+    return datetime.now(timezone.utc).date()
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 import aiosqlite
@@ -557,8 +562,7 @@ class DatabaseV2:
         midnight in non-UTC timezones.
         """
         if stat_date is None:
-            from datetime import timezone
-            stat_date = datetime.now(timezone.utc).date()
+            stat_date = _utc_today()
         date_str = stat_date.isoformat()
 
         async with self.get_connection() as db:
@@ -642,7 +646,7 @@ class DatabaseV2:
 
     async def get_daily_stats(self, staff_id: int, stat_date: Optional[date] = None) -> Optional[DailyStat]:
         if stat_date is None:
-            stat_date = date.today()
+            stat_date = _utc_today()
         async with self.get_connection() as db:
             cur = await db.execute(
                 'SELECT * FROM daily_stats WHERE staff_id=? AND stat_date=?',
@@ -666,7 +670,7 @@ class DatabaseV2:
     async def get_team_daily_stats(self, stat_date: Optional[date] = None) -> List[DailyStat]:
         """Get all staff stats for a date."""
         if stat_date is None:
-            stat_date = date.today()
+            stat_date = _utc_today()
         async with self.get_connection() as db:
             cur = await db.execute(
                 'SELECT * FROM daily_stats WHERE stat_date=? ORDER BY staff_id',
