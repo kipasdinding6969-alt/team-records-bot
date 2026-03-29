@@ -167,7 +167,9 @@ async def index_obsidian_docs():
         for f in files:
             if not str(f).endswith('.md'):
                 continue
-            content = await obsidian_brain.read_note(str(f))
+            # list_files returns filenames without dir prefix — prepend it
+            fpath = f'docs/{f}' if not str(f).startswith('docs/') else str(f)
+            content = await obsidian_brain.read_note(fpath)
             if not content:
                 continue
             chunks = chunk_text(content, max_chars=500)
@@ -192,7 +194,9 @@ async def index_obsidian_sops():
         for f in files:
             if not str(f).endswith('.md'):
                 continue
-            content = await obsidian_brain.read_note(str(f))
+            # list_files returns filenames without dir prefix — prepend it
+            fpath = f'workspace/{f}' if not str(f).startswith('workspace/') else str(f)
+            content = await obsidian_brain.read_note(fpath)
             if not content:
                 continue
             chunks = chunk_text(content, max_chars=500)

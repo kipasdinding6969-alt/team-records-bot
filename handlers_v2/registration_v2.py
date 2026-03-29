@@ -178,11 +178,88 @@ async def handle_setname(task_data: Dict[str, Any]):
     await telegram_handler.send_message(chat_id, t('name_changed', lang, old=old_name, new=args))
 
 
+async def handle_bind(task_data: Dict[str, Any]):
+    """/bind <display_name> — Link your Telegram account to an existing staff record.
+
+    For staff who were pre-seeded (阿毛, Juan Juan, etc.) and need to bind their
+    real Telegram account. Matches by display_name, replaces placeholder tg_user_id.
+    """
+    chat_id = task_data.get('chat_id')
+    user_id = task_data.get('user_id')
+    username = task_data.get('username')
+    args = (task_data.get('args') or '').strip()
+    lang = 'zh'
+
+    if not args:
+        await telegram_handler.send_message(chat_id,
+            "用法: /bind <你的名字>\n"
+            "例如: /bind 阿毛\n\n"
+            "Usage: /bind <your name>\n"
+            "Example: /bind Juan Juan")
+        return
+
+    # Check if this Telegram account is already linked
+    existing = await database_v2.get_staff_by_tg_id(user_id)
+    if existing:
+        lang = existing.language
+        await telegram_handler.send_message(chat_id,
+            t('bind_already_linked', lang, name=existing.display_name))
+        return
+
+    # Search for the target staff record by display_name
+    all_staff = await database_v2.get_all_staff()
+    target = None
+    for s in all_staff:
+        if s.display_name.lower().strip() == args.lower().strip():
+            target = s
+            break
+
+    if not target:
+        # Fuzzy: try partial match
+        matches = [s for s in all_staff if args.lower() in s.display_name.lower()]
+        if len(matches) == 1:
+            target = matches[0]
+        elif len(matches) > 1:
+            names = ', '.join(s.display_name for s in matches)
+            await telegram_handler.send_message(chat_id,
+                f"❌ 找到多个匹配: {names}\n请输入完整名字 / Multiple matches, use exact name")
+            return
+        else:
+            await telegram_handler.send_message(chat_id,
+                f"❌ 找不到 '{args}'\n请确认名字正确 / Name not found, check spelling")
+            return
+
+    # Check if the target already has a real Telegram ID (not placeholder)
+    if target.tg_user_id and target.tg_user_id > 0:
+        await telegram_handler.send_message(chat_id,
+            f"❌ {target.display_name} 已经绑定了另一个 Telegram 账号\n"
+            f"Already bound to another account. Contact admin.")
+        return
+
+    # Bind: update tg_user_id and tg_chat_id
+    target.tg_user_id = user_id
+    target.tg_chat_id = chat_id
+    if username:
+        target.tg_username = username
+    await database_v2.update_staff(target)
+
+    logger.info(f"Bind: {target.display_name} (id={target.id}) → tg_user_id={user_id}")
+
+    lang = target.language or 'zh'
+    await telegram_handler.send_message(chat_id,
+        f"✅ 绑定成功! / Bound successfully!\n\n"
+        f"👤 {target.display_name}\n"
+        f"🏷 {target.role.value}\n"
+        f"👥 {target.team or '未分组'}\n\n"
+        f"现在可以使用所有命令了 / You can now use all commands")
+
+
 REGISTRATION_V2_COMMANDS = {
     'start': handle_start_v2,
     'profile': handle_profile,
     'lang': handle_lang,
     'setname': handle_setname,
+    'bind': handle_bind,
 }
 
 REGISTRATION_V2_CALLBACKS = {}

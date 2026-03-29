@@ -1203,6 +1203,10 @@ STRINGS = {
         'zh': '👋 欢迎回来，{name}！\n🎭 身份: {role}',
         'en': '👋 Welcome back, {name}!\n🎭 Role: {role}',
     },
+    'bind_already_linked': {
+        'zh': '✅ 你的账号已绑定为 {name}\n使用 /profile 查看',
+        'en': '✅ Your account is already linked as {name}\nUse /profile to check',
+    },
     'registered_v2': {
         'zh': '✅ **注册成功！**\n👤 姓名: {name}\n🆔 ID: {id}\n\n使用 /profile 查看个人信息\n使用 /add 添加客户\n使用 /pipeline 查看漏斗',
         'en': '✅ **Registered!**\n👤 Name: {name}\n🆔 ID: {id}\n\nUse /profile to view your profile\nUse /add to add clients\nUse /pipeline to view funnel',
