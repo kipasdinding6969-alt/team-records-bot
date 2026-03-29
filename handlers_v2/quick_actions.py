@@ -468,6 +468,129 @@ async def handle_inline_status_callback(task_data: Dict[str, Any]):
         await telegram_handler.send_message(chat_id, msg)
 
 
+async def handle_bulkupdate(task_data: Dict[str, Any]):
+    """
+    /bulkupdate <status> <phone1> <phone2> ...
+    Batch status update with preview + inline confirm/cancel.
+    Not available to VIEWER or NEWBIE roles.
+    """
+    chat_id = task_data.get('chat_id')
+    user_id = task_data.get('user_id')
+    args = task_data.get('args', '').strip()
+
+    staff = await _get_staff(user_id)
+    if not staff:
+        await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
+        return
+
+    lang = staff.language
+
+    from models_v2 import StaffRole
+    if staff.role in (StaffRole.VIEWER, StaffRole.NEWBIE):
+        await telegram_handler.send_message(chat_id, t('bulkupdate_no_permission', lang))
+        return
+
+    parts = args.split()
+    if len(parts) < 2:
+        await telegram_handler.send_message(chat_id, t('bulkupdate_usage', lang))
+        return
+
+    status_str = parts[0].lower()
+    phones = parts[1:]
+
+    try:
+        new_status = ClientStatus(status_str)
+    except ValueError:
+        valid = ', '.join(s.value for s in ClientStatus)
+        await telegram_handler.send_message(
+            chat_id, t('bulkupdate_invalid_status', lang, status=status_str, valid=valid))
+        return
+
+    # Validate each phone — build list of (phone, client_or_None)
+    is_manager = staff.is_manager_or_above()
+    valid_clients = []
+    warnings = []
+    for phone in phones:
+        client = await database_v2.get_client_by_phone(phone, None if is_manager else staff.id)
+        if not client:
+            warnings.append(t('bulkupdate_phone_not_found', lang, phone=phone))
+            continue
+        if not is_manager and client.frontdesk_id != staff.id:
+            warnings.append(t('bulkupdate_phone_not_owned', lang, phone=phone))
+            continue
+        valid_clients.append(client)
+
+    if not valid_clients:
+        msg_parts = [t('bulkupdate_usage', lang)] + warnings
+        await telegram_handler.send_message(chat_id, '\n'.join(msg_parts))
+        return
+
+    phone_list = '\n'.join(f'• {c.phone} ({c.status.value} → {status_str})' for c in valid_clients)
+    if warnings:
+        phone_list += '\n' + '\n'.join(warnings)
+
+    preview = t('bulkupdate_preview', lang,
+                status=status_str, count=len(valid_clients), phones=phone_list)
+
+    # Encode client ids in callback_data
+    ids_str = ','.join(str(c.id) for c in valid_clients)
+    buttons = [
+        [
+            {'text': t('bulkupdate_confirm', lang),
+             'callback_data': f'v2_bulk_confirm_{status_str}_{ids_str}'},
+            {'text': t('bulkupdate_cancel', lang),
+             'callback_data': 'v2_bulk_cancel'},
+        ]
+    ]
+    await telegram_handler.send_message(chat_id, preview, reply_markup={'inline_keyboard': buttons})
+
+
+async def handle_bulkupdate_callback(task_data: Dict[str, Any]):
+    """Callback: v2_bulk_confirm_<status>_<id1,id2,...> or v2_bulk_cancel."""
+    chat_id = task_data.get('chat_id')
+    user_id = task_data.get('user_id')
+    callback_data = task_data.get('callback_data', '')
+
+    staff = await _get_staff(user_id)
+    if not staff:
+        return
+
+    lang = staff.language
+
+    if callback_data == 'v2_bulk_cancel':
+        await telegram_handler.send_message(chat_id, t('bulkupdate_cancelled', lang))
+        return
+
+    # v2_bulk_confirm_<status>_<ids>
+    parts = callback_data.split('_', 4)
+    if len(parts) < 5:
+        return
+
+    status_str = parts[3]
+    ids_str = parts[4]
+
+    try:
+        new_status = ClientStatus(status_str)
+        client_ids = [int(i) for i in ids_str.split(',') if i]
+    except (ValueError, IndexError):
+        return
+
+    ok = 0
+    fail = 0
+    for cid in client_ids:
+        try:
+            success = await database_v2.update_client_status(cid, new_status, staff.id)
+            if success:
+                ok += 1
+            else:
+                fail += 1
+        except Exception:
+            fail += 1
+
+    await telegram_handler.send_message(
+        chat_id, t('bulkupdate_success', lang, ok=ok, fail=fail))
+
+
 # Handler registries
 QUICK_ACTIONS_COMMANDS = {
     'add': handle_add_client,
@@ -475,10 +598,13 @@ QUICK_ACTIONS_COMMANDS = {
     'note': handle_add_note,
     'remind': handle_remind,
     'handoff': handle_handoff,
+    'bulkupdate': handle_bulkupdate,
 }
 
 QUICK_ACTIONS_CALLBACKS = {
     'v2_status_*': handle_inline_status_callback,
+    'v2_bulk_confirm_*': handle_bulkupdate_callback,
+    'v2_bulk_cancel': handle_bulkupdate_callback,
 }
 
 QUICK_ACTIONS_CONVERSATIONS = {}

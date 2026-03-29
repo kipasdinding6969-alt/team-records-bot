@@ -800,3 +800,103 @@ class TestGroupChat:
         task = {'chat_type': 'private', 'text': 'anything', 'chat_id': 123}
         result = await group_middleware(task)
         assert result is True
+
+
+# ─── Feature 4: /bulkupdate ───────────────────────────────────────────────────
+
+class TestBulkUpdate:
+    @pytest.mark.asyncio
+    async def test_bulkupdate_invalid_status(self, db, staff_row):
+        """Invalid status returns error."""
+        from handlers_v2.quick_actions import handle_bulkupdate
+        sent = []
+        with patch('handlers_v2.quick_actions.database_v2', db):
+            with patch('handlers_v2.quick_actions._get_staff', return_value=staff_row):
+                with patch('handlers_v2.quick_actions.telegram_handler') as mock_tg:
+                    mock_tg.send_message = AsyncMock(side_effect=lambda cid, msg, **kw: sent.append(msg))
+                    await handle_bulkupdate({'chat_id': 1, 'user_id': 1, 'args': 'badstatus 12345'})
+        assert any('badstatus' in m for m in sent)
+
+    @pytest.mark.asyncio
+    async def test_bulkupdate_viewer_blocked(self, db):
+        """Viewer role is blocked from bulkupdate."""
+        from handlers_v2.quick_actions import handle_bulkupdate
+        viewer = Staff(tg_user_id=20, tg_chat_id=20, display_name='V', role=StaffRole.VIEWER)
+        viewer.id = await db.create_staff(viewer)
+        sent = []
+        with patch('handlers_v2.quick_actions.database_v2', db):
+            with patch('handlers_v2.quick_actions._get_staff', return_value=viewer):
+                with patch('handlers_v2.quick_actions.telegram_handler') as mock_tg:
+                    mock_tg.send_message = AsyncMock(side_effect=lambda cid, msg, **kw: sent.append(msg))
+                    await handle_bulkupdate({'chat_id': 1, 'user_id': 20, 'args': 'contacted 12345'})
+        assert any('无法批量更新' in m or 'cannot bulk update' in m for m in sent)
+
+    @pytest.mark.asyncio
+    async def test_bulkupdate_newbie_blocked(self, db):
+        """Newbie role is blocked."""
+        from handlers_v2.quick_actions import handle_bulkupdate
+        newbie = Staff(tg_user_id=21, tg_chat_id=21, display_name='NB', role=StaffRole.NEWBIE)
+        newbie.id = await db.create_staff(newbie)
+        sent = []
+        with patch('handlers_v2.quick_actions.database_v2', db):
+            with patch('handlers_v2.quick_actions._get_staff', return_value=newbie):
+                with patch('handlers_v2.quick_actions.telegram_handler') as mock_tg:
+                    mock_tg.send_message = AsyncMock(side_effect=lambda cid, msg, **kw: sent.append(msg))
+                    await handle_bulkupdate({'chat_id': 1, 'user_id': 21, 'args': 'contacted 12345'})
+        assert any('无法批量更新' in m or 'cannot bulk update' in m for m in sent)
+
+    @pytest.mark.asyncio
+    async def test_bulkupdate_preview_and_confirm(self, db, staff_row, client_row):
+        """Valid bulkupdate shows preview with inline buttons."""
+        from handlers_v2.quick_actions import handle_bulkupdate
+        sent_msgs = []
+        sent_markups = []
+        async def mock_send(cid, msg, reply_markup=None, **kw):
+            sent_msgs.append(msg)
+            if reply_markup:
+                sent_markups.append(reply_markup)
+        with patch('handlers_v2.quick_actions.database_v2', db):
+            with patch('handlers_v2.quick_actions._get_staff', return_value=staff_row):
+                with patch('handlers_v2.quick_actions.telegram_handler') as mock_tg:
+                    mock_tg.send_message = AsyncMock(side_effect=mock_send)
+                    await handle_bulkupdate({
+                        'chat_id': 1, 'user_id': staff_row.tg_user_id,
+                        'args': f'contacted {client_row.phone}'
+                    })
+        assert len(sent_markups) == 1
+        keyboard = sent_markups[0]['inline_keyboard']
+        assert len(keyboard[0]) == 2  # confirm + cancel
+
+    @pytest.mark.asyncio
+    async def test_bulkupdate_confirm_callback(self, db, staff_row, client_row):
+        """Confirm callback updates client status."""
+        from handlers_v2.quick_actions import handle_bulkupdate_callback
+        sent = []
+        cid = client_row.id
+        cb = f'v2_bulk_confirm_contacted_{cid}'
+        with patch('handlers_v2.quick_actions.database_v2', db):
+            with patch('handlers_v2.quick_actions._get_staff', return_value=staff_row):
+                with patch('handlers_v2.quick_actions.telegram_handler') as mock_tg:
+                    mock_tg.send_message = AsyncMock(side_effect=lambda c, m, **kw: sent.append(m))
+                    await handle_bulkupdate_callback({
+                        'chat_id': 1, 'user_id': staff_row.tg_user_id,
+                        'callback_data': cb
+                    })
+        assert any('成功' in m or 'Success' in m for m in sent)
+        updated = await db.get_client_by_id(cid)
+        assert updated.status == ClientStatus.CONTACTED
+
+    @pytest.mark.asyncio
+    async def test_bulkupdate_cancel_callback(self, db, staff_row):
+        """Cancel callback sends cancelled message."""
+        from handlers_v2.quick_actions import handle_bulkupdate_callback
+        sent = []
+        with patch('handlers_v2.quick_actions.database_v2', db):
+            with patch('handlers_v2.quick_actions._get_staff', return_value=staff_row):
+                with patch('handlers_v2.quick_actions.telegram_handler') as mock_tg:
+                    mock_tg.send_message = AsyncMock(side_effect=lambda c, m, **kw: sent.append(m))
+                    await handle_bulkupdate_callback({
+                        'chat_id': 1, 'user_id': staff_row.tg_user_id,
+                        'callback_data': 'v2_bulk_cancel'
+                    })
+        assert any('取消' in m or 'cancel' in m.lower() for m in sent)
