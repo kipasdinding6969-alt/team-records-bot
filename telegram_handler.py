@@ -33,6 +33,7 @@ class TelegramHandler:
         self.message_timestamps = deque()
         self.max_messages_per_minute = config.bot.telegram_max_messages_per_minute
         self.min_delay_between_messages = config.bot.telegram_min_delay_between_messages
+        self._rate_limit_lock = asyncio.Lock()
 
     async def initialize(self):
         """Initialize Telegram clients with proxy and authentication."""
@@ -267,13 +268,8 @@ class TelegramHandler:
             await database.create_team_member(new_member)
 
     async def _rate_limit_check(self):
-        """Check and enforce rate limiting with thread safety."""
-        # Use a lock to prevent race conditions in rate limiting
-        import threading
-        if not hasattr(self, '_rate_limit_lock'):
-            self._rate_limit_lock = threading.Lock()
-
-        with self._rate_limit_lock:
+        """Check and enforce rate limiting for async safety."""
+        async with self._rate_limit_lock:
             current_time = time.time()
 
             # Remove timestamps older than 1 minute to prevent memory leak
@@ -296,7 +292,7 @@ class TelegramHandler:
             # Record this message timestamp before sleeping
             self.message_timestamps.append(current_time)
 
-        # Sleep outside the lock to avoid blocking other threads
+        # Sleep outside the lock to avoid blocking other coroutines
         if should_sleep > 0:
             if should_sleep > self.min_delay_between_messages:
                 logger.warning(f"Rate limit reached, sleeping for {should_sleep:.2f} seconds")

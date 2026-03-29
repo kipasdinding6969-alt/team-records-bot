@@ -6,6 +6,7 @@ import sys
 from typing import Dict, Any, Optional, Callable
 from datetime import datetime, timedelta
 import traceback
+import os
 
 from config import config
 from database import database
@@ -74,6 +75,7 @@ class RalphLoop:
         self.last_policy_dead_check = None
         self.last_policy_target_check = None
         self.last_obsidian_daily_report = None
+        self.last_task_cleanup = None
 
         # Command and callback handlers registry
         self.command_handlers = {}
@@ -717,32 +719,36 @@ class RalphLoop:
     async def perform_maintenance(self):
         """Perform periodic maintenance operations when no urgent tasks."""
         current_time = datetime.now()
+        await self._maint_v1_reminders(current_time)
+        await self._maint_health_check(current_time)
+        await self._maint_schedule_daily_report(current_time)
+        await self._maint_schedule_channel_post(current_time)
+        await self._maint_v2_reminders(current_time)
+        await self._maint_v2_stale_check(current_time)
+        await self._maint_v2_daily_stats(current_time)
+        await self._maint_rag_reindex(current_time)
+        await self._maint_policy_dead_check(current_time)
+        await self._maint_policy_target_check(current_time)
+        await self._maint_obsidian_report(current_time)
+        await self._maint_v2_sheet_sync(current_time)
+        await self._maint_task_cleanup(current_time)
 
-        # Check for scheduled maintenance operations
+    async def _maint_v1_reminders(self, current_time: datetime):
+        """Check V1 pending reminders on reminder_check_interval."""
         if not self.last_reminder_check or (current_time - self.last_reminder_check).total_seconds() > config.bot.reminder_check_interval:
-            # Check for pending reminders
             pending_reminders = await database.get_pending_reminders(current_time)
             if pending_reminders:
-                # Create reminder processing task
                 reminder_task = BotTask(
                     task_type='reminder',
                     priority=2,
                     data={'action': 'process_pending'}
                 )
                 await database.create_task(reminder_task)
-
-            # Scan for stale clients during working hours
-            stale_scan_task = BotTask(
-                task_type='reminder',
-                priority=3,
-                data={'action': 'scan_stale_clients'}
-            )
-            await database.create_task(stale_scan_task)
-
             self.last_reminder_check = current_time
 
+    async def _maint_health_check(self, current_time: datetime):
+        """Schedule periodic health check task."""
         if not self.last_health_check or (current_time - self.last_health_check).total_seconds() > config.bot.health_check_interval:
-            # Schedule health check
             health_task = BotTask(
                 task_type='maintenance',
                 priority=4,
@@ -751,7 +757,8 @@ class RalphLoop:
             await database.create_task(health_task)
             self.last_health_check = current_time
 
-        # Schedule daily reports if needed
+    async def _maint_schedule_daily_report(self, current_time: datetime):
+        """Schedule daily report if time has come."""
         if self._should_generate_daily_report():
             daily_report_task = BotTask(
                 task_type='report',
@@ -765,8 +772,8 @@ class RalphLoop:
             await database.create_task(daily_report_task)
             self.last_report_generation = current_time.date()
 
-        # Schedule channel posts during working hours
-        # Use broadcast_channel_id first; fall back to report_channel_id
+    async def _maint_schedule_channel_post(self, current_time: datetime):
+        """Schedule channel summary post during working hours."""
         _post_channel_id = config.bot.broadcast_channel_id or config.bot.report_channel_id
         if _post_channel_id and self._should_post_channel_summary():
             channel_post_task = BotTask(
@@ -777,7 +784,8 @@ class RalphLoop:
             await database.create_task(channel_post_task)
             self.last_channel_post = current_time
 
-        # V2: Process pending reminders
+    async def _maint_v2_reminders(self, current_time: datetime):
+        """Process V2 pending reminders."""
         try:
             pending_v2 = await database_v2.get_pending_reminders_v2(before=current_time)
             for reminder in pending_v2:
@@ -789,7 +797,8 @@ class RalphLoop:
         except Exception as e:
             logger.error(f'V2 reminder processing error: {e}')
 
-        # V2: Stale client detection every 5 minutes — auto-create reminders
+    async def _maint_v2_stale_check(self, current_time: datetime):
+        """V2 stale client detection every 5 minutes."""
         if not self.last_v2_stale_check or (current_time - self.last_v2_stale_check).total_seconds() > 300:
             try:
                 from working_hours import is_working_hours
@@ -799,7 +808,6 @@ class RalphLoop:
                         logger.info(f'V2: {len(stale)} stale clients detected')
                         from models_v2 import Reminder as ReminderV2
                         for client in stale:
-                            # Check if we already sent a stale reminder for this client today
                             existing = await database_v2.get_pending_reminders_v2()
                             already_reminded = any(
                                 r.client_id == client.id and r.source == 'auto_stale'
@@ -819,7 +827,8 @@ class RalphLoop:
                 logger.error(f'V2 stale check error: {e}')
             self.last_v2_stale_check = current_time
 
-        # V2: Daily stats auto-calculation (end of day ~22:00)
+    async def _maint_v2_daily_stats(self, current_time: datetime):
+        """Recalculate V2 daily stats at end of day (~21:00)."""
         if not self.last_v2_stats_calc or self.last_v2_stats_calc.date() < current_time.date():
             if current_time.hour >= 21:
                 try:
@@ -829,7 +838,8 @@ class RalphLoop:
                 except Exception as e:
                     logger.error(f'V2 daily stats error: {e}')
 
-        # V2: RAG re-indexing hourly
+    async def _maint_rag_reindex(self, current_time: datetime):
+        """Rebuild RAG index hourly."""
         if not self.last_rag_reindex or (current_time - self.last_rag_reindex).total_seconds() > 3600:
             try:
                 from engines.rag_engine import rebuild_index
@@ -839,7 +849,8 @@ class RalphLoop:
                 logger.debug(f'V2 RAG reindex skipped (Ollama may be down): {e}')
             self.last_rag_reindex = current_time
 
-        # Policy: auto-mark dead clients every 6 hours
+    async def _maint_policy_dead_check(self, current_time: datetime):
+        """Auto-mark dead clients every 6 hours."""
         if not self.last_policy_dead_check or (current_time - self.last_policy_dead_check).total_seconds() > 21600:
             try:
                 from engines.policy_engine import auto_mark_dead_clients
@@ -850,7 +861,8 @@ class RalphLoop:
                 logger.error(f'Policy auto_mark_dead_clients error: {e}')
             self.last_policy_dead_check = current_time
 
-        # Policy: daily target check at end of day (~21:00)
+    async def _maint_policy_target_check(self, current_time: datetime):
+        """Check daily targets missed at end of day (~21:00)."""
         if (
             not self.last_policy_target_check
             or self.last_policy_target_check.date() < current_time.date()
@@ -864,7 +876,8 @@ class RalphLoop:
             except Exception as e:
                 logger.error(f'Policy daily target check error: {e}')
 
-        # Obsidian: save daily report at end of day (~21:30)
+    async def _maint_obsidian_report(self, current_time: datetime):
+        """Save Obsidian daily report at end of day (~21:30)."""
         if (
             not self.last_obsidian_daily_report
             or self.last_obsidian_daily_report.date() < current_time.date()
@@ -890,7 +903,8 @@ class RalphLoop:
             except Exception as e:
                 logger.error(f'Obsidian daily report error: {e}')
 
-        # V2: Bidirectional Sheets sync on sync_interval (default 3600s)
+    async def _maint_v2_sheet_sync(self, current_time: datetime):
+        """V2 bidirectional Sheets sync on sync_interval (default 3600s)."""
         if (
             _sheet_sync_v2_mod.sheet_sync_v2 is not None
             and (
@@ -908,7 +922,6 @@ class RalphLoop:
             except Exception as e:
                 logger.error(f'V2 Sheets full_sync error: {e}')
 
-            # Refresh all 5 dashboard tabs after sync
             if _dashboard_mod.dashboard_sheets is not None:
                 try:
                     await _dashboard_mod.dashboard_sheets.refresh_all_tabs()
@@ -916,7 +929,6 @@ class RalphLoop:
                 except Exception as e:
                     logger.error(f'V2 dashboard refresh error: {e}')
 
-            # NocoDB parallel sync — mirror SQLite → NocoDB on same interval
             if _nocodb_writer is not None:
                 try:
                     noco_stats = await _nocodb_writer.sync_all_from_sqlite()
@@ -925,6 +937,16 @@ class RalphLoop:
                     logger.error(f'NocoDB sync error: {e}')
 
             self.last_v2_sheet_sync = current_time
+
+    async def _maint_task_cleanup(self, current_time: datetime):
+        """Cleanup completed/failed tasks older than 24 hours."""
+        if not self.last_task_cleanup or (current_time - self.last_task_cleanup).total_seconds() > 86400:
+            try:
+                await database.cleanup_old_tasks(days_old=1)
+                logger.debug('Task queue: cleaned up completed tasks older than 24h')
+            except Exception as e:
+                logger.error(f'Task cleanup error: {e}')
+            self.last_task_cleanup = current_time
 
     def _should_generate_daily_report(self) -> bool:
         """Check if daily report should be generated."""

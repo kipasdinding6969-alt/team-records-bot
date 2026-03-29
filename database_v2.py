@@ -18,6 +18,8 @@ from models_v2 import (
     PeriodType, Reminder, Staff, StaffRole, TeamTarget,
 )
 
+# Fallback team structure — authoritative source is team_structure.json.
+# This dict is used only when team_structure.json cannot be loaded.
 TEAM_STRUCTURE = {
     '阿俊': ['阿YIM', 'ODDY', '燕燕', 'MEYMEY'],
     '何军': ['大杰', '阿勇', '小龙', '小宏', 'TINO', 'KUYA'],
