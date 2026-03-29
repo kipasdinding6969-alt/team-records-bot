@@ -41,6 +41,9 @@ import engines.dashboard_sheets as _dashboard_mod
 # NocoDB private sheets engine (optional, parallel to Google Sheets)
 _nocodb_writer = None
 
+# NocoDB webhook runner (optional)
+_nocodb_webhook_runner = None
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -161,6 +164,14 @@ class RalphLoop:
 
             # First-boot: populate dashboard tabs if never done
             await self._init_dashboard_if_needed()
+
+            # Start NocoDB webhook server (optional — requires aiohttp + NOCODB_WEBHOOK_SECRET)
+            try:
+                from engines.nocodb_webhook import start_webhook_server
+                global _nocodb_webhook_runner
+                _nocodb_webhook_runner = await start_webhook_server()
+            except Exception as e:
+                logger.warning(f"NocoDB webhook server not started: {e}")
 
             logger.info("Team Records Bot initialization completed successfully")
 

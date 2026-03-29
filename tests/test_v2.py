@@ -900,3 +900,122 @@ class TestBulkUpdate:
                         'callback_data': 'v2_bulk_cancel'
                     })
         assert any('取消' in m or 'cancel' in m.lower() for m in sent)
+
+
+# ─── Feature 5: NocoDB webhook sync ──────────────────────────────────────────
+
+class TestNocoDBWebhook:
+    def test_verify_hmac_no_secret(self):
+        """If no secret configured, always returns True."""
+        from engines.nocodb_webhook import _verify_hmac
+        import engines.nocodb_webhook as wh
+        orig = wh.WEBHOOK_SECRET
+        wh.WEBHOOK_SECRET = ''
+        try:
+            assert _verify_hmac(b'body', 'wrong') is True
+        finally:
+            wh.WEBHOOK_SECRET = orig
+
+    def test_verify_hmac_valid(self):
+        import hmac as _hmac, hashlib
+        import engines.nocodb_webhook as wh
+        secret = 'mysecret'
+        body = b'test body'
+        expected = _hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        orig = wh.WEBHOOK_SECRET
+        wh.WEBHOOK_SECRET = secret
+        try:
+            from engines.nocodb_webhook import _verify_hmac
+            assert _verify_hmac(body, expected) is True
+            assert _verify_hmac(body, 'wrongsig') is False
+        finally:
+            wh.WEBHOOK_SECRET = orig
+
+    def test_parse_event_update(self):
+        from engines.nocodb_webhook import _parse_event
+        payload = {
+            'type': 'records.update',
+            'data': {
+                'table_name': 'clients',
+                'rows': [{'phone': '12345', 'status': 'contacted'}]
+            }
+        }
+        event = _parse_event(payload)
+        assert event['table'] == 'clients'
+        assert event['op'] == 'update'
+        assert len(event['rows']) == 1
+
+    def test_parse_event_insert(self):
+        from engines.nocodb_webhook import _parse_event
+        payload = {
+            'type': 'records.insert',
+            'data': {'table_name': 'staff', 'rows': [{'tg_user_id': 9}]}
+        }
+        event = _parse_event(payload)
+        assert event['op'] == 'insert'
+        assert event['table'] == 'staff'
+
+    def test_parse_event_delete(self):
+        from engines.nocodb_webhook import _parse_event
+        payload = {
+            'type': 'records.delete',
+            'data': {'table_name': 'clients', 'rows': [{'phone': '1'}]}
+        }
+        event = _parse_event(payload)
+        assert event['op'] == 'delete'
+
+    @pytest.mark.asyncio
+    async def test_upsert_client_new(self, db, staff_row):
+        """Inserting a new client from NocoDB creates the record."""
+        with patch('engines.nocodb_webhook.database_v2', db):
+            from engines.nocodb_webhook import _upsert_client
+            await _upsert_client({
+                'phone': '99887766',
+                'status': 'new',
+                'source': 'nocodb',
+                'frontdesk_id': staff_row.id,
+            })
+        client = await db.get_client_by_phone('99887766')
+        assert client is not None
+        assert client.status.value == 'new'
+
+    @pytest.mark.asyncio
+    async def test_upsert_client_update_status(self, db, staff_row, client_row):
+        """Updating an existing client from NocoDB changes status."""
+        with patch('engines.nocodb_webhook.database_v2', db):
+            from engines.nocodb_webhook import _upsert_client
+            await _upsert_client({
+                'phone': client_row.phone,
+                'status': 'contacted',
+                'frontdesk_id': staff_row.id,
+            })
+        updated = await db.get_client_by_id(client_row.id)
+        assert updated.status.value == 'contacted'
+
+    @pytest.mark.asyncio
+    async def test_process_event_clients(self, db, staff_row):
+        """process_webhook_event dispatches to correct upsert handler."""
+        with patch('engines.nocodb_webhook.database_v2', db):
+            from engines.nocodb_webhook import process_webhook_event
+            event = {
+                'table': 'clients',
+                'op': 'insert',
+                'rows': [{'phone': '55566677', 'status': 'new', 'source': 'test', 'frontdesk_id': staff_row.id}]
+            }
+            await process_webhook_event(event)
+        c = await db.get_client_by_phone('55566677')
+        assert c is not None
+
+    @pytest.mark.asyncio
+    async def test_process_event_delete_skipped(self, db, staff_row, client_row):
+        """Delete events do not remove local records (local is authoritative)."""
+        with patch('engines.nocodb_webhook.database_v2', db):
+            from engines.nocodb_webhook import process_webhook_event
+            event = {
+                'table': 'clients',
+                'op': 'delete',
+                'rows': [{'phone': client_row.phone}]
+            }
+            await process_webhook_event(event)
+        still_there = await db.get_client_by_id(client_row.id)
+        assert still_there is not None
