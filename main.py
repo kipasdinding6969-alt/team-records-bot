@@ -33,6 +33,7 @@ from handlers_v2.quick_actions import QUICK_ACTIONS_COMMANDS, QUICK_ACTIONS_CALL
 from handlers_v2.pipeline import PIPELINE_COMMANDS, PIPELINE_CALLBACKS, PIPELINE_CONVERSATIONS
 from handlers_v2.management import MANAGEMENT_COMMANDS, MANAGEMENT_CALLBACKS, MANAGEMENT_CONVERSATIONS
 from handlers_v2.registration_v2 import REGISTRATION_V2_COMMANDS, REGISTRATION_V2_CALLBACKS, REGISTRATION_V2_CONVERSATIONS
+from handlers_v2.group_chat import GROUP_COMMANDS, GROUP_CALLBACKS, GROUP_CONVERSATIONS
 from database_v2 import database_v2
 import engines.sheet_sync_v2 as _sheet_sync_v2_mod
 import engines.dashboard_sheets as _dashboard_mod
@@ -233,6 +234,7 @@ class RalphLoop:
         all_commands.update(PIPELINE_COMMANDS)
         all_commands.update(MANAGEMENT_COMMANDS)
         all_commands.update(REGISTRATION_V2_COMMANDS)
+        all_commands.update(GROUP_COMMANDS)
 
         # Merge all callback handlers
         all_callbacks = {}
@@ -251,6 +253,7 @@ class RalphLoop:
         all_callbacks.update(PIPELINE_CALLBACKS)
         all_callbacks.update(MANAGEMENT_CALLBACKS)
         all_callbacks.update(REGISTRATION_V2_CALLBACKS)
+        all_callbacks.update(GROUP_CALLBACKS)
 
         # Merge all conversation handlers
         all_conversations = {}
@@ -269,6 +272,7 @@ class RalphLoop:
         all_conversations.update(PIPELINE_CONVERSATIONS)
         all_conversations.update(MANAGEMENT_CONVERSATIONS)
         all_conversations.update(REGISTRATION_V2_CONVERSATIONS)
+        all_conversations.update(GROUP_CONVERSATIONS)
 
         self.command_handlers = all_commands
         self.callback_handlers = all_callbacks

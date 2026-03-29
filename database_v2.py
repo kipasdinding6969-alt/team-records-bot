@@ -228,6 +228,17 @@ class DatabaseV2:
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_embeddings_source ON embeddings(source_type, source_id);
+
+                CREATE TABLE IF NOT EXISTS groups (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tg_group_id     INTEGER UNIQUE NOT NULL,
+                    group_name      TEXT,
+                    team            TEXT,
+                    group_type      TEXT DEFAULT 'custom',
+                    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_groups_tg_id ON groups(tg_group_id);
             """)
             await db.commit()
 
@@ -1071,6 +1082,39 @@ class DatabaseV2:
                 'SELECT DISTINCT team FROM staff WHERE team IS NOT NULL ORDER BY team')
             rows = await cur.fetchall()
             return [r['team'] for r in rows]
+
+    # ─── Groups CRUD ──────────────────────────────────────────────────────────
+
+    async def link_group(self, tg_group_id: int, group_name: str, team: str, group_type: str = 'team'):
+        """Link a Telegram group to a team (upsert)."""
+        async with self.get_connection() as db:
+            await db.execute(
+                """INSERT INTO groups (tg_group_id, group_name, team, group_type)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(tg_group_id) DO UPDATE SET
+                       group_name=excluded.group_name,
+                       team=excluded.team,
+                       group_type=excluded.group_type""",
+                (tg_group_id, group_name, team, group_type))
+            await db.commit()
+
+    async def unlink_group(self, tg_group_id: int) -> bool:
+        """Remove a group link. Returns True if a row was deleted."""
+        async with self.get_connection() as db:
+            cur = await db.execute('DELETE FROM groups WHERE tg_group_id=?', (tg_group_id,))
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def get_group(self, tg_group_id: int) -> Optional[Dict[str, Any]]:
+        """Return group record as dict, or None."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT tg_group_id, group_name, team, group_type, created_at FROM groups WHERE tg_group_id=?',
+                (tg_group_id,))
+            row = await cur.fetchone()
+            if not row:
+                return None
+            return dict(row)
 
 
 # Global singleton

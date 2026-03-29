@@ -730,3 +730,73 @@ class TestTeamAssignment:
         await db.set_staff_team(staff_row.id, '阿俊')
         teams = await db.get_all_teams()
         assert '阿俊' in teams
+
+
+# ─── Feature 3: Group chat support ───────────────────────────────────────────
+
+class TestGroupChat:
+    @pytest.mark.asyncio
+    async def test_link_and_get_group(self, db):
+        with patch('handlers_v2.group_chat.database_v2', db):
+            await db.link_group(-1001234567, 'Test Group', '阿俊', 'team')
+            rec = await db.get_group(-1001234567)
+            assert rec is not None
+            assert rec['team'] == '阿俊'
+            assert rec['group_name'] == 'Test Group'
+
+    @pytest.mark.asyncio
+    async def test_unlink_group(self, db):
+        await db.link_group(-1009999, 'Some Group', '何军', 'team')
+        deleted = await db.unlink_group(-1009999)
+        assert deleted is True
+        assert await db.get_group(-1009999) is None
+
+    @pytest.mark.asyncio
+    async def test_unlink_nonexistent_returns_false(self, db):
+        deleted = await db.unlink_group(-9999999)
+        assert deleted is False
+
+    def test_is_group_chat_group(self):
+        from handlers_v2.group_chat import is_group_chat
+        assert is_group_chat({'chat_type': 'group'})
+        assert is_group_chat({'chat_type': 'supergroup'})
+        assert not is_group_chat({'chat_type': 'private'})
+        assert not is_group_chat({})
+
+    def test_is_command_message(self):
+        from handlers_v2.group_chat import is_command_message
+        assert is_command_message({'text': '/pipeline'})
+        assert not is_command_message({'text': 'hello world'})
+        assert not is_command_message({})
+
+    @pytest.mark.asyncio
+    async def test_group_middleware_drops_non_commands(self, db):
+        from handlers_v2.group_chat import group_middleware
+        task = {'chat_type': 'group', 'text': 'hello', 'chat_id': -123}
+        result = await group_middleware(task)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_group_middleware_passes_commands(self, db):
+        from handlers_v2.group_chat import group_middleware
+        with patch('handlers_v2.group_chat.database_v2', db):
+            task = {'chat_type': 'group', 'text': '/pipeline', 'chat_id': -123}
+            result = await group_middleware(task)
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_group_middleware_injects_team(self, db):
+        from handlers_v2.group_chat import group_middleware
+        with patch('handlers_v2.group_chat.database_v2', db):
+            await db.link_group(-777, 'G', '阿俊', 'team')
+            task = {'chat_type': 'supergroup', 'text': '/today', 'chat_id': -777}
+            result = await group_middleware(task)
+            assert result is True
+            assert task.get('group_team') == '阿俊'
+
+    @pytest.mark.asyncio
+    async def test_group_middleware_dm_always_passes(self, db):
+        from handlers_v2.group_chat import group_middleware
+        task = {'chat_type': 'private', 'text': 'anything', 'chat_id': 123}
+        result = await group_middleware(task)
+        assert result is True
