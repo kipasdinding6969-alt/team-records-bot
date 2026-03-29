@@ -249,6 +249,7 @@ class DatabaseV2:
                     pass  # column already exists
 
         await self.seed_team_structure()
+        await self.auto_assign_teams()
         logger.info("DatabaseV2 initialized")
 
     # ─── Staff CRUD ─────────────────────────────────────────────────────────
@@ -1007,6 +1008,69 @@ class DatabaseV2:
                     (synthetic_id, name))
             await db.commit()
         logger.info(f'seed_additional_staff: ensured {EXTRA_FRONTDESK}')
+
+    async def auto_assign_teams(self) -> int:
+        """Assign staff with team=NULL to teams based on TEAM_STRUCTURE name matching.
+
+        Checks each staff member's display_name against TEAM_STRUCTURE member lists
+        and sets their team column to the matching maintenance person name.
+        Returns count of staff updated.
+        """
+        count = 0
+        async with self.get_connection() as db:
+            cur = await db.execute('SELECT id, display_name, team FROM staff WHERE team IS NULL')
+            rows = await cur.fetchall()
+            for row in rows:
+                name = row['display_name']
+                for team_name, members in TEAM_STRUCTURE.items():
+                    if name in members:
+                        await db.execute(
+                            'UPDATE staff SET team=? WHERE id=?',
+                            (team_name, row['id']))
+                        count += 1
+                        break
+                # Also assign the maintenance leaders themselves
+                if name in TEAM_STRUCTURE:
+                    await db.execute(
+                        'UPDATE staff SET team=? WHERE id=?',
+                        (name, row['id']))
+                    count += 1
+            await db.commit()
+        if count:
+            logger.info(f'auto_assign_teams: assigned {count} staff')
+        return count
+
+    async def get_staff_by_username(self, username: str) -> Optional[Staff]:
+        """Look up staff by Telegram username (with or without @)."""
+        uname = username.lstrip('@')
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT * FROM staff WHERE tg_username = ? LIMIT 1', (uname,))
+            row = await cur.fetchone()
+            return self._row_to_staff(row) if row else None
+
+    async def set_staff_team(self, staff_id: int, team: str):
+        """Set the team for a staff member."""
+        async with self.get_connection() as db:
+            await db.execute('UPDATE staff SET team=? WHERE id=?', (team, staff_id))
+            await db.commit()
+
+    async def get_staff_by_team(self, team: str) -> List[Staff]:
+        """Get all active staff in a given team."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT * FROM staff WHERE team=? AND is_active=1 ORDER BY display_name',
+                (team,))
+            rows = await cur.fetchall()
+            return [self._row_to_staff(r) for r in rows]
+
+    async def get_all_teams(self) -> List[str]:
+        """Return distinct non-null team names."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT DISTINCT team FROM staff WHERE team IS NOT NULL ORDER BY team')
+            rows = await cur.fetchall()
+            return [r['team'] for r in rows]
 
 
 # Global singleton

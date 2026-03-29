@@ -297,12 +297,87 @@ async def handle_sync(task_data: Dict[str, Any]):
             t('sync_complete', lang, imported=imported, exported=exported, tabs=tabs_refreshed))
 
 
+async def handle_setteam(task_data: Dict[str, Any]):
+    """/setteam @username teamname — assign staff to a team (admin/manager only)."""
+    chat_id = task_data.get('chat_id')
+    user_id = task_data.get('user_id')
+    args = task_data.get('args', '').strip()
+
+    staff = await _get_staff(user_id)
+    if not staff:
+        await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
+        return
+
+    lang = staff.language
+
+    from engines.policy_engine import check_permission as _cp
+    if not _cp(staff.role.value, 'setteam'):
+        await telegram_handler.send_message(chat_id, t('err_permission_denied', lang))
+        return
+
+    if not staff.is_manager_or_above():
+        await telegram_handler.send_message(chat_id, t('err_manager_only', lang))
+        return
+
+    parts = args.split(None, 1)
+    if len(parts) < 2:
+        await telegram_handler.send_message(chat_id, t('setteam_usage', lang))
+        return
+
+    username, team_name = parts[0], parts[1].strip()
+
+    target = await database_v2.get_staff_by_username(username)
+    if not target:
+        await telegram_handler.send_message(
+            chat_id, t('setteam_not_found', lang, username=username))
+        return
+
+    await database_v2.set_staff_team(target.id, team_name)
+    await telegram_handler.send_message(
+        chat_id, t('setteam_success', lang, name=target.display_name, team=team_name))
+
+
+async def handle_teams(task_data: Dict[str, Any]):
+    """/teams — show all teams with members and their stats."""
+    chat_id = task_data.get('chat_id')
+    user_id = task_data.get('user_id')
+
+    staff = await _get_staff(user_id)
+    if not staff:
+        await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
+        return
+
+    lang = staff.language
+    today = date.today()
+
+    teams = await database_v2.get_all_teams()
+    if not teams:
+        await telegram_handler.send_message(chat_id, t('teams_no_data', lang))
+        return
+
+    lines = [t('teams_title', lang), '']
+    for team_name in teams:
+        members = await database_v2.get_staff_by_team(team_name)
+        lines.append(f'**{team_name}** ({len(members)} 人)')
+        for m in members:
+            stat = await database_v2.get_daily_stats(m.id, today)
+            if stat and stat.new_leads:
+                lines.append(f'  • {m.display_name} [{m.role.value}]: 🆕{stat.new_leads} ✅{stat.registered} 🎯{stat.new_orders}')
+            else:
+                lines.append(f'  • {m.display_name} [{m.role.value}]')
+        lines.append('')
+
+    await telegram_handler.send_message(chat_id, '\n'.join(lines))
+
+
 MANAGEMENT_COMMANDS = {
     'dashboard': handle_dashboard,
     'team': handle_team_stats,
     'target': handle_target,
     'export': handle_export,
     'sync': handle_sync,
+    'setteam': handle_setteam,
+    'teams': handle_teams,
 }
 
 MANAGEMENT_CALLBACKS = {}

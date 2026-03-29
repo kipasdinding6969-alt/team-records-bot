@@ -650,6 +650,12 @@ class TestCheckPermission:
         assert check_permission(viewer, '/dashboard')
         assert not check_permission(viewer, '/add')
 
+    def test_policy_engine_check_permission_teams(self):
+        from engines.policy_engine import check_permission as policy_check
+        assert policy_check('manager', 'setteam')
+        assert policy_check('admin', 'setteam')
+        assert policy_check('manager', 'teams')
+
     def test_policy_engine_check_permission(self):
         from engines.policy_engine import check_permission as policy_check
         assert policy_check('viewer', 'dashboard')
@@ -660,3 +666,67 @@ class TestCheckPermission:
         assert not policy_check('customer_service', 'u')
         assert policy_check('leader', 'setteam')
         assert policy_check('admin', 'sync')
+
+
+# ─── Feature 2: Team assignment ───────────────────────────────────────────────
+
+class TestTeamAssignment:
+    @pytest.mark.asyncio
+    async def test_auto_assign_teams_by_name(self, db):
+        """Staff matching TEAM_STRUCTURE member names get auto-assigned."""
+        from database_v2 import TEAM_STRUCTURE
+        s = Staff(tg_user_id=5001, tg_chat_id=5001, display_name='阿YIM', role=StaffRole.FRONTDESK)
+        s.id = await db.create_staff(s)
+        # Initially no team
+        found = await db.get_staff_by_id(s.id)
+        # Run auto_assign
+        count = await db.auto_assign_teams()
+        assert count >= 1
+        found = await db.get_staff_by_id(s.id)
+        assert found.team == '阿俊'
+
+    @pytest.mark.asyncio
+    async def test_auto_assign_does_not_overwrite_existing_team(self, db):
+        """Staff already assigned to a team are not re-assigned."""
+        s = Staff(tg_user_id=5002, tg_chat_id=5002, display_name='阿YIM',
+                  role=StaffRole.FRONTDESK, team='custom_team')
+        s.id = await db.create_staff(s)
+        count = await db.auto_assign_teams()
+        found = await db.get_staff_by_id(s.id)
+        assert found.team == 'custom_team'
+
+    @pytest.mark.asyncio
+    async def test_get_staff_by_username(self, db):
+        s = Staff(tg_user_id=5003, tg_chat_id=5003, display_name='TestUser',
+                  tg_username='testuser123')
+        s.id = await db.create_staff(s)
+        found = await db.get_staff_by_username('@testuser123')
+        assert found is not None
+        assert found.id == s.id
+        found2 = await db.get_staff_by_username('testuser123')
+        assert found2 is not None
+        assert found2.id == s.id
+
+    @pytest.mark.asyncio
+    async def test_get_staff_by_username_not_found(self, db):
+        result = await db.get_staff_by_username('@nobody')
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_set_staff_team(self, db, staff_row):
+        await db.set_staff_team(staff_row.id, '阿俊')
+        found = await db.get_staff_by_id(staff_row.id)
+        assert found.team == '阿俊'
+
+    @pytest.mark.asyncio
+    async def test_get_staff_by_team(self, db, staff_row):
+        await db.set_staff_team(staff_row.id, '阿俊')
+        members = await db.get_staff_by_team('阿俊')
+        ids = [m.id for m in members]
+        assert staff_row.id in ids
+
+    @pytest.mark.asyncio
+    async def test_get_all_teams(self, db, staff_row):
+        await db.set_staff_team(staff_row.id, '阿俊')
+        teams = await db.get_all_teams()
+        assert '阿俊' in teams
