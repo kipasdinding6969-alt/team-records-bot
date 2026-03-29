@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>QianHub Records Bot</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/css/theme-simple-dark.css">
+  <style>
+    :root {
+      --base-font-size: 15px;
+      --theme-color: #3b82f6;
+      --sidebar-width: 260px;
+      --sidebar-background: #1a1a2e;
+      --sidebar-nav-link-color--active: #3b82f6;
+    }
+    .sidebar-nav > ul > li > a { font-weight: bold; }
+    .markdown-section table { width: 100%; }
+    .markdown-section code { color: #7f848e; }
+    .lang-tag { 
+      display: inline-block; 
+      padding: 1px 6px; 
+      border-radius: 3px; 
+      font-size: 11px; 
+      margin-left: 4px;
+    }
+    .lang-zh { background: #fee2e2; color: #991b1b; }
+    .lang-en { background: #dbeafe; color: #1e40af; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    window.$docsify = {
+      name: '📊 QianHub Records Bot',
+      repo: 'https://github.com/kipasdinding6969-alt/team-records-bot',
+      loadSidebar: true,
+      subMaxLevel: 3,
+      search: {
+        placeholder: '搜索 / Search',
+        noData: '没有结果 / No results',
+      },
+      copyCode: { buttonText: 'Copy', successText: 'Copied!' },
+      pagination: { previousText: '上一页', nextText: '下一页' },
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/docsify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify-copy-code@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify-pagination/dist/docsify-pagination.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-python.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-bash.min.js"></script>
+</body>
+</html>
