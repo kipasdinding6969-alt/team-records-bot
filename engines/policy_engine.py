@@ -12,14 +12,23 @@ _FRONTDESK_CMDS = [
     'search', 'rag', 'handoff', 'profile', 'export', 'sop',
 ]
 _MAINTENANCE_CMDS = _FRONTDESK_CMDS + ['dashboard', 'team']
-_ALL_COMMANDS = _MAINTENANCE_CMDS + ['target', 'overview', 'setname', 'lang']
+_ALL_COMMANDS = _MAINTENANCE_CMDS + ['target', 'overview', 'setname', 'lang', 'setteam', 'teams', 'linkgroup', 'unlinkgroup', 'bulkupdate']
 _ADMIN_COMMANDS = _ALL_COMMANDS + ['sync']
+_VIEWER_CMDS = ['me', 'dashboard', 'pipeline', 'search', 'rag', 'export', 'help', 'today']
+_NEWBIE_CMDS = ['add', 'me', 'note', 'help']
+_CS_CMDS = ['search', 'note', 'pipeline', 'dashboard', 'rag', 'export', 'me', 'help', 'today']
+# leader gets all commands (team-scoped)
+_LEADER_CMDS = _ALL_COMMANDS
 
 ROLE_PERMISSIONS: dict = {
     'frontdesk': _FRONTDESK_CMDS,
     'maintenance': _MAINTENANCE_CMDS,
     'manager': _ALL_COMMANDS,
     'admin': _ADMIN_COMMANDS,
+    'leader': _LEADER_CMDS,
+    'customer_service': _CS_CMDS,
+    'newbie': _NEWBIE_CMDS,
+    'viewer': _VIEWER_CMDS,
 }
 
 

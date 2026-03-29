@@ -10,6 +10,48 @@ class StaffRole(str, Enum):
     MAINTENANCE = 'maintenance'
     MANAGER = 'manager'
     ADMIN = 'admin'
+    LEADER = 'leader'
+    CUSTOMER_SERVICE = 'customer_service'
+    NEWBIE = 'newbie'
+    VIEWER = 'viewer'
+
+
+# ── Permission constants ──────────────────────────────────────────────────────
+
+VIEWER_COMMANDS = {'/me', '/dashboard', '/pipeline', '/search', '/rag', '/export', '/help', '/today'}
+NEWBIE_COMMANDS = {'/add', '/me', '/note', '/help'}
+CS_COMMANDS = {'/search', '/note', '/pipeline', '/dashboard', '/rag', '/export', '/me', '/help', '/today'}
+LEADER_COMMANDS = 'all'  # scoped to their team
+
+# Internal command names (without leading slash) for policy_engine compatibility
+_VIEWER_CMDS = {'me', 'dashboard', 'pipeline', 'search', 'rag', 'export', 'help', 'today'}
+_NEWBIE_CMDS = {'add', 'me', 'note', 'help'}
+_CS_CMDS = {'search', 'note', 'pipeline', 'dashboard', 'rag', 'export', 'me', 'help', 'today'}
+
+
+def check_permission(staff: 'Staff', command: str) -> bool:
+    """Check if staff member is allowed to execute command.
+
+    command may include a leading slash (e.g. '/add') or not ('add').
+    """
+    cmd = command.lstrip('/')
+    role = staff.role
+
+    if role == StaffRole.ADMIN:
+        return True
+    if role == StaffRole.MANAGER:
+        return True
+    if role == StaffRole.LEADER:
+        return True  # all commands, team-scoped at handler level
+    if role in (StaffRole.FRONTDESK, StaffRole.MAINTENANCE):
+        return True  # policy_engine handles fine-grained checks for these
+    if role == StaffRole.CUSTOMER_SERVICE:
+        return cmd in _CS_CMDS
+    if role == StaffRole.NEWBIE:
+        return cmd in _NEWBIE_CMDS
+    if role == StaffRole.VIEWER:
+        return cmd in _VIEWER_CMDS
+    return False
 
 
 class ClientStatus(str, Enum):
@@ -100,10 +142,19 @@ class Staff:
     maintenance_id: Optional[int] = None  # NULL if they ARE maintenance
 
     def is_manager_or_above(self) -> bool:
-        return self.role in (StaffRole.MAINTENANCE, StaffRole.MANAGER, StaffRole.ADMIN)
+        return self.role in (StaffRole.MAINTENANCE, StaffRole.MANAGER, StaffRole.ADMIN, StaffRole.LEADER)
 
     def is_admin(self) -> bool:
         return self.role == StaffRole.ADMIN
+
+    def is_leader(self) -> bool:
+        return self.role == StaffRole.LEADER
+
+    def is_read_only(self) -> bool:
+        return self.role == StaffRole.VIEWER
+
+    def can_modify_pipeline(self) -> bool:
+        return self.role not in (StaffRole.VIEWER, StaffRole.NEWBIE, StaffRole.CUSTOMER_SERVICE)
 
 
 @dataclass

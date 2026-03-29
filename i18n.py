@@ -1391,6 +1391,160 @@ STRINGS = {
         'zh': '⚠️ Obsidian vault 暂时不可用',
         'en': '⚠️ Obsidian vault temporarily unavailable',
     },
+
+    # === ROLES ===
+    'role_leader': {
+        'zh': '组长',
+        'en': 'Leader',
+    },
+    'role_customer_service': {
+        'zh': '客服',
+        'en': 'Customer Service',
+    },
+    'role_newbie': {
+        'zh': '新人',
+        'en': 'Newbie',
+    },
+    'role_viewer': {
+        'zh': '观察者',
+        'en': 'Viewer',
+    },
+    'role_frontdesk': {
+        'zh': '前台',
+        'en': 'Frontdesk',
+    },
+    'role_maintenance': {
+        'zh': '维护',
+        'en': 'Maintenance',
+    },
+    'role_manager': {
+        'zh': '经理',
+        'en': 'Manager',
+    },
+    'role_admin': {
+        'zh': '管理员',
+        'en': 'Admin',
+    },
+    'err_newbie_restricted': {
+        'zh': '⛔ 新人权限受限，只能使用 /add /me /note /help',
+        'en': '⛔ Newbie access restricted to /add /me /note /help',
+    },
+    'err_viewer_readonly': {
+        'zh': '⛔ 观察者只能查看数据，无法修改',
+        'en': '⛔ Viewer access is read-only',
+    },
+    'err_cs_no_pipeline_modify': {
+        'zh': '⛔ 客服无权修改流水线状态',
+        'en': '⛔ CS staff cannot modify pipeline status',
+    },
+
+    # === TEAM ASSIGNMENT ===
+    'setteam_usage': {
+        'zh': '用法: /setteam @用户名 团队名\n例如: /setteam @阿YIM 阿俊',
+        'en': 'Usage: /setteam @username teamname\nExample: /setteam @AhYIM 阿俊',
+    },
+    'setteam_not_found': {
+        'zh': '❌ 未找到用户: {username}',
+        'en': '❌ User not found: {username}',
+    },
+    'setteam_success': {
+        'zh': '✅ 已将 {name} 分配到团队: {team}',
+        'en': '✅ {name} assigned to team: {team}',
+    },
+    'teams_title': {
+        'zh': '👥 **所有团队**',
+        'en': '👥 **All Teams**',
+    },
+    'teams_no_data': {
+        'zh': '暂无团队数据',
+        'en': 'No team data available',
+    },
+    'teams_member_count': {
+        'zh': '{team}: {count} 人',
+        'en': '{team}: {count} members',
+    },
+    'auto_assign_done': {
+        'zh': '已自动分配 {count} 名员工到团队',
+        'en': 'Auto-assigned {count} staff to teams',
+    },
+
+    # === GROUP CHAT ===
+    'linkgroup_usage': {
+        'zh': '用法: /linkgroup <团队名>\n例如: /linkgroup 阿俊',
+        'en': 'Usage: /linkgroup <teamname>\nExample: /linkgroup 阿俊',
+    },
+    'linkgroup_success': {
+        'zh': '✅ 群组已关联到团队: {team}',
+        'en': '✅ Group linked to team: {team}',
+    },
+    'linkgroup_team_not_found': {
+        'zh': '❌ 未找到团队: {team}',
+        'en': '❌ Team not found: {team}',
+    },
+    'unlinkgroup_success': {
+        'zh': '✅ 群组已取消关联',
+        'en': '✅ Group unlinked',
+    },
+    'unlinkgroup_not_linked': {
+        'zh': '⚠️ 此群组未关联任何团队',
+        'en': '⚠️ This group is not linked to any team',
+    },
+    'group_only_commands': {
+        'zh': '💬 群组模式：仅响应 / 命令',
+        'en': '💬 Group mode: responding to / commands only',
+    },
+
+    # === BULK UPDATE ===
+    'bulkupdate_usage': {
+        'zh': '用法: /bulkupdate <状态> <手机1> <手机2> ...\n例如: /bulkupdate contacted 46701234567 46709876543',
+        'en': 'Usage: /bulkupdate <status> <phone1> <phone2> ...\nExample: /bulkupdate contacted 46701234567 46709876543',
+    },
+    'bulkupdate_invalid_status': {
+        'zh': '❌ 无效状态: {status}\n有效状态: {valid}',
+        'en': '❌ Invalid status: {status}\nValid: {valid}',
+    },
+    'bulkupdate_preview': {
+        'zh': '⚡ **批量更新预览**\n状态: {status}\n客户数: {count}\n\n{phones}\n\n确认更新?',
+        'en': '⚡ **Bulk Update Preview**\nStatus: {status}\nClients: {count}\n\n{phones}\n\nConfirm update?',
+    },
+    'bulkupdate_confirm': {
+        'zh': '✅ 确认',
+        'en': '✅ Confirm',
+    },
+    'bulkupdate_cancel': {
+        'zh': '❌ 取消',
+        'en': '❌ Cancel',
+    },
+    'bulkupdate_success': {
+        'zh': '✅ 批量更新完成\n成功: {ok} 条\n失败: {fail} 条',
+        'en': '✅ Bulk update done\nSuccess: {ok}\nFailed: {fail}',
+    },
+    'bulkupdate_cancelled': {
+        'zh': '❌ 批量更新已取消',
+        'en': '❌ Bulk update cancelled',
+    },
+    'bulkupdate_no_permission': {
+        'zh': '⛔ 观察者/新人无法批量更新',
+        'en': '⛔ Viewer/Newbie cannot bulk update',
+    },
+    'bulkupdate_phone_not_found': {
+        'zh': '⚠️ 未找到: {phone}',
+        'en': '⚠️ Not found: {phone}',
+    },
+    'bulkupdate_phone_not_owned': {
+        'zh': '⚠️ 无权限: {phone}',
+        'en': '⚠️ No permission: {phone}',
+    },
+
+    # === NOCODB WEBHOOK ===
+    'nocodb_webhook_started': {
+        'zh': 'NocoDB webhook 服务已启动，端口: {port}',
+        'en': 'NocoDB webhook server started on port {port}',
+    },
+    'nocodb_webhook_invalid_sig': {
+        'zh': 'Webhook 签名无效',
+        'en': 'Invalid webhook signature',
+    },
 }
 
 

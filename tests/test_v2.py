@@ -563,3 +563,100 @@ class TestMigration:
         assert '何军' in names
         maintenance_roles = [s for s in staff if s.role.value == 'maintenance']
         assert len(maintenance_roles) == 2
+
+
+# ─── Feature 1: New roles + permission system ─────────────────────────────────
+
+class TestNewRoles:
+    def test_new_role_values(self):
+        assert StaffRole.LEADER.value == 'leader'
+        assert StaffRole.CUSTOMER_SERVICE.value == 'customer_service'
+        assert StaffRole.NEWBIE.value == 'newbie'
+        assert StaffRole.VIEWER.value == 'viewer'
+
+    def test_viewer_is_read_only(self):
+        viewer = Staff(tg_user_id=10, tg_chat_id=10, display_name='V', role=StaffRole.VIEWER)
+        assert viewer.is_read_only()
+        assert not viewer.can_modify_pipeline()
+        assert not viewer.is_manager_or_above()
+
+    def test_newbie_cannot_modify_pipeline(self):
+        newbie = Staff(tg_user_id=11, tg_chat_id=11, display_name='N', role=StaffRole.NEWBIE)
+        assert not newbie.can_modify_pipeline()
+        assert not newbie.is_read_only()
+
+    def test_cs_cannot_modify_pipeline(self):
+        cs = Staff(tg_user_id=12, tg_chat_id=12, display_name='CS', role=StaffRole.CUSTOMER_SERVICE)
+        assert not cs.can_modify_pipeline()
+
+    def test_leader_is_manager_or_above(self):
+        leader = Staff(tg_user_id=13, tg_chat_id=13, display_name='L', role=StaffRole.LEADER)
+        assert leader.is_manager_or_above()
+        assert leader.is_leader()
+        assert not leader.is_admin()
+
+    def test_frontdesk_can_modify_pipeline(self):
+        fd = Staff(tg_user_id=14, tg_chat_id=14, display_name='FD', role=StaffRole.FRONTDESK)
+        assert fd.can_modify_pipeline()
+
+
+class TestCheckPermission:
+    def _make(self, role: StaffRole) -> Staff:
+        return Staff(tg_user_id=99, tg_chat_id=99, display_name='X', role=role)
+
+    def test_admin_can_do_everything(self):
+        from models_v2 import check_permission
+        adm = self._make(StaffRole.ADMIN)
+        for cmd in ['add', 'sync', 'dashboard', 'setteam', 'export']:
+            assert check_permission(adm, cmd)
+
+    def test_viewer_only_allowed_commands(self):
+        from models_v2 import check_permission
+        viewer = self._make(StaffRole.VIEWER)
+        assert check_permission(viewer, 'dashboard')
+        assert check_permission(viewer, 'pipeline')
+        assert not check_permission(viewer, 'add')
+        assert not check_permission(viewer, 'u')
+        assert not check_permission(viewer, 'sync')
+
+    def test_newbie_only_allowed_commands(self):
+        from models_v2 import check_permission
+        newbie = self._make(StaffRole.NEWBIE)
+        assert check_permission(newbie, 'add')
+        assert check_permission(newbie, 'me')
+        assert not check_permission(newbie, 'dashboard')
+        assert not check_permission(newbie, 'export')
+        assert not check_permission(newbie, 'sync')
+
+    def test_cs_allowed_commands(self):
+        from models_v2 import check_permission
+        cs = self._make(StaffRole.CUSTOMER_SERVICE)
+        assert check_permission(cs, 'search')
+        assert check_permission(cs, 'note')
+        assert check_permission(cs, 'pipeline')
+        assert not check_permission(cs, 'add')
+        assert not check_permission(cs, 'u')
+        assert not check_permission(cs, 'sync')
+
+    def test_leader_can_all_commands(self):
+        from models_v2 import check_permission
+        leader = self._make(StaffRole.LEADER)
+        for cmd in ['add', 'dashboard', 'export', 'setteam']:
+            assert check_permission(leader, cmd)
+
+    def test_command_with_slash_prefix(self):
+        from models_v2 import check_permission
+        viewer = self._make(StaffRole.VIEWER)
+        assert check_permission(viewer, '/dashboard')
+        assert not check_permission(viewer, '/add')
+
+    def test_policy_engine_check_permission(self):
+        from engines.policy_engine import check_permission as policy_check
+        assert policy_check('viewer', 'dashboard')
+        assert not policy_check('viewer', 'add')
+        assert policy_check('newbie', 'add')
+        assert not policy_check('newbie', 'export')
+        assert policy_check('customer_service', 'search')
+        assert not policy_check('customer_service', 'u')
+        assert policy_check('leader', 'setteam')
+        assert policy_check('admin', 'sync')
