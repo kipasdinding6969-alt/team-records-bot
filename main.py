@@ -12,9 +12,6 @@ from config import config
 from database_v2 import database_v2
 from telegram_handler import telegram_handler
 from models_v2 import BotTask, ReportTemplate
-from engines.report_engine import report_engine
-from engines.reminder_engine import reminder_engine
-from engines.chart_engine import chart_engine
 
 # Import V2 handlers
 from handlers_v2.quick_actions import QUICK_ACTIONS_COMMANDS, QUICK_ACTIONS_CALLBACKS, QUICK_ACTIONS_CONVERSATIONS
@@ -96,10 +93,6 @@ class RalphLoop:
             # Initialize Telegram handler
             await telegram_handler.initialize()
             logger.info("Telegram handler initialized")
-
-            # Initialize engines
-            if hasattr(report_engine, 'initialize'):
-                await report_engine.initialize()
 
             # Initialize V2 bidirectional sheet sync + dashboard
             try:
@@ -545,58 +538,20 @@ class RalphLoop:
             return False
 
     async def _handle_reminder_task(self, task: BotTask) -> bool:
-        """Handle reminder-related tasks."""
-        try:
-            action = task.data.get('action', 'process_pending')
-
-            if action == 'process_pending':
-                results = await reminder_engine.process_pending_reminders()
-                self.metrics['reminders_sent'] += results.get('processed', 0)
-                return True
-            elif action == 'send_all_pending':
-                results = await reminder_engine.process_pending_reminders()
-                self.metrics['reminders_sent'] += results.get('processed', 0)
-                return True
-            elif action == 'process_overdue':
-                results = await reminder_engine.process_overdue_reminders()
-                return True
-            elif action == 'scan_stale_clients':
-                results = await reminder_engine.scan_stale_clients()
-                self.metrics['reminders_sent'] += results.get('reminders_created', 0)
-                return True
-            else:
-                logger.warning(f"Unknown reminder action: {action}")
-                return False
-
-        except Exception as e:
-            logger.error(f"Error handling reminder task: {e}")
-            return False
+        """Handle reminder-related tasks (V2 — processes via maintenance loop)."""
+        # V2 reminders are processed directly in _maint_v2_reminders / _maint_v2_stale_check.
+        # Legacy reminder tasks are acknowledged and completed silently.
+        logger.debug(f"Legacy reminder task acknowledged: {task.data.get('action', 'unknown')}")
+        return True
 
     async def _handle_report_task(self, task: BotTask) -> bool:
-        """Handle report generation tasks."""
+        """Handle report generation tasks (V2 — uses channel summaries)."""
         try:
-            report_type = task.data.get('report_type')
-            parameters = task.data.get('parameters', {})
-
-            template = ReportTemplate(
-                template_type=report_type,
-                parameters=parameters
-            )
-
-            report_data = await report_engine.generate_report(template)
-
-            # Send report to specified recipients
-            recipients = task.data.get('recipients', [])
-            for chat_id in recipients:
-                await telegram_handler.send_message(
-                    chat_id,
-                    report_data.get('formatted_report', 'Report generated successfully'),
-                    parse_mode='markdown'
-                )
-
+            # V2 reports go through post_channel_summary / dashboard_sheets.
+            # For legacy report tasks, attempt to send a channel summary.
+            results = await telegram_handler.post_channel_summary()
             self.metrics['reports_generated'] += 1
-            return True
-
+            return results.get('success', False)
         except Exception as e:
             logger.error(f"Error handling report task: {e}")
             return False
@@ -631,7 +586,8 @@ class RalphLoop:
             if action == 'cleanup_old_tasks':
                 await database_v2.cleanup_old_tasks()
             elif action == 'cleanup_old_reminders':
-                await reminder_engine.cleanup_old_reminders()
+                # V2 reminders auto-clean via mark_reminder_sent
+                pass
             elif action == 'backup_database':
                 await database_v2.backup_database()
             elif action == 'health_check':
