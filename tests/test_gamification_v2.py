@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 
-from database_v2 import DatabaseV2
+from database_v2 import DatabaseV2, _utc_today
 from models_v2 import Staff, StaffRole
 
 
@@ -109,7 +109,7 @@ class TestStreakTracking:
 
     @pytest.mark.asyncio
     async def test_consecutive_days_increments_streak(self, db, staff):
-        today = date.today()
+        today = _utc_today()
         yesterday = today - timedelta(days=1)
         # Manually set last_action_date to yesterday
         async with db.get_connection() as conn:
@@ -125,7 +125,7 @@ class TestStreakTracking:
 
     @pytest.mark.asyncio
     async def test_missed_day_resets_streak(self, db, staff):
-        two_days_ago = date.today() - timedelta(days=2)
+        two_days_ago = _utc_today() - timedelta(days=2)
         async with db.get_connection() as conn:
             await conn.execute(
                 'INSERT INTO streaks (staff_id, current_streak, longest_streak, last_action_date, freeze_available) VALUES (?,10,10,?,1)',

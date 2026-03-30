@@ -10,7 +10,7 @@ import pytest
 import pytest_asyncio
 
 # Import after setting path
-from database_v2 import DatabaseV2
+from database_v2 import DatabaseV2, _utc_today
 from models_v2 import (
     Client, ClientNote, ClientStatus, DailyStat, Deposit, NoteType,
     PeriodType, Reminder, Staff, StaffRole, TeamTarget,
@@ -256,7 +256,7 @@ class TestDailyStats:
     async def test_upsert_daily_stats(self, db, staff_row):
         stat = DailyStat(
             staff_id=staff_row.id,
-            stat_date=date.today(),
+            stat_date=_utc_today(),
             new_leads=10,
             replied=5,
             registered=3,
@@ -272,7 +272,7 @@ class TestDailyStats:
     @pytest.mark.asyncio
     async def test_upsert_overwrites(self, db, staff_row):
         """Second upsert updates, not duplicates."""
-        stat = DailyStat(staff_id=staff_row.id, stat_date=date.today(), new_leads=5)
+        stat = DailyStat(staff_id=staff_row.id, stat_date=_utc_today(), new_leads=5)
         await db.upsert_daily_stats(stat)
         stat.new_leads = 15
         await db.upsert_daily_stats(stat)
@@ -281,19 +281,19 @@ class TestDailyStats:
 
     @pytest.mark.asyncio
     async def test_reply_rate_calculation(self):
-        stat = DailyStat(staff_id=1, stat_date=date.today(), new_leads=100, contacted=80, replied=40)
+        stat = DailyStat(staff_id=1, stat_date=_utc_today(), new_leads=100, contacted=80, replied=40)
         stat.calculate_rates()
         assert stat.reply_rate == 50.0  # 40/80 contacted
 
     @pytest.mark.asyncio
     async def test_conversion_rate_calculation(self):
-        stat = DailyStat(staff_id=1, stat_date=date.today(), new_leads=100, registered=50, new_orders=5)
+        stat = DailyStat(staff_id=1, stat_date=_utc_today(), new_leads=100, registered=50, new_orders=5)
         stat.calculate_rates()
         assert stat.conversion_rate == 10.0  # 5/50 registered
 
     @pytest.mark.asyncio
     async def test_zero_leads_no_div_zero(self):
-        stat = DailyStat(staff_id=1, stat_date=date.today(), new_leads=0)
+        stat = DailyStat(staff_id=1, stat_date=_utc_today(), new_leads=0)
         stat.calculate_rates()
         assert stat.reply_rate == 0.0
         assert stat.conversion_rate == 0.0
@@ -301,7 +301,7 @@ class TestDailyStats:
     @pytest.mark.asyncio
     async def test_get_team_daily_stats(self, db, staff_row, manager_row):
         for sid in [staff_row.id, manager_row.id]:
-            stat = DailyStat(staff_id=sid, stat_date=date.today(), new_leads=5)
+            stat = DailyStat(staff_id=sid, stat_date=_utc_today(), new_leads=5)
             await db.upsert_daily_stats(stat)
         team = await db.get_team_daily_stats()
         assert len(team) == 2
