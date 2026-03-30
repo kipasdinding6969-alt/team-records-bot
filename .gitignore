@@ -127,3 +127,8 @@ venv.bak/
 wheels/
 *.db-wal
 *.db-shm
+node_modules/
+.claude/
+flake8_report.txt
+radon_raw.txt
+radon_report.txt
