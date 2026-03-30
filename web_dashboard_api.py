@@ -22,16 +22,33 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+import secrets
 
 DB_PATH = os.getenv('DB_PATH', './team_records_v2.db')
-DASHBOARD_USER = os.getenv('DASHBOARD_USER', 'admin')
-DASHBOARD_PASS = os.getenv('DASHBOARD_PASS', 'admin')
-JWT_SECRET = os.getenv('JWT_SECRET', 'changeme-dashboard-secret-2026')
+DASHBOARD_USER = os.getenv('DASHBOARD_USER', '')
+DASHBOARD_PASS = os.getenv('DASHBOARD_PASS', '')
+JWT_SECRET = os.getenv('JWT_SECRET', '')
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRE_HOURS = 24
 DASHBOARD_DIST = os.path.join(os.path.dirname(__file__), 'web_dashboard', 'dist')
+
+logging.basicConfig(level=logging.INFO)
+_startup_logger = logging.getLogger(__name__)
+
+if not JWT_SECRET:
+    JWT_SECRET = secrets.token_hex(32)
+    _startup_logger.warning(
+        'JWT_SECRET not set — generated random secret. '
+        'Sessions will NOT survive restart. Set JWT_SECRET env var for production.'
+    )
+
+if not DASHBOARD_USER or not DASHBOARD_PASS:
+    raise RuntimeError(
+        'DASHBOARD_USER and DASHBOARD_PASS must be set as environment variables. '
+        'Refusing to start with empty or default admin credentials.'
+    )
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title='Team Records Dashboard API', version='1.0.0')
 
@@ -109,33 +126,28 @@ def row_to_dict(row) -> dict:
 @app.get('/api/dashboard')
 async def get_dashboard(username: str = Depends(verify_token)):
     today = date.today().isoformat()
+    now_iso = datetime.now(UTC).isoformat()
     async with _connect_db() as db:
+        # Combined clients aggregation — replaces 6 separate COUNT queries
+        async with db.execute(
+            """SELECT
+                COUNT(*) AS total_clients,
+                SUM(CASE WHEN status IN ('new','contacted','replied','registered','training','scheduled')
+                    THEN 1 ELSE 0 END) AS total_active,
+                SUM(CASE WHEN DATE(created_at) = ? THEN 1 ELSE 0 END) AS today_new,
+                SUM(CASE WHEN DATE(contacted_at) = ? THEN 1 ELSE 0 END) AS today_contacts,
+                SUM(CASE WHEN DATE(first_order_at) = ? THEN 1 ELSE 0 END) AS today_orders,
+                SUM(CASE WHEN next_followup IS NOT NULL AND next_followup < ?
+                    AND status NOT IN ('ordered','withdrew','dead','blocked','scammed')
+                    THEN 1 ELSE 0 END) AS overdue_followups,
+                SUM(CASE WHEN status = 'ordered' THEN 1 ELSE 0 END) AS ordered_count
+               FROM clients""",
+            (today, today, today, now_iso)
+        ) as cur:
+            agg = row_to_dict(await cur.fetchone())
+
         async with db.execute('SELECT status, COUNT(*) AS cnt FROM clients GROUP BY status') as cur:
             by_status = {r['status']: r['cnt'] for r in await cur.fetchall()}
-
-        async with db.execute('SELECT COUNT(*) AS cnt FROM clients') as cur:
-            total_clients = (await cur.fetchone())['cnt']
-
-        async with db.execute(
-            "SELECT COUNT(*) AS cnt FROM clients WHERE DATE(created_at) = ?", (today,)
-        ) as cur:
-            today_new = (await cur.fetchone())['cnt']
-
-        async with db.execute(
-            "SELECT COUNT(*) AS cnt FROM clients WHERE DATE(contacted_at) = ?", (today,)
-        ) as cur:
-            today_contacts = (await cur.fetchone())['cnt']
-
-        async with db.execute(
-            "SELECT COUNT(*) AS cnt FROM clients WHERE DATE(first_order_at) = ?", (today,)
-        ) as cur:
-            today_orders = (await cur.fetchone())['cnt']
-
-        async with db.execute(
-            "SELECT COUNT(*) AS cnt FROM clients WHERE status IN "
-            "('new','contacted','replied','registered','training','scheduled')"
-        ) as cur:
-            total_active = (await cur.fetchone())['cnt']
 
         async with db.execute(
             "SELECT COALESCE(SUM(amount), 0) AS total FROM deposits WHERE DATE(deposit_date) = ?",
@@ -143,36 +155,26 @@ async def get_dashboard(username: str = Depends(verify_token)):
         ) as cur:
             today_deposits = float((await cur.fetchone())['total'])
 
-        async with db.execute(
-            "SELECT COALESCE(SUM(amount), 0) AS total FROM deposits"
-        ) as cur:
+        async with db.execute("SELECT COALESCE(SUM(amount), 0) AS total FROM deposits") as cur:
             total_deposits = float((await cur.fetchone())['total'])
 
         async with db.execute("SELECT COUNT(*) AS cnt FROM staff WHERE is_active = 1") as cur:
             total_staff = (await cur.fetchone())['cnt']
 
-        now_iso = datetime.now(UTC).isoformat()
-        async with db.execute(
-            """SELECT COUNT(*) AS cnt FROM clients
-               WHERE next_followup IS NOT NULL AND next_followup < ?
-               AND status NOT IN ('ordered','withdrew','dead','blocked','scammed')""",
-            (now_iso,)
-        ) as cur:
-            overdue_followups = (await cur.fetchone())['cnt']
-
-    ordered_count = by_status.get('ordered', 0)
+    total_clients = agg['total_clients'] or 0
+    ordered_count = agg['ordered_count'] or 0
     conversion_rate = round(ordered_count / max(total_clients, 1) * 100, 1)
 
     return {
         'total_clients': total_clients,
-        'total_active': total_active,
+        'total_active': agg['total_active'] or 0,
         'total_staff': total_staff,
         'total_deposits': total_deposits,
-        'today_new': today_new,
-        'today_contacts': today_contacts,
-        'today_orders': today_orders,
+        'today_new': agg['today_new'] or 0,
+        'today_contacts': agg['today_contacts'] or 0,
+        'today_orders': agg['today_orders'] or 0,
         'today_deposits': today_deposits,
-        'overdue_followups': overdue_followups,
+        'overdue_followups': agg['overdue_followups'] or 0,
         'conversion_rate': conversion_rate,
         'by_status': by_status,
     }
@@ -227,9 +229,11 @@ async def get_staff(username: str = Depends(verify_token)):
     async with _connect_db() as db:
         async with db.execute(
             """SELECT s.id, s.display_name, s.role, s.team, s.is_active, s.daily_target,
-                      COALESCE(SUM(x.xp_amount), 0) AS xp_total
+                      COALESCE(SUM(x.xp_amount), 0) AS xp_total,
+                      COALESCE(st.current_streak, 0) AS current_streak
                FROM staff s
                LEFT JOIN xp_events x ON x.staff_id = s.id
+               LEFT JOIN streaks st ON st.staff_id = s.id
                WHERE s.is_active = 1
                GROUP BY s.id
                ORDER BY xp_total DESC"""
@@ -242,13 +246,6 @@ async def get_staff(username: str = Depends(verify_token)):
         staff_ids = [r['id'] for r in staff_rows]
         id_map = {r['id']: r for r in staff_rows}
         ph = ','.join('?' * len(staff_ids))
-
-        async with db.execute(
-            f'SELECT staff_id, current_streak FROM streaks WHERE staff_id IN ({ph})',
-            staff_ids
-        ) as cur:
-            for r in await cur.fetchall():
-                id_map[r['staff_id']]['current_streak'] = r['current_streak']
 
         async with db.execute(
             f"""SELECT frontdesk_id,
@@ -397,8 +394,8 @@ async def list_clients(
         conditions.append('c.frontdesk_id = ?')
         params.append(staff_id)
     if search:
-        conditions.append('(c.phone LIKE ? OR c.source LIKE ?)')
-        params.extend([f'%{search}%', f'%{search}%'])
+        conditions.append('(c.phone LIKE ? OR c.source LIKE ? OR c.nickname LIKE ?)')
+        params.extend([f'%{search}%', f'%{search}%', f'%{search}%'])
 
     where = f'WHERE {" AND ".join(conditions)}' if conditions else ''
     offset = (page - 1) * per_page

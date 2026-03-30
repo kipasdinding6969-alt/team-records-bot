@@ -219,9 +219,13 @@ def _parse_regex(text: str) -> Dict[str, Any]:
     phone_match = re.search(r'\b(\d{7,15})\b', t)
     phone = phone_match.group(1) if phone_match else None
 
-    # Detect Chinese/English name (simple heuristic: 阿X, 小X, 2-4 char CJK or capitalised word)
-    name_match = re.search(r'(阿\S{1,3}|小\S{1,3}|[A-Z][a-z]{1,9})', t)
+    # Detect Chinese/English name: 阿X, 小X patterns first, then 2-4 char CJK names, then capitalised word
+    _status_kws = set(_STATUS_MAP.keys())
+    name_match = re.search(r'(阿\S{1,3}|小\S{1,3}|[\u4e00-\u9fff]{2,4}|[A-Z][a-z]{1,9})', t)
     name = name_match.group(1) if name_match else None
+    # Discard if matched a known status keyword (avoid false positives)
+    if name and name in _status_kws:
+        name = None
 
     # Detect status
     detected_status: Optional[str] = None

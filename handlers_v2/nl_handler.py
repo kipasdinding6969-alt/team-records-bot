@@ -31,18 +31,20 @@ def _kb_client_actions(client_id: int) -> Any:
     ]])
 
 
-def _kb_status_updated(client_id: int) -> Any:
+def _kb_status_updated(client_id: int, old_status: str = '') -> Any:
+    undo_cb = f'nl_undo:{client_id}:{old_status}' if old_status else f'nl_undo:{client_id}'
     return telegram_handler.create_inline_keyboard([[
         {'text': '✅ 确认 / Confirmed', 'callback_data': f'nl_ok:{client_id}'},
-        {'text': '↩️ 撤销 / Undo', 'callback_data': f'nl_undo:{client_id}'},
+        {'text': '↩️ 撤销 / Undo', 'callback_data': undo_cb},
     ], [
         {'text': '📊 查看客户 / View Client', 'callback_data': f'nl_client_detail:{client_id}'},
     ]])
 
 
-def _kb_search_results() -> Any:
+def _kb_search_results(first_client_id: Optional[int] = None) -> Any:
+    contact_cb = f'nl_contact_first:{first_client_id}' if first_client_id else 'nl_contact_first'
     return telegram_handler.create_inline_keyboard([[
-        {'text': '📱 联系第一个 / Contact First', 'callback_data': 'nl_contact_first'},
+        {'text': '📱 联系第一个 / Contact First', 'callback_data': contact_cb},
         {'text': '📋 更多 / More', 'callback_data': 'nl_search_more'},
     ]])
 
@@ -104,6 +106,45 @@ def _client_card(client: Client) -> str:
         f"状态 / Status: {emoji} {status_val}\n"
         f"来源 / Source: {client.source or '-'}"
     )
+
+
+
+def _kb_disambiguate(matches: list) -> Any:
+    """Inline keyboard to disambiguate multiple clients with the same name."""
+    rows = [
+        [{'text': f"📱 {c.phone}" + (f" ({c.nickname})" if c.nickname else ''),
+          'callback_data': f'nl_select_client:{c.id}'}]
+        for c in matches[:5]
+    ]
+    rows.append([{'text': '❌ 取消 / Cancel', 'callback_data': 'nl_cancel'}])
+    return telegram_handler.create_inline_keyboard(rows)
+
+
+async def _find_client(
+    staff_id: int, entities: Dict[str, Any]
+) -> tuple:
+    """Return (client, ambiguous_list).
+
+    - (client, []) — single unambiguous match
+    - (None, matches) — multiple matches, caller should show disambiguation
+    - (None, []) — no match found
+    """
+    phone: Optional[str] = entities.get('phone')
+    name: Optional[str] = entities.get('client_name')
+
+    if phone:
+        client = await database_v2.get_client_by_phone(phone, staff_id)
+        if client:
+            return client, []
+
+    if name:
+        matches = await database_v2.search_clients(staff_id, name)
+        if len(matches) == 1:
+            return matches[0], []
+        if len(matches) > 1:
+            return None, matches
+
+    return None, []
 
 
 # ── Main handler ─────────────────────────────────────────────────────────────
@@ -178,7 +219,15 @@ async def _handle_fallback(chat_id: int, user_id: int, original_text: str):
 
 
 async def _exec_query_client(chat_id: int, staff: Any, entities: Dict[str, Any]):
-    client = await _resolve_client(staff.id, entities)
+    client, ambiguous = await _find_client(staff.id, entities)
+    if ambiguous:
+        name = entities.get('client_name', '?')
+        msg = f"🔍 找到多个客户 / Multiple clients found for **{name}**, 请选择 / Please select:"
+        await telegram_handler.send_message(
+            chat_id, msg, parse_mode='markdown',
+            reply_markup=_kb_disambiguate(ambiguous)
+        )
+        return
     if not client:
         identifier = entities.get('client_name') or entities.get('phone') or '?'
         msg = f"❌ 找不到客户 / Client not found: **{identifier}**"
@@ -195,13 +244,28 @@ async def _exec_query_client(chat_id: int, staff: Any, entities: Dict[str, Any])
 
 async def _exec_update_status(chat_id: int, staff: Any, entities: Dict[str, Any]):
     status_str: Optional[str] = entities.get('status')
-    client = await _resolve_client(staff.id, entities)
+    client, ambiguous = await _find_client(staff.id, entities)
 
+    if ambiguous:
+        name = entities.get('client_name', '?')
+        msg = f"🔍 找到多个客户 / Multiple clients found for **{name}**, 请选择 / Please select:"
+        await telegram_handler.send_message(
+            chat_id, msg, parse_mode='markdown',
+            reply_markup=_kb_disambiguate(ambiguous)
+        )
+        return
     if not client:
         identifier = entities.get('client_name') or entities.get('phone') or '?'
         msg = f"❌ 找不到客户 / Client not found: **{identifier}**"
         await telegram_handler.send_message(chat_id, msg, parse_mode='markdown',
                                             reply_markup=_kb_fallback_menu())
+        return
+
+    if client.frontdesk_id != staff.id:
+        await telegram_handler.send_message(
+            chat_id, '❌ 无权操作此客户 / You do not own this client.',
+            reply_markup=_kb_fallback_menu()
+        )
         return
 
     if not status_str:
@@ -242,13 +306,28 @@ async def _exec_update_status(chat_id: int, staff: Any, entities: Dict[str, Any]
 
 async def _exec_add_note(chat_id: int, staff: Any, entities: Dict[str, Any]):
     note_text: Optional[str] = entities.get('note')
-    client = await _resolve_client(staff.id, entities)
+    client, ambiguous = await _find_client(staff.id, entities)
 
+    if ambiguous:
+        name = entities.get('client_name', '?')
+        msg = f"🔍 找到多个客户 / Multiple clients found for **{name}**, 请选择 / Please select:"
+        await telegram_handler.send_message(
+            chat_id, msg, parse_mode='markdown',
+            reply_markup=_kb_disambiguate(ambiguous)
+        )
+        return
     if not client:
         identifier = entities.get('client_name') or entities.get('phone') or '?'
         msg = f"❌ 找不到客户 / Client not found: **{identifier}**"
         await telegram_handler.send_message(chat_id, msg, parse_mode='markdown',
                                             reply_markup=_kb_fallback_menu())
+        return
+
+    if client.frontdesk_id != staff.id:
+        await telegram_handler.send_message(
+            chat_id, '❌ 无权操作此客户 / You do not own this client.',
+            reply_markup=_kb_fallback_menu()
+        )
         return
 
     if not note_text:
@@ -349,7 +428,7 @@ async def _exec_search(chat_id: int, staff: Any, entities: Dict[str, Any]):
     msg = '\n'.join(lines)
     await telegram_handler.send_message(
         chat_id, msg, parse_mode='markdown',
-        reply_markup=_kb_search_results()
+        reply_markup=_kb_search_results(clients[0].id if clients else None)
     )
 
 
@@ -409,12 +488,13 @@ async def handle_nl_await_status(task_data: Dict[str, Any]):
         )
         return
 
+    client_before = await database_v2.get_client_by_id(client_id)
+    old_status = client_before.status.value if client_before and hasattr(client_before.status, 'value') else ''
     await database_v2.update_client_status(client_id, new_status, staff.id)
     msg = f"✅ **状态已更新 / Status updated → {text}**"
-    client = await database_v2.get_client_by_id(client_id)
     await telegram_handler.send_message(
         chat_id, msg, parse_mode='markdown',
-        reply_markup=_kb_status_updated(client_id) if client else None
+        reply_markup=_kb_status_updated(client_id, old_status)
     )
 
 
@@ -477,11 +557,18 @@ async def handle_nl_confirm_update(task_data: Dict[str, Any]):
         await telegram_handler.send_message(chat_id, '❌ 无效状态 / Invalid status.')
         return
 
+    # Ownership check
+    client = await database_v2.get_client_by_id(client_id)
+    if not client or client.frontdesk_id != staff.id:
+        await telegram_handler.send_message(chat_id, '❌ 无权操作此客户 / Access denied.')
+        return
+
+    old_status = client.status.value if hasattr(client.status, 'value') else str(client.status)
     await database_v2.update_client_status(client_id, new_status, staff.id)
     msg = f"✅ **已更新 / Updated → {status_str}**"
     await telegram_handler.send_message(
         chat_id, msg, parse_mode='markdown',
-        reply_markup=_kb_status_updated(client_id)
+        reply_markup=_kb_status_updated(client_id, old_status)
     )
 
 
@@ -626,8 +713,36 @@ async def handle_nl_ok(task_data: Dict[str, Any]):
 
 async def handle_nl_undo(task_data: Dict[str, Any]):
     chat_id = task_data.get('chat_id')
+    user_id = task_data.get('user_id')
+    cb: str = task_data.get('callback_data', '')
+
+    staff = await _get_staff(user_id)
+    if not staff:
+        return
+
+    parts = cb.split(':')
+    if len(parts) < 3:
+        await telegram_handler.send_message(chat_id, '❌ 无法撤销，缺少状态信息 / Cannot undo — missing old status.')
+        return
+
+    try:
+        client_id = int(parts[1])
+        old_status_str = parts[2]
+        old_status = ClientStatus(old_status_str)
+    except (ValueError, IndexError):
+        await telegram_handler.send_message(chat_id, '❌ 无法撤销，状态无效 / Cannot undo — invalid state.')
+        return
+
+    client = await database_v2.get_client_by_id(client_id)
+    if not client or client.frontdesk_id != staff.id:
+        await telegram_handler.send_message(chat_id, '❌ 无权操作或客户不存在 / Access denied or client not found.')
+        return
+
+    await database_v2.update_client_status(client_id, old_status, staff.id)
     await telegram_handler.send_message(
-        chat_id, '↩️ 请使用 /u 命令手动撤销 / Use /u to manually revert.'
+        chat_id,
+        f"↩️ **已撤销 / Undone → {old_status_str}**",
+        parse_mode='markdown'
     )
 
 
@@ -649,8 +764,45 @@ async def handle_nl_search_more(task_data: Dict[str, Any]):
 
 async def handle_nl_contact_first(task_data: Dict[str, Any]):
     chat_id = task_data.get('chat_id')
+    cb: str = task_data.get('callback_data', '')
+
+    parts = cb.split(':')
+    if len(parts) < 2:
+        await telegram_handler.send_message(chat_id, '❌ 请重新搜索 / Please search again.')
+        return
+
+    try:
+        client_id = int(parts[1])
+    except ValueError:
+        await telegram_handler.send_message(chat_id, '❌ 请重新搜索 / Please search again.')
+        return
+
+    # Navigate to the client's detail in the pipeline browser
+    task_data['callback_data'] = f'pipe:d:{client_id}'
+    from handlers_v2.inline_flows import handle_pipe_callback
+    await handle_pipe_callback(task_data)
+
+
+
+async def handle_nl_select_client(task_data: Dict[str, Any]):
+    """nl_select_client:<id> — user selected a client from disambiguation."""
+    chat_id = task_data.get('chat_id')
+    cb: str = task_data.get('callback_data', '')
+    parts = cb.split(':')
+    try:
+        client_id = int(parts[1])
+    except (IndexError, ValueError):
+        return
+
+    client = await database_v2.get_client_by_id(client_id)
+    if not client:
+        await telegram_handler.send_message(chat_id, '❌ 客户不存在 / Client not found.')
+        return
+
+    card = _client_card(client)
     await telegram_handler.send_message(
-        chat_id, '📱 请用 /pipeline 选择要联系的客户 / Use /pipeline to select client to contact.'
+        chat_id, card, parse_mode='markdown',
+        reply_markup=_kb_client_actions(client.id)
     )
 
 
@@ -663,11 +815,13 @@ NL_HANDLER_CALLBACKS = {
     'nl_client_detail:*': handle_nl_client_detail,
     'nl_client_note:*': handle_nl_client_note_cb,
     'nl_client_update:*': handle_nl_client_update_cb,
+    'nl_select_client:*': handle_nl_select_client,
     'nl_ok:*': handle_nl_ok,
     'nl_undo:*': handle_nl_undo,
     'nl_cancel': handle_nl_cancel,
     'nl_next_client': handle_nl_next_client,
     'nl_search_more': handle_nl_search_more,
+    'nl_contact_first:*': handle_nl_contact_first,
     'nl_contact_first': handle_nl_contact_first,
     'nl_menu_add': handle_nl_menu_add,
     'nl_menu_pipeline': handle_nl_menu_pipeline,

@@ -27,16 +27,6 @@ DB_PATH = os.getenv('DB_PATH', './team_records_v2.db')
 BOT_TOKEN_FILE = os.path.join(os.path.dirname(__file__), 'bot_token.txt')
 MINI_APP_DIST = os.path.join(os.path.dirname(__file__), 'mini_app', 'dist')
 
-app = FastAPI(title='Team Records Mini App API', version='1.0.0')
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=['*'],
-    allow_credentials=True,
-    allow_methods=['*'],
-    allow_headers=['*'],
-)
-
 
 # ─── Bot token ────────────────────────────────────────────────────────────────
 
@@ -48,6 +38,34 @@ def _load_bot_token() -> str:
 
 
 BOT_TOKEN = _load_bot_token()
+
+
+# ─── DB singleton ─────────────────────────────────────────────────────────────
+
+_db_conn: Optional[aiosqlite.Connection] = None
+
+
+@_acm
+async def _lifespan(app: FastAPI):
+    global _db_conn
+    _db_conn = await aiosqlite.connect(DB_PATH, timeout=30)
+    _db_conn.row_factory = aiosqlite.Row
+    await _db_conn.execute('PRAGMA journal_mode=WAL')
+    await _db_conn.execute('PRAGMA synchronous=NORMAL')
+    yield
+    await _db_conn.close()
+    _db_conn = None
+
+
+app = FastAPI(title='Team Records Mini App API', version='1.0.0', lifespan=_lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=['*'],
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*'],
+)
 
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -92,7 +110,7 @@ def get_tg_user_id(init_data_str: str) -> Optional[int]:
 def require_auth(x_telegram_init_data: str = '') -> Optional[int]:
     """Return user_id from initData, or raise 401."""
     uid = get_tg_user_id(x_telegram_init_data)
-    if uid is None and BOT_TOKEN:
+    if uid is None:
         raise HTTPException(status_code=401, detail='Unauthorized')
     return uid
 
@@ -101,14 +119,26 @@ def require_auth(x_telegram_init_data: str = '') -> Optional[int]:
 
 @_acm
 async def _connect_db():
-    """Async context manager that yields a configured aiosqlite connection."""
-    async with aiosqlite.connect(DB_PATH, timeout=15) as db:
-        db.row_factory = aiosqlite.Row
-        yield db
+    """Yield the singleton DB connection, or open a new one if not yet initialised."""
+    if _db_conn is not None:
+        yield _db_conn
+    else:
+        async with aiosqlite.connect(DB_PATH, timeout=15) as db:
+            db.row_factory = aiosqlite.Row
+            yield db
 
 
 def row_to_dict(row: aiosqlite.Row) -> dict:
     return dict(row)
+
+
+async def _get_staff_id(db: aiosqlite.Connection, uid: Optional[int]) -> Optional[int]:
+    """Return staff.id for a given tg_user_id, or None."""
+    if uid is None:
+        return None
+    async with db.execute('SELECT id FROM staff WHERE tg_user_id = ?', (uid,)) as cur:
+        row = await cur.fetchone()
+        return row['id'] if row else None
 
 
 def _fmt_date(val: Any) -> Optional[str]:
@@ -159,13 +189,14 @@ async def get_pipeline(x_telegram_init_data: str = Header(default='')):
 
 @app.get('/api/client/{client_id}')
 async def get_client(client_id: int, x_telegram_init_data: str = Header(default='')):
-    require_auth(x_telegram_init_data)
+    uid = require_auth(x_telegram_init_data)
     async with _connect_db() as db:
+        staff_id = await _get_staff_id(db, uid)
         async with db.execute(
             '''SELECT c.id, c.phone, c.status, c.source,
                       c.total_deposited, c.created_at, c.contacted_at,
                       c.replied_at, c.registered_at, c.training_at,
-                      c.first_order_at, c.next_followup,
+                      c.first_order_at, c.next_followup, c.frontdesk_id,
                       s.display_name AS frontdesk_name
                FROM clients c
                LEFT JOIN staff s ON c.frontdesk_id = s.id
@@ -177,6 +208,9 @@ async def get_client(client_id: int, x_telegram_init_data: str = Header(default=
         if not row:
             raise HTTPException(status_code=404, detail='Client not found')
         client = row_to_dict(row)
+
+        if staff_id is not None and client.get('frontdesk_id') != staff_id:
+            raise HTTPException(status_code=403, detail='Access denied')
 
         # Notes
         async with db.execute(
@@ -225,13 +259,18 @@ async def update_client_status(
         raise HTTPException(status_code=400, detail=f'Invalid status: {body.status}')
 
     async with _connect_db() as db:
-        # Verify client exists + get old status
+        # Verify client exists + ownership
         async with db.execute(
-            'SELECT id, status FROM clients WHERE id = ?', (client_id,)
+            'SELECT id, status, frontdesk_id FROM clients WHERE id = ?', (client_id,)
         ) as cur:
             row = await cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail='Client not found')
+
+        # Ownership check
+        staff_id = await _get_staff_id(db, uid)
+        if staff_id is not None and row['frontdesk_id'] != staff_id:
+            raise HTTPException(status_code=403, detail='Access denied')
 
         old_status = row['status']
         now = datetime.now(UTC).isoformat()
@@ -241,9 +280,8 @@ async def update_client_status(
             (body.status, client_id)
         )
 
-        # Log status change as a note
-        staff_id = None
-        if uid:
+        # staff_id already resolved above
+        if staff_id is None and uid:
             async with db.execute(
                 'SELECT id FROM staff WHERE tg_user_id = ?', (uid,)
             ) as cur:
@@ -275,12 +313,16 @@ async def add_note(
         raise HTTPException(status_code=400, detail='Note content required')
 
     async with _connect_db() as db:
-        async with db.execute('SELECT id FROM clients WHERE id = ?', (client_id,)) as cur:
-            if not await cur.fetchone():
-                raise HTTPException(status_code=404, detail='Client not found')
+        async with db.execute('SELECT id, frontdesk_id FROM clients WHERE id = ?', (client_id,)) as cur:
+            client_row = await cur.fetchone()
+        if not client_row:
+            raise HTTPException(status_code=404, detail='Client not found')
 
-        staff_id = None
-        if uid:
+        staff_id = await _get_staff_id(db, uid)
+        if staff_id is not None and client_row['frontdesk_id'] != staff_id:
+            raise HTTPException(status_code=403, detail='Access denied')
+
+        if staff_id is None and uid:
             async with db.execute('SELECT id FROM staff WHERE tg_user_id = ?', (uid,)) as cur:
                 sr = await cur.fetchone()
                 if sr:

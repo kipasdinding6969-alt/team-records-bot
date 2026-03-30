@@ -48,6 +48,7 @@ def setup_db(temp_db_path):
             phone TEXT NOT NULL,
             status TEXT DEFAULT 'new',
             source TEXT,
+            nickname TEXT,
             frontdesk_id INTEGER REFERENCES staff(id),
             total_deposited REAL DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,

@@ -21,7 +21,7 @@ from handlers_v2 import get_staff as _get_staff
 
 logger = logging.getLogger(__name__)
 
-PAGE_SIZE = 5
+PAGE_SIZE = 10
 
 _STATUS_LABELS = {
     'zh': {
@@ -78,7 +78,13 @@ _SOURCE_MAP = {
 
 
 def _status_label(status_val: str, lang: str) -> str:
-    return _STATUS_LABELS.get(lang, _STATUS_LABELS['zh']).get(status_val, status_val)
+    labels = _STATUS_LABELS.get(lang, _STATUS_LABELS['zh'])
+    # Validate against ClientStatus enum; fall back to raw value
+    try:
+        canonical = ClientStatus(status_val).value
+    except ValueError:
+        canonical = status_val
+    return labels.get(canonical, canonical)
 
 
 def _smart_next(status: ClientStatus, lang: str) -> str:
@@ -524,11 +530,19 @@ async def handle_add_await_phone(task_data: Dict[str, Any]):
         await telegram_handler.send_message(chat_id, t('add_invalid_phone', lang))
         return
 
-    existing = await database_v2.get_client_by_phone(phone, staff.id)
+    existing = await database_v2.get_client_by_phone(phone)  # global check
     if existing:
         await telegram_handler.clear_conversation_state(user_id)
-        await telegram_handler.send_message(chat_id, t('add_dup', lang, phone=phone))
-        await _show_client_detail(chat_id, None, staff, existing.id, lang)
+        if existing.frontdesk_id and existing.frontdesk_id != staff.id:
+            other_staff = await database_v2.get_staff_by_id(existing.frontdesk_id)
+            other_name = other_staff.display_name if other_staff else '其他员工 / Other staff'
+            await telegram_handler.send_message(
+                chat_id,
+                f"⚠️ {phone}\n该号码已由 {other_name} 管理 / This number is already managed by {other_name}",
+            )
+        else:
+            await telegram_handler.send_message(chat_id, t('add_dup', lang, phone=phone))
+            await _show_client_detail(chat_id, None, staff, existing.id, lang)
         return
 
     await telegram_handler.set_conversation_state(user_id, {
