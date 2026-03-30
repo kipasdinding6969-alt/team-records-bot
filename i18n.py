@@ -1841,6 +1841,36 @@ STRINGS = {
         'zh': '❌ 找不到该客户。',
         'en': '❌ Client not found.',
     },
+
+    # === GAMIFICATION V2 ===
+    'xp_leaderboard_title': {
+        'zh': '⭐ **XP 排行榜** — {period}',
+        'en': '⭐ **XP Leaderboard** — {period}',
+    },
+    'xp_leaderboard_row': {
+        'zh': '{rank}. {name} — **{xp} XP**{streak}',
+        'en': '{rank}. {name} — **{xp} XP**{streak}',
+    },
+    'xp_awarded': {
+        'zh': '⭐ +{amount} XP ({action})',
+        'en': '⭐ +{amount} XP ({action})',
+    },
+    'xp_streak_milestone': {
+        'zh': '{message}',
+        'en': '{message}',
+    },
+    'badge_unlocked': {
+        'zh': '🎉 解锁新徽章：{emoji} **{name}**！',
+        'en': '🎉 New badge unlocked: {emoji} **{name}**!',
+    },
+    'streak_freeze_used': {
+        'zh': '❄️ 已使用连续冻结，本周剩余: {remaining}',
+        'en': '❄️ Streak freeze used. Remaining this week: {remaining}',
+    },
+    'streak_freeze_unavailable': {
+        'zh': '❌ 本周冻结已用完，连续中断了。',
+        'en': '❌ No streak freeze available this week.',
+    },
 }
 
 

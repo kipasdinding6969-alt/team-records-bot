@@ -297,6 +297,41 @@ class DatabaseV2:
                     updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(contest_id, staff_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS xp_events (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    staff_id    INTEGER NOT NULL REFERENCES staff(id),
+                    action      TEXT NOT NULL,
+                    xp_amount   INTEGER NOT NULL,
+                    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_xp_events_staff ON xp_events(staff_id, created_at);
+
+                CREATE TABLE IF NOT EXISTS streaks (
+                    staff_id            INTEGER PRIMARY KEY REFERENCES staff(id),
+                    current_streak      INTEGER DEFAULT 0,
+                    longest_streak      INTEGER DEFAULT 0,
+                    last_action_date    DATE,
+                    freeze_available    INTEGER DEFAULT 1
+                );
+
+                CREATE TABLE IF NOT EXISTS badges (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name            TEXT NOT NULL,
+                    emoji           TEXT NOT NULL,
+                    description     TEXT,
+                    xp_threshold    INTEGER,
+                    action_type     TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS staff_badges (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    staff_id    INTEGER NOT NULL REFERENCES staff(id),
+                    badge_id    INTEGER NOT NULL REFERENCES badges(id),
+                    earned_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(staff_id, badge_id)
+                );
             """)
             await db.commit()
 
@@ -1637,6 +1672,273 @@ class DatabaseV2:
             await self.end_contest(row['id'])
             count += 1
         return count
+
+    # ─── Gamification V2: XP ─────────────────────────────────────────────────────
+
+    async def award_xp(self, staff_id: int, action: str, amount: int) -> int:
+        """Insert XP event and update streak. Returns amount awarded."""
+        async with self.get_connection() as db:
+            await db.execute(
+                'INSERT INTO xp_events (staff_id, action, xp_amount) VALUES (?,?,?)',
+                (staff_id, action, amount)
+            )
+            await db.commit()
+        await self.update_streak(staff_id)
+        return amount
+
+    async def get_staff_xp(self, staff_id: int, period: str = 'all') -> int:
+        """Return total XP for staff over period (today|week|month|all)."""
+        today = _utc_today()
+        async with self.get_connection() as db:
+            if period == 'today':
+                cur = await db.execute(
+                    'SELECT COALESCE(SUM(xp_amount),0) FROM xp_events WHERE staff_id=? AND DATE(created_at)=?',
+                    (staff_id, today.isoformat())
+                )
+            elif period == 'week':
+                week_start = (today - timedelta(days=today.weekday())).isoformat()
+                cur = await db.execute(
+                    'SELECT COALESCE(SUM(xp_amount),0) FROM xp_events WHERE staff_id=? AND DATE(created_at)>=?',
+                    (staff_id, week_start)
+                )
+            elif period == 'month':
+                month_start = today.replace(day=1).isoformat()
+                cur = await db.execute(
+                    'SELECT COALESCE(SUM(xp_amount),0) FROM xp_events WHERE staff_id=? AND DATE(created_at)>=?',
+                    (staff_id, month_start)
+                )
+            else:
+                cur = await db.execute(
+                    'SELECT COALESCE(SUM(xp_amount),0) FROM xp_events WHERE staff_id=?',
+                    (staff_id,)
+                )
+            row = await cur.fetchone()
+            return int(row[0]) if row else 0
+
+    # ─── Gamification V2: Streaks ────────────────────────────────────────────────
+
+    async def update_streak(self, staff_id: int):
+        """Update daily streak for staff based on today's activity."""
+        today = _utc_today()
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT current_streak, longest_streak, last_action_date, freeze_available FROM streaks WHERE staff_id=?',
+                (staff_id,)
+            )
+            row = await cur.fetchone()
+
+            if row is None:
+                await db.execute(
+                    'INSERT INTO streaks (staff_id, current_streak, longest_streak, last_action_date, freeze_available) VALUES (?,1,1,?,1)',
+                    (staff_id, today.isoformat())
+                )
+                await db.commit()
+                return
+
+            current = row['current_streak'] or 0
+            longest = row['longest_streak'] or 0
+            last_date_str = row['last_action_date']
+
+            if last_date_str:
+                last_date = date.fromisoformat(last_date_str)
+                if last_date == today:
+                    return  # already active today, no change
+                gap = (today - last_date).days
+                if gap == 1:
+                    current += 1
+                else:
+                    current = 1  # streak broken
+            else:
+                current = 1
+
+            longest = max(longest, current)
+            await db.execute(
+                'UPDATE streaks SET current_streak=?, longest_streak=?, last_action_date=? WHERE staff_id=?',
+                (current, longest, today.isoformat(), staff_id)
+            )
+            await db.commit()
+
+    async def get_streak(self, staff_id: int) -> Dict[str, Any]:
+        """Return streak row for staff (or defaults if not found)."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT current_streak, longest_streak, last_action_date, freeze_available FROM streaks WHERE staff_id=?',
+                (staff_id,)
+            )
+            row = await cur.fetchone()
+        if row:
+            return dict(row)
+        return {'current_streak': 0, 'longest_streak': 0, 'last_action_date': None, 'freeze_available': 1}
+
+    async def use_streak_freeze(self, staff_id: int) -> bool:
+        """Use one streak freeze for staff. Returns True if freeze was available."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT freeze_available FROM streaks WHERE staff_id=?',
+                (staff_id,)
+            )
+            row = await cur.fetchone()
+            if not row or row['freeze_available'] < 1:
+                return False
+            await db.execute(
+                'UPDATE streaks SET freeze_available=freeze_available-1 WHERE staff_id=?',
+                (staff_id,)
+            )
+            await db.commit()
+        return True
+
+    async def reset_weekly_streak_freezes(self):
+        """Reset freeze_available to 1 for all staff (run on Mondays)."""
+        async with self.get_connection() as db:
+            await db.execute('UPDATE streaks SET freeze_available=1')
+            await db.commit()
+
+    # ─── Gamification V2: Badges ─────────────────────────────────────────────────
+
+    async def seed_badges(self):
+        """Seed 10 default badges (idempotent)."""
+        seeded = await self.get_setting('badges_seeded_v2')
+        if seeded == '1':
+            return
+        defaults = [
+            ('首次连续',   '🔥', '保持3天连续打卡',     None,  'streak_3'),
+            ('速度之星',   '⚡', '快速回复10次',        None,  'fast_reply_10'),
+            ('百发百中',   '🎯', '完成100次状态更新',   None,  'update_100'),
+            ('语音达人',   '🗣️', '发送50次语音更新',    None,  'voice_50'),
+            ('勤劳蜜蜂',   '🏃', '保持7天连续打卡',     None,  'streak_7'),
+            ('钻石选手',   '💎', '保持30天连续打卡',    None,  'streak_30'),
+            ('新星',       '🌟', '累计获得50 XP',       50,    None),
+            ('MVP',        '🏆', '累计获得1000 XP',     1000,  None),
+            ('增长王',     '📈', '新增50个客户',        None,  'add_client_50'),
+            ('传奇',       '👑', '保持100天连续打卡',   None,  'streak_100'),
+        ]
+        async with self.get_connection() as db:
+            for name, emoji, desc, xp_threshold, action_type in defaults:
+                await db.execute(
+                    'INSERT INTO badges (name, emoji, description, xp_threshold, action_type) VALUES (?,?,?,?,?)',
+                    (name, emoji, desc, xp_threshold, action_type)
+                )
+            await db.commit()
+        await self.set_setting('badges_seeded_v2', '1', 'Default badges seeded')
+
+    async def check_and_award_badges(self, staff_id: int) -> List[Dict[str, Any]]:
+        """Check all unearned badges and award any newly qualified. Returns newly awarded badges."""
+        total_xp = await self.get_staff_xp(staff_id, 'all')
+        streak = await self.get_streak(staff_id)
+        current_streak = streak.get('current_streak', 0)
+
+        # Count action-based events
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT action, COUNT(*) as cnt FROM xp_events WHERE staff_id=? GROUP BY action',
+                (staff_id,)
+            )
+            rows = await cur.fetchall()
+        action_counts = {r['action']: r['cnt'] for r in rows}
+
+        # Load all badges
+        async with self.get_connection() as db:
+            cur = await db.execute('SELECT id, name, emoji, description, xp_threshold, action_type FROM badges')
+            all_badges = [dict(r) for r in await cur.fetchall()]
+
+        # Load already-earned badge IDs
+        async with self.get_connection() as db:
+            cur = await db.execute('SELECT badge_id FROM staff_badges WHERE staff_id=?', (staff_id,))
+            earned_ids = {r['badge_id'] for r in await cur.fetchall()}
+
+        newly_awarded = []
+        for badge in all_badges:
+            if badge['id'] in earned_ids:
+                continue
+            qualified = False
+            if badge['xp_threshold'] is not None and total_xp >= badge['xp_threshold']:
+                qualified = True
+            elif badge['action_type']:
+                atype = badge['action_type']
+                if atype == 'streak_3' and current_streak >= 3:
+                    qualified = True
+                elif atype == 'streak_7' and current_streak >= 7:
+                    qualified = True
+                elif atype == 'streak_30' and current_streak >= 30:
+                    qualified = True
+                elif atype == 'streak_100' and current_streak >= 100:
+                    qualified = True
+                elif atype == 'fast_reply_10' and action_counts.get('reply_within_1h', 0) >= 10:
+                    qualified = True
+                elif atype == 'update_100' and action_counts.get('update_status', 0) >= 100:
+                    qualified = True
+                elif atype == 'voice_50' and action_counts.get('voice_update', 0) >= 50:
+                    qualified = True
+                elif atype == 'add_client_50' and action_counts.get('add_client', 0) >= 50:
+                    qualified = True
+            if qualified:
+                try:
+                    async with self.get_connection() as db:
+                        await db.execute(
+                            'INSERT OR IGNORE INTO staff_badges (staff_id, badge_id) VALUES (?,?)',
+                            (staff_id, badge['id'])
+                        )
+                        await db.commit()
+                    newly_awarded.append(badge)
+                except Exception:
+                    pass
+        return newly_awarded
+
+    async def get_staff_badges(self, staff_id: int) -> List[Dict[str, Any]]:
+        """Return all badges earned by staff with badge details."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT b.id, b.name, b.emoji, b.description, b.xp_threshold, b.action_type,
+                          sb.earned_at
+                   FROM staff_badges sb
+                   JOIN badges b ON sb.badge_id = b.id
+                   WHERE sb.staff_id=?
+                   ORDER BY sb.earned_at ASC""",
+                (staff_id,)
+            )
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+    async def get_all_badges(self) -> List[Dict[str, Any]]:
+        """Return all badge definitions."""
+        async with self.get_connection() as db:
+            cur = await db.execute('SELECT id, name, emoji, description, xp_threshold, action_type FROM badges ORDER BY id')
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+    async def get_xp_leaderboard(self, period: str = 'today', team_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """XP-based leaderboard with streak info."""
+        today = _utc_today()
+        if period == 'today':
+            date_filter = today.isoformat()
+            xp_sql = f"AND DATE(xe.created_at) = '{date_filter}'"
+        elif period == 'week':
+            week_start = (today - timedelta(days=today.weekday())).isoformat()
+            xp_sql = f"AND DATE(xe.created_at) >= '{week_start}'"
+        elif period == 'month':
+            month_start = today.replace(day=1).isoformat()
+            xp_sql = f"AND DATE(xe.created_at) >= '{month_start}'"
+        else:
+            xp_sql = ''
+
+        team_clause = f"AND s.team = '{team_id}'" if team_id else ''
+
+        query = f"""
+            SELECT s.id, s.display_name, s.team,
+                   COALESCE(SUM(xe.xp_amount), 0) AS total_xp,
+                   COALESCE(st.current_streak, 0) AS current_streak
+            FROM staff s
+            LEFT JOIN xp_events xe ON xe.staff_id = s.id {xp_sql}
+            LEFT JOIN streaks st ON st.staff_id = s.id
+            WHERE s.is_active = 1 {team_clause}
+            GROUP BY s.id, s.display_name, s.team, st.current_streak
+            ORDER BY total_xp DESC, current_streak DESC
+            LIMIT 20
+        """
+        async with self.get_connection() as db:
+            cur = await db.execute(query)
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
 
 
 # Global singleton

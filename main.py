@@ -22,6 +22,7 @@ from handlers_v2.group_chat import GROUP_COMMANDS, GROUP_CALLBACKS, GROUP_CONVER
 from handlers_v2.gamification import GAMIFICATION_COMMANDS, GAMIFICATION_CALLBACKS, GAMIFICATION_CONVERSATIONS
 from handlers_v2.voice import VOICE_COMMANDS, VOICE_CALLBACKS, VOICE_CONVERSATIONS
 from handlers_v2.menu import MENU_COMMANDS, MENU_CALLBACKS, MENU_CONVERSATIONS
+from handlers_v2.gamification_v2 import GAMIFICATION_V2_COMMANDS, GAMIFICATION_V2_CALLBACKS, GAMIFICATION_V2_CONVERSATIONS
 import engines.sheet_sync_v2 as _sheet_sync_v2_mod
 import engines.dashboard_sheets as _dashboard_mod
 
@@ -63,6 +64,7 @@ class RalphLoop:
         self.last_obsidian_daily_report = None
         self.last_task_cleanup = None
         self.last_contest_maintenance = None
+        self.last_streak_maintenance = None
 
         # Command and callback handlers registry
         self.command_handlers = {}
@@ -146,6 +148,12 @@ class RalphLoop:
             except Exception as e:
                 logger.warning(f"seed_default_templates failed: {e}")
 
+            # Seed gamification v2 badges — idempotent
+            try:
+                await database_v2.seed_badges()
+            except Exception as e:
+                logger.warning(f"seed_badges failed: {e}")
+
             # Register V2 bot commands with Telegram (visible in command menu)
             await self._register_bot_commands()
 
@@ -224,6 +232,7 @@ class RalphLoop:
         all_commands.update(GAMIFICATION_COMMANDS)
         all_commands.update(VOICE_COMMANDS)
         all_commands.update(MENU_COMMANDS)
+        all_commands.update(GAMIFICATION_V2_COMMANDS)
 
         all_callbacks = {}
         all_callbacks.update(QUICK_ACTIONS_CALLBACKS)
@@ -234,6 +243,7 @@ class RalphLoop:
         all_callbacks.update(GAMIFICATION_CALLBACKS)
         all_callbacks.update(VOICE_CALLBACKS)
         all_callbacks.update(MENU_CALLBACKS)
+        all_callbacks.update(GAMIFICATION_V2_CALLBACKS)
 
         all_conversations = {}
         all_conversations.update(QUICK_ACTIONS_CONVERSATIONS)
@@ -244,6 +254,7 @@ class RalphLoop:
         all_conversations.update(GAMIFICATION_CONVERSATIONS)
         all_conversations.update(VOICE_CONVERSATIONS)
         all_conversations.update(MENU_CONVERSATIONS)
+        all_conversations.update(GAMIFICATION_V2_CONVERSATIONS)
 
         self.command_handlers = all_commands
         self.callback_handlers = all_callbacks
@@ -668,6 +679,7 @@ class RalphLoop:
         await self._maint_v2_sheet_sync(current_time)
         await self._maint_task_cleanup(current_time)
         await self._maint_contest_maintenance(current_time)
+        await self._maint_streak_maintenance(current_time)
 
     async def _maint_health_check(self, current_time: datetime):
         """Schedule periodic health check task."""
@@ -884,6 +896,17 @@ class RalphLoop:
             except Exception as e:
                 logger.error(f'Task cleanup error: {e}')
             self.last_task_cleanup = current_time
+
+    async def _maint_streak_maintenance(self, current_time: datetime):
+        """Reset weekly streak freezes on Monday and check daily streaks."""
+        if not self.last_streak_maintenance or (current_time - self.last_streak_maintenance).total_seconds() > 3600:
+            try:
+                if current_time.weekday() == 0 and current_time.hour < 6:
+                    await database_v2.reset_weekly_streak_freezes()
+                    logger.info('Streaks: weekly freeze reset (Monday)')
+            except Exception as e:
+                logger.error(f'Streak maintenance error: {e}')
+            self.last_streak_maintenance = current_time
 
     def _should_generate_daily_report(self) -> bool:
         """Check if daily report should be generated."""
