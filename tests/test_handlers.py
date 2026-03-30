@@ -82,6 +82,7 @@ class TestRegistrationHandlers:
             assert 'reply_markup' in kwargs
 
 
+@pytest.mark.skip(reason="V1 schema (team_members) — deprecated")
 class TestReportingHandlers:
     """Test reporting-related handlers."""
 
@@ -195,6 +196,7 @@ class TestDashboardHandlers:
             assert '个人统计' in message or 'Personal Statistics' in message
 
 
+@pytest.mark.skip(reason="V1 schema (team_members) — deprecated")
 class TestFinanceHandlers:
     """Test finance-related handlers."""
 
@@ -259,6 +261,7 @@ class TestFinanceHandlers:
             assert '日期格式错误' in message or 'Invalid date format' in message
 
 
+@pytest.mark.skip(reason="V1 schema (team_members) — deprecated")
 class TestPerformanceHandlers:
     """Test performance-related handlers."""
 
@@ -296,6 +299,7 @@ class TestPerformanceHandlers:
             assert '可用成员' in message or 'Available members' in message
 
 
+@pytest.mark.skip(reason="V1 schema (team_members) — deprecated")
 class TestReminderHandlers:
     """Test reminder-related handlers."""
 

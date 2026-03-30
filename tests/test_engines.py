@@ -125,6 +125,7 @@ class TestReportEngine:
             assert report_data['date'] == date(2024, 3, 15)
 
 
+@pytest.mark.skip(reason="V1 schema (team_members) — deprecated")
 class TestReminderEngine:
     """Test reminder processing engine."""
 

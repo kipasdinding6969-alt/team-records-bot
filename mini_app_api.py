@@ -526,6 +526,13 @@ async def get_staff_me(x_telegram_init_data: str = Header(default='')):
     return staff
 
 
+# ─── Health check (must be before static mount) ──────────────────────────────
+
+@app.get('/health')
+async def health():
+    return {'status': 'ok', 'db': DB_PATH}
+
+
 # ─── Static files (serve built React app) ─────────────────────────────────────
 
 if os.path.isdir(MINI_APP_DIST):
@@ -538,11 +545,6 @@ if os.path.isdir(MINI_APP_DIST):
         if os.path.exists(index):
             return FileResponse(index)
         raise HTTPException(status_code=404)
-
-
-@app.get('/health')
-async def health():
-    return {'status': 'ok', 'db': DB_PATH}
 
 
 if __name__ == '__main__':
