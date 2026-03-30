@@ -9,11 +9,11 @@ logger = logging.getLogger(__name__)
 
 _FRONTDESK_CMDS = [
     'add', 'u', 'num', 'info', 'note', 'remind', 'req', 'me', 'pipeline', 'followup', 'today',
-    'search', 'rag', 'handoff', 'profile', 'export', 'sop', 'bind',
+    'search', 'rag', 'handoff', 'profile', 'export', 'export_template', 'sop', 'bind',
     'leaderboard', 'hot', 'summary', 'template', 'contest',
 ]
 _MAINTENANCE_CMDS = _FRONTDESK_CMDS + ['dashboard', 'team']
-_ALL_COMMANDS = _MAINTENANCE_CMDS + ['target', 'overview', 'setname', 'lang', 'setteam', 'teams', 'linkgroup', 'unlinkgroup', 'bulkupdate', 'sequences']
+_ALL_COMMANDS = _MAINTENANCE_CMDS + ['target', 'overview', 'setname', 'lang', 'setteam', 'teams', 'linkgroup', 'unlinkgroup', 'bulkupdate', 'sequences', 'broadcast', 'import_excel', 'export_template']
 _ADMIN_COMMANDS = _ALL_COMMANDS + ['sync']
 _VIEWER_CMDS = ['me', 'dashboard', 'pipeline', 'search', 'rag', 'export', 'help', 'today', 'info', 'leaderboard']
 _NEWBIE_CMDS = ['add', 'me', 'note', 'help', 'req', 'bind', 'info']

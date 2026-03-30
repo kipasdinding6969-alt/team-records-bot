@@ -369,6 +369,20 @@ class DatabaseV2:
 
                 CREATE INDEX IF NOT EXISTS idx_followup_queue_client ON follow_up_queue(client_id);
                 CREATE INDEX IF NOT EXISTS idx_followup_queue_due ON follow_up_queue(next_send_at, status);
+
+                CREATE TABLE IF NOT EXISTS broadcast_log (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    staff_id        INTEGER NOT NULL,
+                    template        TEXT NOT NULL,
+                    segment_filter  TEXT,
+                    total_targets   INTEGER DEFAULT 0,
+                    sent_count      INTEGER DEFAULT 0,
+                    failed_count    INTEGER DEFAULT 0,
+                    started_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    completed_at    TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_broadcast_log_staff ON broadcast_log(staff_id, started_at);
             """)
             await db.commit()
 
@@ -2110,6 +2124,89 @@ class DatabaseV2:
         """
         async with self.get_connection() as db:
             cur = await db.execute(query)
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+    # ─── Broadcast ───────────────────────────────────────────────────────────
+
+    async def create_broadcast_log(self, staff_id: int, template: str,
+                                   segment_filter: str, total_targets: int) -> int:
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """INSERT INTO broadcast_log (staff_id, template, segment_filter, total_targets)
+                   VALUES (?, ?, ?, ?)""",
+                (staff_id, template, segment_filter, total_targets))
+            await db.commit()
+            return cur.lastrowid
+
+    async def update_broadcast_log(self, log_id: int, sent_count: int,
+                                   failed_count: int, completed: bool = False):
+        async with self.get_connection() as db:
+            if completed:
+                await db.execute(
+                    """UPDATE broadcast_log SET sent_count=?, failed_count=?,
+                       completed_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    (sent_count, failed_count, log_id))
+            else:
+                await db.execute(
+                    'UPDATE broadcast_log SET sent_count=?, failed_count=? WHERE id=?',
+                    (sent_count, failed_count, log_id))
+            await db.commit()
+
+    async def get_broadcast_targets(self, segment_type: str, segment_value: str,
+                                    date_from: Optional[str] = None,
+                                    date_to: Optional[str] = None) -> List[Dict]:
+        """Return clients matching the segment filter for broadcast."""
+        async with self.get_connection() as db:
+            if segment_type == 'status':
+                cur = await db.execute(
+                    """SELECT c.id, c.phone, c.nickname, c.status, c.source,
+                              c.contacted_at, s.display_name as frontdesk_name
+                       FROM clients c
+                       JOIN staff s ON c.frontdesk_id = s.id
+                       WHERE c.status = ?""",
+                    (segment_value,))
+            elif segment_type == 'team':
+                cur = await db.execute(
+                    """SELECT c.id, c.phone, c.nickname, c.status, c.source,
+                              c.contacted_at, s.display_name as frontdesk_name
+                       FROM clients c
+                       JOIN staff s ON c.frontdesk_id = s.id
+                       WHERE s.team = ?""",
+                    (segment_value,))
+            elif segment_type == 'source':
+                cur = await db.execute(
+                    """SELECT c.id, c.phone, c.nickname, c.status, c.source,
+                              c.contacted_at, s.display_name as frontdesk_name
+                       FROM clients c
+                       JOIN staff s ON c.frontdesk_id = s.id
+                       WHERE c.source = ?""",
+                    (segment_value,))
+            elif segment_type == 'date_range' and date_from and date_to:
+                cur = await db.execute(
+                    """SELECT c.id, c.phone, c.nickname, c.status, c.source,
+                              c.contacted_at, s.display_name as frontdesk_name
+                       FROM clients c
+                       JOIN staff s ON c.frontdesk_id = s.id
+                       WHERE DATE(c.created_at) BETWEEN ? AND ?""",
+                    (date_from, date_to))
+            else:
+                return []
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+    async def get_broadcast_logs(self, staff_id: Optional[int] = None,
+                                 limit: int = 10) -> List[Dict]:
+        async with self.get_connection() as db:
+            if staff_id:
+                cur = await db.execute(
+                    """SELECT * FROM broadcast_log WHERE staff_id=?
+                       ORDER BY started_at DESC LIMIT ?""",
+                    (staff_id, limit))
+            else:
+                cur = await db.execute(
+                    'SELECT * FROM broadcast_log ORDER BY started_at DESC LIMIT ?',
+                    (limit,))
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
 

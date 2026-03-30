@@ -27,6 +27,8 @@ from handlers_v2.followup_handler import FOLLOWUP_HANDLER_COMMANDS, FOLLOWUP_HAN
 from handlers_v2.mini_app import MINI_APP_COMMANDS, MINI_APP_CALLBACKS, MINI_APP_CONVERSATIONS
 from handlers_v2.nl_handler import NL_HANDLER_COMMANDS, NL_HANDLER_CALLBACKS, NL_HANDLER_CONVERSATIONS
 from handlers_v2.inline_flows import INLINE_FLOWS_COMMANDS, INLINE_FLOWS_CALLBACKS, INLINE_FLOWS_CONVERSATIONS
+from handlers_v2.broadcast_handler import BROADCAST_COMMANDS, BROADCAST_CALLBACKS, BROADCAST_CONVERSATIONS
+from handlers_v2.export_handler import EXPORT_HANDLER_COMMANDS, EXPORT_HANDLER_CALLBACKS, EXPORT_HANDLER_CONVERSATIONS
 import engines.sheet_sync_v2 as _sheet_sync_v2_mod
 import engines.dashboard_sheets as _dashboard_mod
 
@@ -255,6 +257,8 @@ class RalphLoop:
         all_commands.update(MINI_APP_COMMANDS)
         all_commands.update(NL_HANDLER_COMMANDS)
         all_commands.update(INLINE_FLOWS_COMMANDS)
+        all_commands.update(BROADCAST_COMMANDS)
+        all_commands.update(EXPORT_HANDLER_COMMANDS)  # overrides management.py CSV export
 
         all_callbacks = {}
         all_callbacks.update(QUICK_ACTIONS_CALLBACKS)
@@ -270,6 +274,8 @@ class RalphLoop:
         all_callbacks.update(MINI_APP_CALLBACKS)
         all_callbacks.update(NL_HANDLER_CALLBACKS)
         all_callbacks.update(INLINE_FLOWS_CALLBACKS)
+        all_callbacks.update(BROADCAST_CALLBACKS)
+        all_callbacks.update(EXPORT_HANDLER_CALLBACKS)
 
         all_conversations = {}
         all_conversations.update(QUICK_ACTIONS_CONVERSATIONS)
@@ -285,6 +291,8 @@ class RalphLoop:
         all_conversations.update(MINI_APP_CONVERSATIONS)
         all_conversations.update(NL_HANDLER_CONVERSATIONS)
         all_conversations.update(INLINE_FLOWS_CONVERSATIONS)
+        all_conversations.update(BROADCAST_CONVERSATIONS)
+        all_conversations.update(EXPORT_HANDLER_CONVERSATIONS)
 
         self.command_handlers = all_commands
         self.callback_handlers = all_callbacks
