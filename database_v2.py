@@ -41,6 +41,9 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = 'team_records_v2.db'
 
+# Hooks called after a client status change: async callable(client_id: int, new_status: str)
+_status_change_hooks: list = []
+
 
 class DatabaseV2:
     def __init__(self, db_path: str = DB_PATH):
@@ -332,6 +335,32 @@ class DatabaseV2:
                     earned_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(staff_id, badge_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS follow_up_sequences (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name            TEXT NOT NULL UNIQUE,
+                    stage           TEXT NOT NULL,
+                    delays_json     TEXT NOT NULL,
+                    templates_json  TEXT NOT NULL,
+                    enabled         BOOLEAN DEFAULT 1,
+                    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_followup_seq_stage ON follow_up_sequences(stage);
+
+                CREATE TABLE IF NOT EXISTS follow_up_queue (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id       INTEGER NOT NULL REFERENCES clients(id),
+                    sequence_id     INTEGER NOT NULL REFERENCES follow_up_sequences(id),
+                    step            INTEGER DEFAULT 0,
+                    next_send_at    DATETIME NOT NULL,
+                    status          TEXT DEFAULT 'pending',
+                    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    completed_at    DATETIME NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_followup_queue_client ON follow_up_queue(client_id);
+                CREATE INDEX IF NOT EXISTS idx_followup_queue_due ON follow_up_queue(next_send_at, status);
             """)
             await db.commit()
 
@@ -540,6 +569,12 @@ class DatabaseV2:
                     (client_id, staff_id, NoteType.STATUS_CHANGE.value, old_status, new_status.value, note)
                 )
                 await db.commit()
+                # Fire status-change hooks (e.g. followup auto-enqueue)
+                for _hook in _status_change_hooks:
+                    try:
+                        await _hook(client_id, new_status.value)
+                    except Exception as _he:
+                        logger.warning(f'status_change_hook error: {_he}')
                 return True
             except Exception:
                 await db.rollback()
@@ -1905,6 +1940,136 @@ class DatabaseV2:
             cur = await db.execute('SELECT id, name, emoji, description, xp_threshold, action_type FROM badges ORDER BY id')
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
+
+    # ─── Follow-up Sequences ─────────────────────────────────────────────────
+
+    async def create_sequence(self, name: str, stage: str, delays: list, templates: list) -> int:
+        import json as _json
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """INSERT OR IGNORE INTO follow_up_sequences (name, stage, delays_json, templates_json, enabled)
+                   VALUES (?,?,?,?,1)""",
+                (name, stage, _json.dumps(delays, ensure_ascii=False),
+                 _json.dumps(templates, ensure_ascii=False))
+            )
+            await db.commit()
+            return cur.lastrowid or 0
+
+    async def get_sequences(self, enabled_only: bool = False) -> List[Dict[str, Any]]:
+        import json as _json
+        async with self.get_connection() as db:
+            if enabled_only:
+                cur = await db.execute(
+                    'SELECT id, name, stage, delays_json, templates_json, enabled, created_at '
+                    'FROM follow_up_sequences WHERE enabled=1 ORDER BY id')
+            else:
+                cur = await db.execute(
+                    'SELECT id, name, stage, delays_json, templates_json, enabled, created_at '
+                    'FROM follow_up_sequences ORDER BY id')
+            rows = await cur.fetchall()
+            result = []
+            for r in rows:
+                result.append({
+                    'id': r['id'], 'name': r['name'], 'stage': r['stage'],
+                    'delays': _json.loads(r['delays_json']),
+                    'templates': _json.loads(r['templates_json']),
+                    'enabled': bool(r['enabled']),
+                    'created_at': r['created_at'],
+                })
+            return result
+
+    async def toggle_sequence(self, seq_id: int, enabled: bool) -> bool:
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'UPDATE follow_up_sequences SET enabled=? WHERE id=?', (1 if enabled else 0, seq_id))
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def enqueue_followup(self, client_id: int, sequence_id: int, next_send_at: datetime) -> int:
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """INSERT INTO follow_up_queue (client_id, sequence_id, step, next_send_at, status)
+                   VALUES (?,?,0,?,?)""",
+                (client_id, sequence_id, next_send_at.isoformat(), 'pending')
+            )
+            await db.commit()
+            return cur.lastrowid
+
+    async def get_due_followups(self, before: Optional[datetime] = None) -> List[Dict[str, Any]]:
+        import json as _json
+        if before is None:
+            before = datetime.now(timezone.utc).replace(tzinfo=None)
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT q.id, q.client_id, q.sequence_id, q.step, q.next_send_at, q.status,
+                          s.name AS seq_name, s.stage, s.delays_json, s.templates_json
+                   FROM follow_up_queue q
+                   JOIN follow_up_sequences s ON s.id = q.sequence_id
+                   WHERE q.status = 'pending' AND q.next_send_at <= ?
+                   ORDER BY q.next_send_at ASC""",
+                (before.isoformat(),)
+            )
+            rows = await cur.fetchall()
+            result = []
+            for r in rows:
+                result.append({
+                    'id': r['id'], 'client_id': r['client_id'],
+                    'sequence_id': r['sequence_id'], 'step': r['step'],
+                    'next_send_at': r['next_send_at'], 'status': r['status'],
+                    'seq_name': r['seq_name'], 'stage': r['stage'],
+                    'delays': _json.loads(r['delays_json']),
+                    'templates': _json.loads(r['templates_json']),
+                })
+            return result
+
+    async def advance_followup_step(self, queue_id: int, next_step: int, next_send_at: datetime):
+        async with self.get_connection() as db:
+            await db.execute(
+                'UPDATE follow_up_queue SET step=?, next_send_at=?, status=? WHERE id=?',
+                (next_step, next_send_at.isoformat(), 'pending', queue_id)
+            )
+            await db.commit()
+
+    async def complete_followup(self, queue_id: int, status: str = 'completed'):
+        async with self.get_connection() as db:
+            await db.execute(
+                "UPDATE follow_up_queue SET status=?, completed_at=CURRENT_TIMESTAMP WHERE id=?",
+                (status, queue_id)
+            )
+            await db.commit()
+
+    async def cancel_followup(self, client_id: int):
+        async with self.get_connection() as db:
+            await db.execute(
+                "UPDATE follow_up_queue SET status='cancelled', completed_at=CURRENT_TIMESTAMP "
+                "WHERE client_id=? AND status='pending'",
+                (client_id,)
+            )
+            await db.commit()
+
+    async def get_client_active_followup(self, client_id: int) -> Optional[Dict[str, Any]]:
+        import json as _json
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT q.id, q.client_id, q.sequence_id, q.step, q.next_send_at, q.status,
+                          s.name AS seq_name, s.stage, s.delays_json, s.templates_json
+                   FROM follow_up_queue q
+                   JOIN follow_up_sequences s ON s.id = q.sequence_id
+                   WHERE q.client_id=? AND q.status='pending'
+                   ORDER BY q.created_at DESC LIMIT 1""",
+                (client_id,)
+            )
+            row = await cur.fetchone()
+            if not row:
+                return None
+            return {
+                'id': row['id'], 'client_id': row['client_id'],
+                'sequence_id': row['sequence_id'], 'step': row['step'],
+                'next_send_at': row['next_send_at'], 'status': row['status'],
+                'seq_name': row['seq_name'], 'stage': row['stage'],
+                'delays': _json.loads(row['delays_json']),
+                'templates': _json.loads(row['templates_json']),
+            }
 
     async def get_xp_leaderboard(self, period: str = 'today', team_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """XP-based leaderboard with streak info."""

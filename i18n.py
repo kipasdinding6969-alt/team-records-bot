@@ -1871,6 +1871,52 @@ STRINGS = {
         'zh': '❌ 本周冻结已用完，连续中断了。',
         'en': '❌ No streak freeze available this week.',
     },
+
+    # === FOLLOW-UP SEQUENCES ===
+    'followup_sequences_title': {
+        'zh': '📋 **跟进序列列表**',
+        'en': '📋 **Follow-up Sequences**',
+    },
+    'followup_no_sequences': {
+        'zh': '暂无跟进序列，请联系管理员。',
+        'en': 'No follow-up sequences found.',
+    },
+    'followup_toggle_hint': {
+        'zh': '用法: /sequences enable <id> 或 disable <id>',
+        'en': 'Usage: /sequences enable <id> or disable <id>',
+    },
+    'followup_toggle_ok': {
+        'zh': '✅ 序列 #{seq_id} 已{state}',
+        'en': '✅ Sequence #{seq_id} {state}',
+    },
+    'followup_enabled': {
+        'zh': '启用',
+        'en': 'enabled',
+    },
+    'followup_disabled': {
+        'zh': '禁用',
+        'en': 'disabled',
+    },
+    'followup_seq_not_found': {
+        'zh': '❌ 找不到该序列，请检查ID。',
+        'en': '❌ Sequence not found. Check the ID.',
+    },
+    'followup_invalid_id': {
+        'zh': '❌ 无效的序列ID，请输入数字。',
+        'en': '❌ Invalid sequence ID. Please enter a number.',
+    },
+    'followup_reminder_title': {
+        'zh': '🔔 跟进提醒 (第{step}次)',
+        'en': '🔔 Follow-up Reminder (#{step})',
+    },
+    'followup_ghosted_note': {
+        'zh': '跟进3次无回复，自动标记为已流失',
+        'en': 'Auto-ghosted after 3 unanswered follow-ups',
+    },
+    'followup_seq_completed': {
+        'zh': '✅ 客户 {phone} 的跟进序列已完成',
+        'en': '✅ Follow-up sequence for {phone} completed',
+    },
 }
 
 

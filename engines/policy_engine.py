@@ -13,7 +13,7 @@ _FRONTDESK_CMDS = [
     'leaderboard', 'hot', 'summary', 'template', 'contest',
 ]
 _MAINTENANCE_CMDS = _FRONTDESK_CMDS + ['dashboard', 'team']
-_ALL_COMMANDS = _MAINTENANCE_CMDS + ['target', 'overview', 'setname', 'lang', 'setteam', 'teams', 'linkgroup', 'unlinkgroup', 'bulkupdate']
+_ALL_COMMANDS = _MAINTENANCE_CMDS + ['target', 'overview', 'setname', 'lang', 'setteam', 'teams', 'linkgroup', 'unlinkgroup', 'bulkupdate', 'sequences']
 _ADMIN_COMMANDS = _ALL_COMMANDS + ['sync']
 _VIEWER_CMDS = ['me', 'dashboard', 'pipeline', 'search', 'rag', 'export', 'help', 'today', 'info', 'leaderboard']
 _NEWBIE_CMDS = ['add', 'me', 'note', 'help', 'req', 'bind', 'info']
