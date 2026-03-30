@@ -45,6 +45,7 @@ async def handle_voice_message(task_data: Dict[str, Any]):
         return
 
     intent = await parse_intent(text)
+    client_name = intent.get('client_name')
     client_phone = intent.get('client_phone')
     new_status = intent.get('new_status')
     note = intent.get('note')
@@ -53,6 +54,7 @@ async def handle_voice_message(task_data: Dict[str, Any]):
     await telegram_handler.set_conversation_state(user_id, {
         'step': 'voice_confirm',
         'pending': {
+            'name': client_name,
             'phone': client_phone,
             'status': new_status,
             'note': note,
@@ -62,6 +64,7 @@ async def handle_voice_message(task_data: Dict[str, Any]):
 
     preview = t('voice_confirm_preview', lang,
                 transcript=text[:200],
+                name=client_name or '?',
                 phone=client_phone or '?',
                 status=new_status or '?',
                 note=note or '-')
@@ -89,12 +92,13 @@ async def handle_voice_confirm_callback(task_data: Dict[str, Any]):
     pending = (state or {}).get('pending', {})
 
     phone = pending.get('phone')
+    name = pending.get('name')
     new_status_str = pending.get('status')
     note = pending.get('note')
 
     await telegram_handler.clear_conversation_state(user_id)
 
-    if not phone or not new_status_str:
+    if not new_status_str or (not phone and not name):
         await telegram_handler.send_message(chat_id, t('voice_confirm_missing', lang))
         return
 
@@ -105,10 +109,24 @@ async def handle_voice_confirm_callback(task_data: Dict[str, Any]):
             chat_id, t('voice_confirm_bad_status', lang, status=new_status_str))
         return
 
-    client = await database_v2.get_client_by_phone(phone, staff.id)
+    # Phone lookup first; fall back to name search
+    client = None
+    if phone:
+        client = await database_v2.get_client_by_phone(phone, staff.id)
+
+    if not client and name:
+        matches = await database_v2.search_clients(staff.id, name)
+        if matches:
+            client = matches[0]
+            await telegram_handler.send_message(
+                chat_id,
+                t('voice_client_found_by_name', lang,
+                  name=name, phone=client.phone or '?'))
+
     if not client:
+        identifier = phone or name or '?'
         await telegram_handler.send_message(
-            chat_id, t('voice_client_not_found', lang, phone=phone))
+            chat_id, t('voice_client_not_found', lang, phone=identifier))
         return
 
     await database_v2.update_client_status(client.id, new_status, staff.id)
@@ -122,9 +140,10 @@ async def handle_voice_confirm_callback(task_data: Dict[str, Any]):
         )
         await database_v2.add_client_note(client_note)
 
+    display_id = client.phone or name or '?'
     await telegram_handler.send_message(
-        chat_id, t('voice_updated', lang, phone=phone, status=new_status_str))
-    logger.info(f"Voice update: staff {staff.display_name} → {phone} → {new_status_str}")
+        chat_id, t('voice_updated', lang, phone=display_id, status=new_status_str))
+    logger.info(f"Voice update: staff {staff.display_name} → {display_id} → {new_status_str}")
 
 
 async def handle_voice_cancel_callback(task_data: Dict[str, Any]):

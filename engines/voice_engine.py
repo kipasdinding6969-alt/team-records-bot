@@ -1,6 +1,6 @@
 """Voice transcription + intent parsing engine.
 
-Transcription: faster-whisper (CPU, tiny model) — graceful fallback to None.
+Transcription: faster-whisper (CPU, configurable model size) — graceful fallback to None.
 Intent parsing: Ollama LLM (josiefied-qwen2.5-7b-abliterated-v2) → JSON.
 """
 import json
@@ -22,13 +22,30 @@ _INTENT_SYSTEM = (
     "Pipeline statuses: new → contacted → replied → registered → training → withdrew → ordered\n"
     "Terminal statuses: ghosted, blocked, dead\n\n"
     "Given Chinese or English text describing a client update, extract:\n"
-    "- client_phone: phone number string (digits, may have country code prefix)\n"
+    "- client_name: person's name mentioned (e.g. 阿明, 小红, 阿Jun), or null\n"
+    "- client_phone: phone number string (digits only, may include country code), or null\n"
     "- new_status: one of the statuses above, or null if not mentioned\n"
-    "- note: short summary note about the client, or null\n\n"
+    "- note: short summary note about the client update, or null\n\n"
+    "Examples:\n"
+    "  '阿明今天注册了，账号123456' → "
+    '{\"client_name\": \"阿明\", \"client_phone\": null, \"new_status\": \"registered\", \"note\": \"账号123456\"}\n'
+    "  '0123456789 replied to message' → "
+    '{\"client_name\": null, \"client_phone\": \"0123456789\", \"new_status\": \"replied\", \"note\": null}\n'
+    "  '小红打来电话了' → "
+    '{\"client_name\": \"小红\", \"client_phone\": null, \"new_status\": \"contacted\", \"note\": null}\n\n'
     "Respond ONLY with valid JSON, no explanation:\n"
-    '{"client_phone": "1234567890", "new_status": "contacted", "note": "Called, interested"}\n'
+    '{"client_name": null, "client_phone": "1234567890", "new_status": "contacted", "note": "Called, interested"}\n'
     "If a field cannot be determined use null."
 )
+
+
+def _get_whisper_model_size() -> str:
+    """Read model size from config, defaulting to 'tiny'."""
+    try:
+        from config import get_config
+        return get_config().bot.whisper_model_size
+    except Exception:
+        return 'tiny'
 
 
 async def transcribe(audio_path: str) -> Optional[str]:
@@ -38,7 +55,8 @@ async def transcribe(audio_path: str) -> Optional[str]:
     """
     try:
         from faster_whisper import WhisperModel  # type: ignore
-        model = WhisperModel('tiny', device='cpu', compute_type='int8')
+        model_size = _get_whisper_model_size()
+        model = WhisperModel(model_size, device='cpu', compute_type='int8')
         segments, _ = model.transcribe(audio_path, language='zh')
         text = ''.join(seg.text for seg in segments).strip()
         logger.info(f"Transcribed {audio_path}: {text[:80]!r}")
@@ -54,9 +72,14 @@ async def transcribe(audio_path: str) -> Optional[str]:
 async def parse_intent(text: str) -> Dict[str, Any]:
     """Parse natural-language client update into structured intent via Ollama.
 
-    Returns dict with keys: client_phone, new_status, note (all may be None).
+    Returns dict with keys: client_name, client_phone, new_status, note (all may be None).
     """
-    empty: Dict[str, Any] = {'client_phone': None, 'new_status': None, 'note': None}
+    empty: Dict[str, Any] = {
+        'client_name': None,
+        'client_phone': None,
+        'new_status': None,
+        'note': None,
+    }
     try:
         import aiohttp  # type: ignore
         payload = {
@@ -78,6 +101,7 @@ async def parse_intent(text: str) -> Dict[str, Any]:
         raw = data.get('response', '{}')
         parsed = json.loads(raw)
         result: Dict[str, Any] = {
+            'client_name': parsed.get('client_name') or None,
             'client_phone': parsed.get('client_phone') or None,
             'new_status': parsed.get('new_status') or None,
             'note': parsed.get('note') or None,

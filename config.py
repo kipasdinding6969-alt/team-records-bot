@@ -117,6 +117,9 @@ class BotConfig:
     default_language: str = "zh"  # Chinese
     supported_languages: List[str] = None
 
+    # Voice engine settings
+    whisper_model_size: str = 'tiny'  # options: tiny, base, small
+
     # Working hours settings
     timezone: str = "Europe/Paris"
     work_start_hour: int = 10
@@ -223,6 +226,10 @@ class Config:
             self.bot.report_interval_hours = int(os.getenv("REPORT_INTERVAL_HOURS"))
         if os.getenv("STALE_CLIENT_DAYS"):
             self.bot.stale_client_days = int(os.getenv("STALE_CLIENT_DAYS"))
+
+        # Voice engine config
+        if os.getenv("WHISPER_MODEL_SIZE"):
+            self.bot.whisper_model_size = os.getenv("WHISPER_MODEL_SIZE")
 
     def _get_required_env(self, key: str, default: str = None) -> str:
         """Get required environment variable."""

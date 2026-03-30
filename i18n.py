@@ -1713,6 +1713,7 @@ STRINGS = {
         'zh': (
             '🎤 **语音识别结果**\n\n'
             '📝 原文：{transcript}\n\n'
+            '👤 姓名：{name}\n'
             '📱 手机：`{phone}`\n'
             '🔄 状态：`{status}`\n'
             '📌 备注：{note}\n\n'
@@ -1721,6 +1722,7 @@ STRINGS = {
         'en': (
             '🎤 **Voice Recognition Result**\n\n'
             '📝 Text: {transcript}\n\n'
+            '👤 Name: {name}\n'
             '📱 Phone: `{phone}`\n'
             '🔄 Status: `{status}`\n'
             '📌 Note: {note}\n\n'
@@ -1762,6 +1764,10 @@ STRINGS = {
     'voice_edit_hint': {
         'zh': '✏️ 请手动输入更新，例如：\n/u 0123456789 contacted\n/note 0123456789 备注内容',
         'en': '✏️ Please type the update manually, e.g.:\n/u 0123456789 contacted\n/note 0123456789 your note',
+    },
+    'voice_client_found_by_name': {
+        'zh': '🔍 按姓名找到客户：{name}（手机：{phone}）',
+        'en': '🔍 Found client by name: {name} (phone: {phone})',
     },
 
     # === INLINE MENU BUTTONS ===

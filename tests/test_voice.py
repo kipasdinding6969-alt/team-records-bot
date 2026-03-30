@@ -1,4 +1,4 @@
-"""Voice engine + handler tests — mock Ollama, test intent parsing + callbacks."""
+"""Voice engine + handler tests — mock Ollama/Whisper, test intent parsing + callbacks."""
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -39,6 +39,14 @@ async def client_row(db, staff):
     return c
 
 
+@pytest_asyncio.fixture
+async def named_client(db, staff):
+    """Client with nickname 阿明 but no phone."""
+    c = Client(frontdesk_id=staff.id, phone='0987654321', source='wechat', nickname='阿明')
+    c.id = await db.create_client(c)
+    return c
+
+
 def _make_mock_tg():
     """Build a mock TelegramHandler with async-safe methods."""
     m = MagicMock()
@@ -75,6 +83,7 @@ class TestParseIntent:
     async def test_parse_full_intent(self):
         """Mocked Ollama returns full JSON — all fields extracted."""
         payload = {'response': json.dumps({
+            'client_name': None,
             'client_phone': '0123456789',
             'new_status': 'contacted',
             'note': 'Called, interested',
@@ -86,6 +95,25 @@ class TestParseIntent:
         assert result['client_phone'] == '0123456789'
         assert result['new_status'] == 'contacted'
         assert result['note'] == 'Called, interested'
+        assert result['client_name'] is None
+
+    @pytest.mark.asyncio
+    async def test_parse_chinese_name_extracted(self):
+        """Chinese-name utterance: client_name extracted, no phone."""
+        payload = {'response': json.dumps({
+            'client_name': '阿明',
+            'client_phone': None,
+            'new_status': 'registered',
+            'note': '账号123456',
+        })}
+        with patch('aiohttp.ClientSession', self._mock_session(200, payload)):
+            from engines.voice_engine import parse_intent
+            result = await parse_intent('阿明今天注册了，账号123456')
+
+        assert result['client_name'] == '阿明'
+        assert result['client_phone'] is None
+        assert result['new_status'] == 'registered'
+        assert result['note'] == '账号123456'
 
     @pytest.mark.asyncio
     async def test_parse_partial_intent(self):
@@ -98,12 +126,16 @@ class TestParseIntent:
         assert result['client_phone'] == '9876543210'
         assert result['new_status'] is None
         assert result['note'] is None
+        assert result['client_name'] is None
 
     @pytest.mark.asyncio
     async def test_parse_invalid_status_cleared(self):
         """Unknown status from LLM is cleared to None."""
         payload = {'response': json.dumps({
-            'client_phone': '111', 'new_status': 'invalid_xyz', 'note': None,
+            'client_name': None,
+            'client_phone': '111',
+            'new_status': 'invalid_xyz',
+            'note': None,
         })}
         with patch('aiohttp.ClientSession', self._mock_session(200, payload)):
             from engines.voice_engine import parse_intent
@@ -118,7 +150,7 @@ class TestParseIntent:
             from engines.voice_engine import parse_intent
             result = await parse_intent('some text')
 
-        assert result == {'client_phone': None, 'new_status': None, 'note': None}
+        assert result == {'client_name': None, 'client_phone': None, 'new_status': None, 'note': None}
 
     @pytest.mark.asyncio
     async def test_parse_network_exception_returns_empty(self):
@@ -127,7 +159,7 @@ class TestParseIntent:
             from engines.voice_engine import parse_intent
             result = await parse_intent('some text')
 
-        assert result == {'client_phone': None, 'new_status': None, 'note': None}
+        assert result == {'client_name': None, 'client_phone': None, 'new_status': None, 'note': None}
 
     @pytest.mark.asyncio
     async def test_all_valid_statuses_accepted(self):
@@ -136,12 +168,21 @@ class TestParseIntent:
                  'training', 'withdrew', 'ordered', 'ghosted', 'blocked', 'dead']
         for status in valid:
             payload = {'response': json.dumps({
-                'client_phone': '111', 'new_status': status, 'note': None,
+                'client_name': None, 'client_phone': '111', 'new_status': status, 'note': None,
             })}
             with patch('aiohttp.ClientSession', self._mock_session(200, payload)):
                 from engines.voice_engine import parse_intent
                 result = await parse_intent('text')
             assert result['new_status'] == status, f"Status {status!r} was rejected"
+
+    @pytest.mark.asyncio
+    async def test_parse_result_always_has_client_name_key(self):
+        """client_name key is always present in parse_intent result."""
+        payload = {'response': json.dumps({'client_phone': '111', 'new_status': 'new'})}
+        with patch('aiohttp.ClientSession', self._mock_session(200, payload)):
+            from engines.voice_engine import parse_intent
+            result = await parse_intent('text')
+        assert 'client_name' in result
 
 
 # ── Voice Engine: transcribe ─────────────────────────────────────────────────
@@ -162,6 +203,59 @@ class TestTranscribe:
             result = await transcribe('/tmp/fake.ogg')
         assert result is None
 
+    @pytest.mark.asyncio
+    async def test_transcribe_mocked_model_returns_text(self, tmp_path):
+        """Mocked WhisperModel returns expected transcription."""
+        fake_ogg = tmp_path / 'voice.ogg'
+        fake_ogg.write_bytes(b'fake audio data')
+
+        mock_segment = MagicMock()
+        mock_segment.text = '阿明今天注册了'
+
+        mock_model = MagicMock()
+        mock_model.transcribe = MagicMock(return_value=([mock_segment], None))
+
+        mock_whisper_cls = MagicMock(return_value=mock_model)
+
+        with patch.dict('sys.modules', {'faster_whisper': MagicMock(WhisperModel=mock_whisper_cls)}):
+            import importlib
+            import engines.voice_engine as ve
+            importlib.reload(ve)
+            result = await ve.transcribe(str(fake_ogg))
+
+        assert result == '阿明今天注册了'
+
+    @pytest.mark.asyncio
+    async def test_transcribe_uses_config_model_size(self, tmp_path):
+        """transcribe() reads model size from _get_whisper_model_size."""
+        fake_ogg = tmp_path / 'voice.ogg'
+        fake_ogg.write_bytes(b'data')
+
+        mock_segment = MagicMock()
+        mock_segment.text = 'hello'
+
+        mock_model = MagicMock()
+        mock_model.transcribe = MagicMock(return_value=([mock_segment], None))
+
+        captured = {}
+
+        def fake_whisper_cls(size, **kwargs):
+            captured['size'] = size
+            return mock_model
+
+        mock_fw = MagicMock()
+        mock_fw.WhisperModel = fake_whisper_cls
+
+        with (
+            patch.dict('sys.modules', {'faster_whisper': mock_fw}),
+            patch('engines.voice_engine._get_whisper_model_size', return_value='base'),
+        ):
+            from engines import voice_engine as ve
+            result = await ve.transcribe(str(fake_ogg))
+
+        assert result == 'hello'
+        assert captured.get('size') == 'base'
+
 
 # ── Voice Handler: handle_voice_confirm_callback ─────────────────────────────
 
@@ -170,6 +264,7 @@ class TestVoiceConfirmCallback:
     async def test_confirm_updates_status(self, db, staff, client_row):
         """Confirming valid voice intent updates client status in DB."""
         pending = {
+            'name': None,
             'phone': client_row.phone,
             'status': 'contacted',
             'note': 'Spoke on phone',
@@ -196,10 +291,10 @@ class TestVoiceConfirmCallback:
 
     @pytest.mark.asyncio
     async def test_confirm_missing_phone_sends_error(self, db, staff):
-        """Pending with no phone → error message, no DB update."""
+        """Pending with no phone and no name → error message, no DB update."""
         mock_tg = _make_mock_tg()
         mock_tg.get_conversation_state = AsyncMock(
-            return_value={'pending': {'phone': None, 'status': 'contacted', 'note': None}})
+            return_value={'pending': {'phone': None, 'name': None, 'status': 'contacted', 'note': None}})
 
         with (
             patch('handlers_v2.voice._get_staff', AsyncMock(return_value=staff)),
@@ -221,7 +316,7 @@ class TestVoiceConfirmCallback:
         mock_tg = _make_mock_tg()
         mock_tg.get_conversation_state = AsyncMock(
             return_value={'pending': {
-                'phone': client_row.phone, 'status': 'NOT_A_STATUS', 'note': None,
+                'phone': client_row.phone, 'name': None, 'status': 'NOT_A_STATUS', 'note': None,
             }})
 
         with (
@@ -242,7 +337,64 @@ class TestVoiceConfirmCallback:
         mock_tg = _make_mock_tg()
         mock_tg.get_conversation_state = AsyncMock(
             return_value={'pending': {
-                'phone': '0000000000', 'status': 'contacted', 'note': None,
+                'phone': '0000000000', 'name': None, 'status': 'contacted', 'note': None,
+            }})
+
+        with (
+            patch('handlers_v2.voice.database_v2', db),
+            patch('handlers_v2.voice._get_staff', AsyncMock(return_value=staff)),
+            patch('handlers_v2.voice.telegram_handler', mock_tg),
+        ):
+            from handlers_v2.voice import handle_voice_confirm_callback
+            await handle_voice_confirm_callback({
+                'chat_id': staff.tg_chat_id,
+                'user_id': staff.tg_user_id,
+            })
+
+        mock_tg.send_message.assert_called_once()
+        sent = mock_tg.send_message.call_args[0][1]
+        assert '找不到' in sent or 'not found' in sent
+
+    @pytest.mark.asyncio
+    async def test_confirm_name_lookup_fallback(self, db, staff, named_client):
+        """No phone but name extracted → search_clients fallback updates correct client."""
+        mock_tg = _make_mock_tg()
+        mock_tg.get_conversation_state = AsyncMock(
+            return_value={'pending': {
+                'phone': None,
+                'name': '阿明',
+                'status': 'registered',
+                'note': '账号123456',
+            }})
+
+        with (
+            patch('handlers_v2.voice.database_v2', db),
+            patch('handlers_v2.voice._get_staff', AsyncMock(return_value=staff)),
+            patch('handlers_v2.voice.telegram_handler', mock_tg),
+        ):
+            from handlers_v2.voice import handle_voice_confirm_callback
+            await handle_voice_confirm_callback({
+                'chat_id': staff.tg_chat_id,
+                'user_id': staff.tg_user_id,
+            })
+
+        updated = await db.get_client_by_id(named_client.id)
+        assert updated.status == ClientStatus.REGISTERED
+        # Two messages: "found by name" + "updated"
+        assert mock_tg.send_message.call_count == 2
+        name_msg = mock_tg.send_message.call_args_list[0][0][1]
+        assert '阿明' in name_msg
+
+    @pytest.mark.asyncio
+    async def test_confirm_name_not_found_sends_error(self, db, staff):
+        """Name-only lookup with no DB match → not-found error."""
+        mock_tg = _make_mock_tg()
+        mock_tg.get_conversation_state = AsyncMock(
+            return_value={'pending': {
+                'phone': None,
+                'name': '不存在的人',
+                'status': 'contacted',
+                'note': None,
             }})
 
         with (
@@ -328,6 +480,39 @@ class TestHandleVoiceMessage:
 
         # First call: "transcribing...", second: "failed"
         assert mock_tg.send_message.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_voice_message_success_flow(self, staff, tmp_path):
+        """Full success: transcribe + parse → conversation state set + preview sent."""
+        fake_ogg = tmp_path / 'voice.ogg'
+        fake_ogg.write_bytes(b'fake audio data')
+        mock_tg = _make_mock_tg()
+
+        mock_intent = {
+            'client_name': '阿明',
+            'client_phone': None,
+            'new_status': 'registered',
+            'note': '账号123456',
+        }
+
+        with (
+            patch('handlers_v2.voice._get_staff', AsyncMock(return_value=staff)),
+            patch('handlers_v2.voice.telegram_handler', mock_tg),
+            patch('engines.voice_engine.transcribe', AsyncMock(return_value='阿明今天注册了，账号123456')),
+            patch('engines.voice_engine.parse_intent', AsyncMock(return_value=mock_intent)),
+        ):
+            from handlers_v2.voice import handle_voice_message
+            await handle_voice_message({
+                'chat_id': 8001, 'user_id': 9001,
+                'voice_path': str(fake_ogg),
+            })
+
+        # Messages: "transcribing...", then preview with keyboard
+        assert mock_tg.send_message.call_count == 2
+        mock_tg.set_conversation_state.assert_called_once()
+        state_arg = mock_tg.set_conversation_state.call_args[0][1]
+        assert state_arg['pending']['name'] == '阿明'
+        assert state_arg['pending']['status'] == 'registered'
 
 
 # ── Registry exports ─────────────────────────────────────────────────────────
