@@ -1695,6 +1695,146 @@ STRINGS = {
         'zh': '❌ 天数必须为正整数。',
         'en': '❌ Days must be a positive integer.',
     },
+
+    # === VOICE TRANSCRIPTION ===
+    'voice_transcribing': {
+        'zh': '🎤 正在转录语音，请稍候...',
+        'en': '🎤 Transcribing voice note, please wait...',
+    },
+    'voice_transcribe_failed': {
+        'zh': '❌ 语音转录失败。请直接用文字输入，例如：/u 0123456789 contacted',
+        'en': '❌ Transcription failed. Please type manually, e.g.: /u 0123456789 contacted',
+    },
+    'voice_no_file': {
+        'zh': '❌ 找不到语音文件，请重新发送。',
+        'en': '❌ Voice file not found, please resend.',
+    },
+    'voice_confirm_preview': {
+        'zh': (
+            '🎤 **语音识别结果**\n\n'
+            '📝 原文：{transcript}\n\n'
+            '📱 手机：`{phone}`\n'
+            '🔄 状态：`{status}`\n'
+            '📌 备注：{note}\n\n'
+            '请确认或取消：'
+        ),
+        'en': (
+            '🎤 **Voice Recognition Result**\n\n'
+            '📝 Text: {transcript}\n\n'
+            '📱 Phone: `{phone}`\n'
+            '🔄 Status: `{status}`\n'
+            '📌 Note: {note}\n\n'
+            'Please confirm or cancel:'
+        ),
+    },
+    'btn_voice_confirm': {
+        'zh': '✅ 确认',
+        'en': '✅ Confirm',
+    },
+    'btn_voice_edit': {
+        'zh': '✏️ 手动编辑',
+        'en': '✏️ Edit',
+    },
+    'btn_voice_cancel': {
+        'zh': '❌ 取消',
+        'en': '❌ Cancel',
+    },
+    'voice_confirm_missing': {
+        'zh': '❌ 缺少手机号或状态，请手动输入：/u <手机> <状态>',
+        'en': '❌ Missing phone or status. Please type: /u <phone> <status>',
+    },
+    'voice_confirm_bad_status': {
+        'zh': '❌ 无效状态：{status}。可用状态：new/contacted/replied/registered/training/withdrew/ordered/ghosted/blocked/dead',
+        'en': '❌ Invalid status: {status}. Valid: new/contacted/replied/registered/training/withdrew/ordered/ghosted/blocked/dead',
+    },
+    'voice_client_not_found': {
+        'zh': '❌ 找不到手机号 {phone} 的客户，请先用 /add 添加。',
+        'en': '❌ Client {phone} not found. Add them first with /add.',
+    },
+    'voice_updated': {
+        'zh': '✅ 已更新 {phone} → {status}',
+        'en': '✅ Updated {phone} → {status}',
+    },
+    'voice_cancelled': {
+        'zh': '❌ 已取消语音更新。',
+        'en': '❌ Voice update cancelled.',
+    },
+    'voice_edit_hint': {
+        'zh': '✏️ 请手动输入更新，例如：\n/u 0123456789 contacted\n/note 0123456789 备注内容',
+        'en': '✏️ Please type the update manually, e.g.:\n/u 0123456789 contacted\n/note 0123456789 your note',
+    },
+
+    # === INLINE MENU BUTTONS ===
+    'menu_btn_pipeline': {
+        'zh': '📊 我的漏斗',
+        'en': '📊 My Pipeline',
+    },
+    'menu_btn_add': {
+        'zh': '➕ 添加客户',
+        'en': '➕ Add Client',
+    },
+    'menu_btn_followup': {
+        'zh': '🔔 跟进提醒',
+        'en': '🔔 Follow-ups',
+    },
+    'menu_btn_search': {
+        'zh': '🔍 搜索客户',
+        'en': '🔍 Search',
+    },
+    'menu_btn_leaderboard': {
+        'zh': '🏆 排行榜',
+        'en': '🏆 Leaderboard',
+    },
+    'menu_btn_hot': {
+        'zh': '🎯 热门线索',
+        'en': '🎯 Hot Leads',
+    },
+    'menu_btn_templates': {
+        'zh': '📝 话术模板',
+        'en': '📝 Templates',
+    },
+    'menu_btn_settings': {
+        'zh': '⚙️ 我的资料',
+        'en': '⚙️ Settings',
+    },
+    'menu_add_hint': {
+        'zh': '➕ 添加新客户格式：\n`/add <手机号> <来源>`\n例如：`/add 0123456789 fb`',
+        'en': '➕ Add a new client:\n`/add <phone> <source>`\nExample: `/add 0123456789 fb`',
+    },
+    'menu_search_hint': {
+        'zh': '🔍 搜索客户格式：\n`/search <关键词>`\n例如：`/search 0123`',
+        'en': '🔍 Search clients:\n`/search <keyword>`\nExample: `/search 0123`',
+    },
+
+    # === QUICK STATUS (follow-up buttons) ===
+    'followup_empty': {
+        'zh': '✅ 暂无需跟进的客户！',
+        'en': '✅ No follow-ups due right now!',
+    },
+    'followup_btn_contacted': {
+        'zh': '📱 已联系',
+        'en': '📱 Contacted',
+    },
+    'followup_btn_snooze': {
+        'zh': '⏰ 稍后',
+        'en': '⏰ Snooze',
+    },
+    'followup_btn_dead': {
+        'zh': '💀 放弃',
+        'en': '💀 Dead',
+    },
+    'quick_status_updated': {
+        'zh': '✅ {phone} → {status}',
+        'en': '✅ {phone} → {status}',
+    },
+    'err_invalid_status': {
+        'zh': '❌ 无效状态。',
+        'en': '❌ Invalid status.',
+    },
+    'err_not_found': {
+        'zh': '❌ 找不到该客户。',
+        'en': '❌ Client not found.',
+    },
 }
 
 

@@ -104,6 +104,14 @@ class TelegramHandler:
                 logger.error(f"Error handling command: {e}")
                 await self._send_error_message(event.chat_id, "Sorry, something went wrong.")
 
+        @event_client.on(events.NewMessage(func=lambda e: bool(e.voice)))
+        async def voice_handler(event):
+            """Handle voice note messages."""
+            try:
+                await self._handle_voice(event)
+            except Exception as e:
+                logger.error(f"Error handling voice: {e}")
+
         @event_client.on(events.NewMessage(func=lambda e: not e.text.startswith('/')))
         async def message_handler(event):
             """Handle non-command messages (for conversations)."""
@@ -197,6 +205,36 @@ class TelegramHandler:
 
         await database_v2.create_task(task)
         logger.info(f"Created task for command /{command} from user {user.id} (chat_type={chat_type})")
+
+    async def _handle_voice(self, event):
+        """Download voice OGG and queue a voice task for the Ralph Loop."""
+        import tempfile
+        user = await event.get_sender()
+        chat_id = event.chat_id
+
+        # Download to /tmp/ immediately — Telegram file refs are short-lived
+        try:
+            client_to_use = self.bot_client if self.bot_client else self.client
+            suffix = '.ogg'
+            tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False, dir='/tmp')
+            tmp.close()
+            await client_to_use.download_media(event.message, file=tmp.name)
+            voice_path = tmp.name
+        except Exception as e:
+            logger.error(f"Failed to download voice from {user.id}: {e}")
+            return
+
+        await self._update_user_activity(user, chat_id)
+
+        task_data = {
+            'event_type': 'voice',
+            'user_id': user.id,
+            'chat_id': chat_id,
+            'voice_path': voice_path,
+        }
+        task = BotTask(task_type='message', priority=1, data=task_data)
+        await database_v2.create_task(task)
+        logger.info(f"Queued voice task for user {user.id} → {voice_path}")
 
     async def _handle_conversation(self, event):
         """Handle conversation states for multi-step commands."""

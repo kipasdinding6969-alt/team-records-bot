@@ -20,6 +20,8 @@ from handlers_v2.management import MANAGEMENT_COMMANDS, MANAGEMENT_CALLBACKS, MA
 from handlers_v2.registration_v2 import REGISTRATION_V2_COMMANDS, REGISTRATION_V2_CALLBACKS, REGISTRATION_V2_CONVERSATIONS
 from handlers_v2.group_chat import GROUP_COMMANDS, GROUP_CALLBACKS, GROUP_CONVERSATIONS
 from handlers_v2.gamification import GAMIFICATION_COMMANDS, GAMIFICATION_CALLBACKS, GAMIFICATION_CONVERSATIONS
+from handlers_v2.voice import VOICE_COMMANDS, VOICE_CALLBACKS, VOICE_CONVERSATIONS
+from handlers_v2.menu import MENU_COMMANDS, MENU_CALLBACKS, MENU_CONVERSATIONS
 import engines.sheet_sync_v2 as _sheet_sync_v2_mod
 import engines.dashboard_sheets as _dashboard_mod
 
@@ -220,6 +222,8 @@ class RalphLoop:
         all_commands.update(REGISTRATION_V2_COMMANDS)
         all_commands.update(GROUP_COMMANDS)
         all_commands.update(GAMIFICATION_COMMANDS)
+        all_commands.update(VOICE_COMMANDS)
+        all_commands.update(MENU_COMMANDS)
 
         all_callbacks = {}
         all_callbacks.update(QUICK_ACTIONS_CALLBACKS)
@@ -228,6 +232,8 @@ class RalphLoop:
         all_callbacks.update(REGISTRATION_V2_CALLBACKS)
         all_callbacks.update(GROUP_CALLBACKS)
         all_callbacks.update(GAMIFICATION_CALLBACKS)
+        all_callbacks.update(VOICE_CALLBACKS)
+        all_callbacks.update(MENU_CALLBACKS)
 
         all_conversations = {}
         all_conversations.update(QUICK_ACTIONS_CONVERSATIONS)
@@ -236,6 +242,8 @@ class RalphLoop:
         all_conversations.update(REGISTRATION_V2_CONVERSATIONS)
         all_conversations.update(GROUP_CONVERSATIONS)
         all_conversations.update(GAMIFICATION_CONVERSATIONS)
+        all_conversations.update(VOICE_CONVERSATIONS)
+        all_conversations.update(MENU_CONVERSATIONS)
 
         self.command_handlers = all_commands
         self.callback_handlers = all_callbacks
@@ -430,6 +438,8 @@ class RalphLoop:
                 return await self._handle_callback(data)
             elif event_type == 'conversation':
                 return await self._handle_conversation(data)
+            elif event_type == 'voice':
+                return await self._handle_voice_task(data)
             else:
                 logger.warning(f"Unknown message event type: {event_type}")
                 return False
@@ -486,6 +496,19 @@ class RalphLoop:
 
         except Exception as e:
             logger.error(f"Error handling command: {e}")
+            return False
+
+    async def _handle_voice_task(self, data: Dict[str, Any]) -> bool:
+        """Handle voice message task — delegate to voice handler."""
+        try:
+            from handlers_v2.voice import handle_voice_message
+            await asyncio.wait_for(handle_voice_message(data), timeout=60.0)
+            return True
+        except asyncio.TimeoutError:
+            logger.error("Voice handler timed out")
+            return False
+        except Exception as e:
+            logger.error(f"Error handling voice task: {e}")
             return False
 
     async def _handle_callback(self, data: Dict[str, Any]) -> bool:
