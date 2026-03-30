@@ -600,8 +600,13 @@ class TelegramHandler:
                 logger.warning("No broadcast channel ID configured")
                 return {'success': False, 'message': 'No channel ID configured'}
 
+            # Fetch stats once and reuse across all summary generators.
+            from datetime import date as _date
+            _today_str = _date.today().strftime('%Y-%m-%d')
+            cached_stats = await self._get_daily_stats(_today_str)
+
             # Generate full summary message
-            summary_message = await self._generate_channel_summary()
+            summary_message = await self._generate_channel_summary(cached_stats=cached_stats)
 
             # 1. Post to broadcast channel
             client = self.bot_client if self.bot_client else self.client
@@ -612,14 +617,14 @@ class TelegramHandler:
             try:
                 from team_config import team_config as _tc
                 for team_id in _tc.get_all_team_ids():
-                    team_summary = await self._generate_team_summary(team_id)
+                    team_summary = await self._generate_team_summary(team_id, cached_stats=cached_stats)
                     await self.send_to_team(team_id, team_summary, topic='日报', parse_mode='html')
             except Exception as e:
                 logger.error(f"Failed to post per-team summaries: {e}")
 
             # 3. Post management summary to 总报表 topic
             try:
-                mgmt_summary = await self._generate_management_summary()
+                mgmt_summary = await self._generate_management_summary(cached_stats=cached_stats)
                 await self.send_to_management(mgmt_summary, topic='总报表', parse_mode='html')
             except Exception as e:
                 logger.error(f"Failed to post management summary: {e}")
@@ -634,15 +639,15 @@ class TelegramHandler:
             logger.error(f"Failed to post channel summary: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def _generate_channel_summary(self) -> str:
+    async def _generate_channel_summary(self, cached_stats: Optional[Dict[str, Any]] = None) -> str:
         """Generate channel summary with today's stats and team performance."""
         try:
             from datetime import date
             today = date.today()
             today_str = today.strftime('%Y-%m-%d')
 
-            # Get today's statistics
-            stats = await self._get_daily_stats(today_str)
+            # Use pre-fetched stats if available, otherwise fetch now.
+            stats = cached_stats if cached_stats is not None else await self._get_daily_stats(today_str)
 
             # Generate summary message
             summary = f"""📊 <b>团队日报</b>
@@ -681,7 +686,7 @@ class TelegramHandler:
             logger.error(f"Failed to generate channel summary: {e}")
             return f"📊 <b>团队日报 / Daily Report</b>\n\n❌ 数据生成失败 / Failed to generate stats\n错误: {str(e)}"
 
-    async def _generate_team_summary(self, team_id: str) -> str:
+    async def _generate_team_summary(self, team_id: str, cached_stats: Optional[Dict[str, Any]] = None) -> str:
         """Generate per-team daily summary for posting to the team's 日报 topic."""
         try:
             from datetime import date
@@ -693,7 +698,7 @@ class TelegramHandler:
             leader = team_info.get('leader', '')
             members = team_info.get('members', [])
 
-            stats = await self._get_daily_stats(today_str)
+            stats = cached_stats if cached_stats is not None else await self._get_daily_stats(today_str)
             top = await self._get_top_performers(today_str)
 
             # Filter top performers to this team's members
@@ -723,7 +728,7 @@ class TelegramHandler:
             logger.error(f"Failed to generate team summary for {team_id}: {e}")
             return f"📊 <b>{team_id} 日报</b>\n\n❌ 数据生成失败: {e}"
 
-    async def _generate_management_summary(self) -> str:
+    async def _generate_management_summary(self, cached_stats: Optional[Dict[str, Any]] = None) -> str:
         """Generate management-level summary for the 总报表 topic."""
         try:
             from datetime import date
@@ -731,7 +736,7 @@ class TelegramHandler:
             today = date.today()
             today_str = today.strftime('%Y-%m-%d')
 
-            stats = await self._get_daily_stats(today_str)
+            stats = cached_stats if cached_stats is not None else await self._get_daily_stats(today_str)
             top = await self._get_top_performers(today_str)
 
             summary = f"""📊 <b>管理层总报表</b>

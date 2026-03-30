@@ -229,12 +229,15 @@ class RalphLoop:
 
     def _setup_signal_handlers(self):
         """Set up signal handlers for graceful shutdown."""
-        def signal_handler(signum, frame):
-            logger.info(f"Received signal {signum}, initiating graceful shutdown...")
-            self.running = False
-
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
+        loop = asyncio.get_event_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(
+                sig,
+                lambda s=sig: (
+                    logger.info(f"Received signal {s}, initiating graceful shutdown..."),
+                    setattr(self, 'running', False),
+                ),
+            )
 
     async def _register_handlers(self):
         """Register all V2 command, callback, and conversation handlers."""
@@ -788,8 +791,9 @@ class RalphLoop:
                     if stale:
                         logger.info(f'V2: {len(stale)} stale clients detected')
                         from models_v2 import Reminder as ReminderV2
+                        # Fetch all pending reminders once to avoid N+1 queries in the loop.
+                        existing = await database_v2.get_pending_reminders_v2()
                         for client in stale:
-                            existing = await database_v2.get_pending_reminders_v2()
                             already_reminded = any(
                                 r.client_id == client.id and r.source == 'auto_stale'
                                 for r in existing

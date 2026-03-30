@@ -1,4 +1,5 @@
 """V2 database — async SQLite with aiosqlite, 8-table schema."""
+import asyncio
 import hashlib
 import logging
 import struct
@@ -49,6 +50,7 @@ class DatabaseV2:
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
         self._conn: Optional[aiosqlite.Connection] = None
+        self._lock = asyncio.Lock()
 
     async def connect(self):
         """Open and cache a persistent connection for the lifetime of the process."""
@@ -67,8 +69,9 @@ class DatabaseV2:
     @asynccontextmanager
     async def get_connection(self) -> AsyncGenerator[aiosqlite.Connection, None]:
         if self._conn is not None:
-            # Reuse persistent connection — caller must not close it.
-            yield self._conn
+            # Serialize all operations through the shared persistent connection.
+            async with self._lock:
+                yield self._conn
         else:
             conn = await aiosqlite.connect(self.db_path)
             conn.row_factory = aiosqlite.Row
@@ -98,6 +101,9 @@ class DatabaseV2:
                     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_active_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
+
+                CREATE INDEX IF NOT EXISTS idx_staff_display_name ON staff(display_name);
+                CREATE INDEX IF NOT EXISTS idx_staff_tg_username ON staff(tg_username);
 
                 CREATE TABLE IF NOT EXISTS clients (
                     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -129,6 +135,7 @@ class DatabaseV2:
                 CREATE INDEX IF NOT EXISTS idx_clients_status ON clients(status);
                 CREATE INDEX IF NOT EXISTS idx_clients_followup ON clients(next_followup);
                 CREATE INDEX IF NOT EXISTS idx_clients_created ON clients(created_at);
+                CREATE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone);
 
                 CREATE TABLE IF NOT EXISTS client_notes (
                     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -143,6 +150,7 @@ class DatabaseV2:
 
                 CREATE INDEX IF NOT EXISTS idx_notes_client ON client_notes(client_id);
                 CREATE INDEX IF NOT EXISTS idx_notes_created ON client_notes(created_at);
+                CREATE INDEX IF NOT EXISTS idx_notes_staff_status ON client_notes(staff_id, new_status, created_at);
 
                 CREATE TABLE IF NOT EXISTS daily_stats (
                     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -568,13 +576,13 @@ class DatabaseV2:
                        VALUES (?,?,?,?,?,?)""",
                     (client_id, staff_id, NoteType.STATUS_CHANGE.value, old_status, new_status.value, note)
                 )
-                await db.commit()
-                # Fire status-change hooks (e.g. followup auto-enqueue)
+                # Fire status-change hooks BEFORE commit so a hook failure can abort the transaction.
                 for _hook in _status_change_hooks:
                     try:
                         await _hook(client_id, new_status.value)
                     except Exception as _he:
                         logger.warning(f'status_change_hook error: {_he}')
+                await db.commit()
                 return True
             except Exception:
                 await db.rollback()

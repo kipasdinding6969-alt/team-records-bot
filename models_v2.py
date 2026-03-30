@@ -1,6 +1,6 @@
 """V2 data models — pipeline-centric dataclasses."""
 from dataclasses import dataclass, field
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Any, Dict, Optional, List
 from enum import Enum
 
@@ -193,7 +193,9 @@ class Client:
             return False
         if not self.updated_at:
             return True
-        delta = datetime.now() - self.updated_at
+        ref = datetime.now(timezone.utc)
+        updated = self.updated_at if self.updated_at.tzinfo is not None else self.updated_at.replace(tzinfo=timezone.utc)
+        delta = ref - updated
         return delta.total_seconds() > hours * 3600
 
     def status_emoji(self) -> str:
