@@ -1,159 +1,127 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
 
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# PyInstaller
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-.python-version
-
-# celery beat schedule file
-celerybeat-schedule
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# Project specific
-*.session
-*.session-journal
-team_records.db*
-*.sqlite*
-
-# Google credentials
-credentials.json
-service_account.json
-
-# Logs
-*.log
-logs/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
 *~
-
-# OS
-.DS_Store
-Thumbs.db
-
+*$py.class
+*.backup
 # Backup files
 backups/
-*.backup
 *.bak
-
-# Temporary files
-tmp/
-temp/
-*.tmp
-
-# Local config overrides
-.env.local
+build/
+# Byte-compiled / optimized / DLL files
+.cache
+celerybeat-schedule
+# celery beat schedule file
+# C extensions
 config.local.py*.session
-.env
+*.cover
+.coverage
+.coverage.*
+coverage.xml
+credentials.json
 data/
-logs/
-__pycache__/
-*.pyc
-.pytest_cache/
+db.sqlite3
+develop-eggs/
+dist/
+# Distribution / packaging
+# Django stuff:
+.dmypy.json
+dmypy.json
+docs/_build/
+downloads/
+.DS_Store
+*.egg
+*.egg-info/
+.eggs/
+eggs/
+.env
+env/
+ENV/
+env.bak/
+# Environments
+.env.local
+# Flask stuff:
+# Google credentials
 htmlcov/
+.hypothesis/
+# IDE
+.idea/
+.installed.cfg
+# Installer logs
+instance/
+.ipynb_checkpoints
+# IPython
+ipython_config.py
+# Jupyter Notebook
+lib/
+lib64/
+# Local config overrides
+local_settings.py
+*.log
+logs/
+# Logs
+*.manifest
+MANIFEST
+# mkdocs documentation
+*.mo
+# mypy
+.mypy_cache/
 nocodb_config.json
+nosetests.xml
+.nox/
+# OS
+parts/
+pip-delete-this-directory.txt
+pip-log.txt
+*.pot
+profile_default/
+# Project specific
+# PyBuilder
+*.pyc
+__pycache__/
+*.py[cod]
+# pyenv
+# PyInstaller
+.pyre/
+# Pyre type checker
+.pytest_cache/
+.Python
+.python-version
+.ropeproject
+# Rope project settings
+# SageMath parsed files
+*.sage.py
+.scrapy
+# Scrapy stuff:
+sdist/
+service_account.json
+*.session
+*.session-journal
+/site
+*.so
+*.spec
+# Sphinx documentation
+.spyderproject
+# Spyder project settings
+.spyproject
+*.sqlite*
+*.swo
+*.swp
+target/
+team_records.db*
+team_records_v2.db
+team_records_v2.db-shm
+team_records_v2.db-wal
+temp/
+# Temporary files
+Thumbs.db
+*.tmp
+tmp/
+.tox/
+# Translations
+# Unit test / coverage reports
+var/
+.venv
+venv/
+venv.bak/
+.vscode/
+.webassets-cache
+wheels/
