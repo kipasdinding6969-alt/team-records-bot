@@ -67,6 +67,8 @@ class RalphLoop:
         self.last_contest_maintenance = None
         self.last_streak_maintenance = None
         self.last_followup_processing = None
+        self.last_morning_digest = None
+        self.last_evening_digest = None
 
         # Command and callback handlers registry
         self.command_handlers = {}
@@ -694,6 +696,8 @@ class RalphLoop:
         await self._maint_contest_maintenance(current_time)
         await self._maint_streak_maintenance(current_time)
         await self._maint_followup_processing(current_time)
+        await self._maint_morning_digest(current_time)
+        await self._maint_evening_digest(current_time)
 
     async def _maint_health_check(self, current_time: datetime):
         """Schedule periodic health check task."""
@@ -931,6 +935,32 @@ class RalphLoop:
             except Exception as e:
                 logger.error(f'Follow-up processing error: {e}')
             self.last_followup_processing = current_time
+
+    async def _maint_morning_digest(self, current_time: datetime):
+        """Send morning digest at 8:00 AM local time (once per day)."""
+        if (
+            not self.last_morning_digest
+            or self.last_morning_digest.date() < current_time.date()
+        ) and current_time.hour == 8:
+            try:
+                from engines.digest_engine import send_morning_digests
+                await send_morning_digests()
+                self.last_morning_digest = current_time
+            except Exception as e:
+                logger.error(f'Morning digest error: {e}')
+
+    async def _maint_evening_digest(self, current_time: datetime):
+        """Send evening digest at 6:00 PM local time (once per day)."""
+        if (
+            not self.last_evening_digest
+            or self.last_evening_digest.date() < current_time.date()
+        ) and current_time.hour == 18:
+            try:
+                from engines.digest_engine import send_evening_digests
+                await send_evening_digests()
+                self.last_evening_digest = current_time
+            except Exception as e:
+                logger.error(f'Evening digest error: {e}')
 
     def _should_generate_daily_report(self) -> bool:
         """Check if daily report should be generated."""

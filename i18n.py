@@ -1917,6 +1917,64 @@ STRINGS = {
         'zh': '✅ 客户 {phone} 的跟进序列已完成',
         'en': '✅ Follow-up sequence for {phone} completed',
     },
+
+    # === DIGEST ===
+    'digest_morning_title': {
+        'zh': '☀️ **早安，{name}！**',
+        'en': '☀️ **Good morning, {name}!**',
+    },
+    'digest_morning_pipeline': {
+        'zh': '📊 **流水线概况**',
+        'en': '📊 **Pipeline Summary**',
+    },
+    'digest_morning_hot': {
+        'zh': '🔥 **热门线索 Top 3**',
+        'en': '🔥 **Hot Leads Top 3**',
+    },
+    'digest_morning_followup': {
+        'zh': '⏰ **待跟进**: {count} 位客户逾期跟进',
+        'en': '⏰ **Overdue**: {count} clients need follow-up',
+    },
+    'digest_morning_streak': {
+        'zh': '🔥 连续打卡 **{days} 天**，保持住！',
+        'en': '🔥 **{days}-day streak** — keep it up!',
+    },
+    'digest_morning_xp_goal': {
+        'zh': '⭐ 今日目标: 还需 **{remaining}** XP（目标 {goal}）',
+        'en': '⭐ Today goal: **{remaining}** XP to go (target {goal})',
+    },
+    'digest_morning_badge_progress': {
+        'zh': '🎯 下一徽章: {emoji} {name} — 还需 **{xp}** XP',
+        'en': '🎯 Next badge: {emoji} {name} — need **{xp}** more XP',
+    },
+    'digest_evening_title': {
+        'zh': '🌙 **晚安，{name}！今日总结**',
+        'en': '🌙 **Good night, {name}! Daily summary**',
+    },
+    'digest_evening_stats': {
+        'zh': '📈 **今日成果**',
+        'en': '📈 **Today\'s Results**',
+    },
+    'digest_evening_xp': {
+        'zh': '⭐ 今日 XP: **{xp}**',
+        'en': '⭐ Today XP: **{xp}**',
+    },
+    'digest_evening_streak': {
+        'zh': '🔥 连续打卡: **{days} 天** — 太棒了！',
+        'en': '🔥 Streak: **{days} days** — awesome!',
+    },
+    'digest_manager_title': {
+        'zh': '📋 **团队早报 — {name}**',
+        'en': '📋 **Team Digest — {name}**',
+    },
+    'digest_manager_team': {
+        'zh': '📊 **团队流水线**',
+        'en': '📊 **Team Pipeline**',
+    },
+    'digest_manager_performers': {
+        'zh': '🏆 **今日表现 Top 3**',
+        'en': '🏆 **Top Performers Today**',
+    },
 }
 
 
