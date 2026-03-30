@@ -237,10 +237,14 @@ class TelegramHandler:
         logger.info(f"Queued voice task for user {user.id} → {voice_path}")
 
     async def _handle_conversation(self, event):
-        """Handle conversation states for multi-step commands."""
+        """Handle conversation states or route plain text to NL handler."""
         user = await event.get_sender()
         chat_id = event.chat_id
         message = event.message.text
+
+        # Only process private chats for NL handler
+        chat = await event.get_chat()
+        is_private = not hasattr(chat, 'title')
 
         # Check if user has an active conversation state in database
         conversation_state = await self.get_conversation_state(user.id)
@@ -262,6 +266,22 @@ class TelegramHandler:
 
             await database_v2.create_task(task)
             logger.info(f"Created conversation task for user {user.id}")
+
+        elif is_private and message:
+            # No active conversation state — route to NL handler (lowest priority)
+            task_data = {
+                'event_type': 'nl_message',
+                'text': message,
+                'user_id': user.id,
+                'chat_id': chat_id,
+            }
+            task = BotTask(
+                task_type='message',
+                priority=2,  # lower priority than commands (1)
+                data=task_data
+            )
+            await database_v2.create_task(task)
+            logger.info(f"Created nl_message task for user {user.id}: {message[:40]!r}")
 
     async def _handle_callback(self, event):
         """Handle inline keyboard button callbacks."""
