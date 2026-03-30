@@ -529,7 +529,7 @@ async def get_staff_me(x_telegram_init_data: str = Header(default='')):
 # ─── Static files (serve built React app) ─────────────────────────────────────
 
 if os.path.isdir(MINI_APP_DIST):
-    app.mount('/app', StaticFiles(directory=MINI_APP_DIST, html=True), name='mini_app')
+    app.mount('/', StaticFiles(directory=MINI_APP_DIST, html=True), name='mini_app')
 
     @app.get('/app/{path:path}')
     async def serve_spa(path: str):
