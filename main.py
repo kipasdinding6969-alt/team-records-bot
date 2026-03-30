@@ -26,6 +26,7 @@ from handlers_v2.gamification_v2 import GAMIFICATION_V2_COMMANDS, GAMIFICATION_V
 from handlers_v2.followup_handler import FOLLOWUP_HANDLER_COMMANDS, FOLLOWUP_HANDLER_CALLBACKS, FOLLOWUP_HANDLER_CONVERSATIONS
 from handlers_v2.mini_app import MINI_APP_COMMANDS, MINI_APP_CALLBACKS, MINI_APP_CONVERSATIONS
 from handlers_v2.nl_handler import NL_HANDLER_COMMANDS, NL_HANDLER_CALLBACKS, NL_HANDLER_CONVERSATIONS
+from handlers_v2.inline_flows import INLINE_FLOWS_COMMANDS, INLINE_FLOWS_CALLBACKS, INLINE_FLOWS_CONVERSATIONS
 import engines.sheet_sync_v2 as _sheet_sync_v2_mod
 import engines.dashboard_sheets as _dashboard_mod
 
@@ -250,6 +251,7 @@ class RalphLoop:
         all_commands.update(FOLLOWUP_HANDLER_COMMANDS)
         all_commands.update(MINI_APP_COMMANDS)
         all_commands.update(NL_HANDLER_COMMANDS)
+        all_commands.update(INLINE_FLOWS_COMMANDS)
 
         all_callbacks = {}
         all_callbacks.update(QUICK_ACTIONS_CALLBACKS)
@@ -264,6 +266,7 @@ class RalphLoop:
         all_callbacks.update(FOLLOWUP_HANDLER_CALLBACKS)
         all_callbacks.update(MINI_APP_CALLBACKS)
         all_callbacks.update(NL_HANDLER_CALLBACKS)
+        all_callbacks.update(INLINE_FLOWS_CALLBACKS)
 
         all_conversations = {}
         all_conversations.update(QUICK_ACTIONS_CONVERSATIONS)
@@ -278,6 +281,7 @@ class RalphLoop:
         all_conversations.update(FOLLOWUP_HANDLER_CONVERSATIONS)
         all_conversations.update(MINI_APP_CONVERSATIONS)
         all_conversations.update(NL_HANDLER_CONVERSATIONS)
+        all_conversations.update(INLINE_FLOWS_CONVERSATIONS)
 
         self.command_handlers = all_commands
         self.callback_handlers = all_callbacks

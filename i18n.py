@@ -1772,15 +1772,15 @@ STRINGS = {
 
     # === INLINE MENU BUTTONS ===
     'menu_btn_pipeline': {
-        'zh': '📊 我的漏斗',
+        'zh': '📊 我的管道',
         'en': '📊 My Pipeline',
     },
     'menu_btn_add': {
-        'zh': '➕ 添加客户',
-        'en': '➕ Add Client',
+        'zh': '➕ 新客户',
+        'en': '➕ New Client',
     },
     'menu_btn_followup': {
-        'zh': '🔔 跟进提醒',
+        'zh': '🔔 待跟进',
         'en': '🔔 Follow-ups',
     },
     'menu_btn_search': {
@@ -1974,6 +1974,193 @@ STRINGS = {
     'digest_manager_performers': {
         'zh': '🏆 **今日表现 Top 3**',
         'en': '🏆 **Top Performers Today**',
+    },
+
+    # === PHASE 6 — INLINE FLOWS ===
+    # Menu buttons (new layout)
+    'menu_btn_today': {
+        'zh': '📈 今日统计',
+        'en': '📈 Today Stats',
+    },
+    'menu_btn_voice': {
+        'zh': '🎤 语音更新',
+        'en': '🎤 Voice Update',
+    },
+    'menu_btn_app': {
+        'zh': '📱 打开面板',
+        'en': '📱 Open Panel',
+    },
+    'menu_btn_help': {
+        'zh': '❓ 帮助',
+        'en': '❓ Help',
+    },
+
+    # Pipeline Browser
+    'pipe_title': {
+        'zh': '📊 我的管道 ({count} 位客户)',
+        'en': '📊 My Pipeline ({count} clients)',
+    },
+    'pipe_empty': {
+        'zh': '📭 暂无客户记录。',
+        'en': '📭 No clients found.',
+    },
+    'pipe_page_info': {
+        'zh': '第 {page}/{total} 页',
+        'en': 'Page {page}/{total}',
+    },
+    'pipe_detail_title': {
+        'zh': '👤 客户详情',
+        'en': '👤 Client Detail',
+    },
+    'pipe_btn_all': {
+        'zh': '全部',
+        'en': 'All',
+    },
+    'pipe_btn_prev': {
+        'zh': '◀ 上页',
+        'en': '◀ Prev',
+    },
+    'pipe_btn_next': {
+        'zh': '下页 ▶',
+        'en': 'Next ▶',
+    },
+    'pipe_btn_back': {
+        'zh': '◀ 返回',
+        'en': '◀ Back',
+    },
+    'pipe_btn_back_menu': {
+        'zh': '🏠 主菜单',
+        'en': '🏠 Main Menu',
+    },
+
+    # Status Update
+    'status_pick_title': {
+        'zh': '选择新状态：',
+        'en': 'Select new status:',
+    },
+    'status_updated_ok': {
+        'zh': '✅ {phone} → {status}',
+        'en': '✅ {phone} → {status}',
+    },
+
+    # Quick Note
+    'note_prompt': {
+        'zh': '✍️ 请输入备注内容（发送文字即可）：',
+        'en': '✍️ Type your note and send:',
+    },
+    'note_saved': {
+        'zh': '✅ 备注已保存！',
+        'en': '✅ Note saved!',
+    },
+    'note_failed': {
+        'zh': '❌ 备注失败，请重试。',
+        'en': '❌ Note failed, please try again.',
+    },
+
+    # Follow-up Dashboard
+    'fu_title': {
+        'zh': '🔔 待跟进 ({count} 位)',
+        'en': '🔔 Follow-ups ({count})',
+    },
+    'fu_btn_contacted': {
+        'zh': '📞 联系了',
+        'en': '📞 Contacted',
+    },
+    'fu_btn_skip': {
+        'zh': '⏭ 跳过',
+        'en': '⏭ Skip',
+    },
+    'fu_btn_dead': {
+        'zh': '❌ 放弃',
+        'en': '❌ Abandon',
+    },
+    'fu_contacted_ok': {
+        'zh': '✅ 已联系 {phone}',
+        'en': '✅ Contacted {phone}',
+    },
+    'fu_skip_ok': {
+        'zh': '⏭ 跳过 {phone}（明日再跟进）',
+        'en': '⏭ Skipped {phone} (follow up tomorrow)',
+    },
+    'fu_dead_ok': {
+        'zh': '❌ 放弃 {phone}',
+        'en': '❌ Abandoned {phone}',
+    },
+    'fu_all_done': {
+        'zh': '🎉 全部处理完毕！',
+        'en': '🎉 All done!',
+    },
+
+    # Quick Add Client
+    'add_ask_phone': {
+        'zh': '📱 请输入客户手机号：',
+        'en': '📱 Enter client phone number:',
+    },
+    'add_ask_source': {
+        'zh': '📲 选择来源渠道：',
+        'en': '📲 Select source channel:',
+    },
+    'add_done': {
+        'zh': '✅ 新客户 {phone} 已添加！\n💡 建议：立即发送招呼消息。',
+        'en': '✅ New client {phone} added!\n💡 Tip: Send a greeting now.',
+    },
+    'add_dup': {
+        'zh': '⚠️ {phone} 已存在！显示现有记录：',
+        'en': '⚠️ {phone} already exists! Showing existing record:',
+    },
+    'add_invalid_phone': {
+        'zh': '❌ 手机号格式不对，请输入纯数字（7-15位）：',
+        'en': '❌ Invalid phone. Enter digits only (7-15 chars):',
+    },
+
+    # Action buttons
+    'btn_change_status': {
+        'zh': '🔄 改状态',
+        'en': '🔄 Change Status',
+    },
+    'btn_add_note': {
+        'zh': '📝 加备注',
+        'en': '📝 Add Note',
+    },
+    'btn_back': {
+        'zh': '◀ 返回',
+        'en': '◀ Back',
+    },
+
+    # Smart reply
+    'smart_next': {
+        'zh': '💡 建议下一步：',
+        'en': '💡 Suggested next step:',
+    },
+
+    # Help
+    'help_title': {
+        'zh': '❓ 帮助 — 快速指南',
+        'en': '❓ Help — Quick Guide',
+    },
+    'help_body': {
+        'zh': (
+            '主菜单按钮说明：\n'
+            '• 📊 我的管道 — 浏览所有客户，按状态筛选\n'
+            '• ➕ 新客户 — 添加新客户\n'
+            '• 🔔 待跟进 — 处理逾期跟进\n'
+            '• 🏆 排行榜 — 查看团队排名\n'
+            '• 📈 今日统计 — 今日数据\n'
+            '• 🎤 语音更新 — 发语音消息更新状态\n'
+            '• 📱 打开面板 — 打开可视化仪表盘\n\n'
+            '无需记忆命令，点击按钮即可操作！'
+        ),
+        'en': (
+            'Menu buttons:\n'
+            '• 📊 My Pipeline — browse clients, filter by status\n'
+            '• ➕ New Client — add a new client\n'
+            '• 🔔 Follow-ups — handle overdue follow-ups\n'
+            '• 🏆 Leaderboard — team rankings\n'
+            '• 📈 Today Stats — today\'s numbers\n'
+            '• 🎤 Voice Update — send voice to update status\n'
+            '• 📱 Open Panel — visual dashboard\n\n'
+            'No commands to memorize — just tap!'
+        ),
     },
 }
 

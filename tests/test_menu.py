@@ -174,21 +174,24 @@ class TestMenuKeyboardStructure:
 
 class TestMenuCallbackRouting:
     @pytest.mark.asyncio
-    async def test_menu_add_shows_hint(self, staff):
-        mock_tg = _make_mock_tg()
+    async def test_menu_add_starts_add_flow(self, staff):
+        """menu_add delegates to inline_flows.handle_add_start."""
+        mock_add = AsyncMock()
         with (
             patch('handlers_v2.menu._get_staff', AsyncMock(return_value=staff)),
-            patch('handlers_v2.menu.telegram_handler', mock_tg),
+            patch('handlers_v2.menu.telegram_handler', _make_mock_tg()),
+            patch('handlers_v2.inline_flows.handle_add_start', mock_add),
         ):
             from handlers_v2.menu import handle_menu_callback
             await handle_menu_callback({
                 'chat_id': 6001, 'user_id': 7001, 'callback_data': 'menu_add',
             })
 
-        mock_tg.send_message.assert_called_once()
+        mock_add.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_menu_search_shows_hint(self, staff):
+    async def test_menu_voice_sends_hint(self, staff):
+        """menu_voice sends a voice hint message."""
         mock_tg = _make_mock_tg()
         with (
             patch('handlers_v2.menu._get_staff', AsyncMock(return_value=staff)),
@@ -196,7 +199,7 @@ class TestMenuCallbackRouting:
         ):
             from handlers_v2.menu import handle_menu_callback
             await handle_menu_callback({
-                'chat_id': 6001, 'user_id': 7001, 'callback_data': 'menu_search',
+                'chat_id': 6001, 'user_id': 7001, 'callback_data': 'menu_voice',
             })
 
         mock_tg.send_message.assert_called_once()
@@ -320,12 +323,14 @@ class TestQuickStatusCallback:
 class TestFollowupWithButtons:
     @pytest.mark.asyncio
     async def test_followup_empty(self, db, staff):
-        """No overdue clients → single 'empty' message."""
+        """No overdue clients → single 'empty' message (via inline_flows)."""
         mock_tg = _make_mock_tg()
         with (
-            patch('handlers_v2.menu.database_v2', db),
             patch('handlers_v2.menu._get_staff', AsyncMock(return_value=staff)),
             patch('handlers_v2.menu.telegram_handler', mock_tg),
+            patch('handlers_v2.inline_flows.database_v2', db),
+            patch('handlers_v2.inline_flows._get_staff', AsyncMock(return_value=staff)),
+            patch('handlers_v2.inline_flows.telegram_handler', mock_tg),
         ):
             from handlers_v2.menu import handle_menu_callback
             await handle_menu_callback({
@@ -364,8 +369,8 @@ class TestMenuRegistry:
     def test_all_menu_callbacks_registered(self):
         from handlers_v2.menu import MENU_CALLBACKS
         expected = [
-            'menu_pipeline', 'menu_add', 'menu_followup', 'menu_search',
-            'menu_leaderboard', 'menu_hot', 'menu_templates', 'menu_settings',
+            'menu_pipeline', 'menu_add', 'menu_followup', 'menu_leaderboard',
+            'menu_today', 'menu_voice', 'menu_app', 'menu_help',
             'qs_*',
         ]
         for key in expected:
