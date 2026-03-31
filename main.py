@@ -371,23 +371,28 @@ class RalphLoop:
 
     async def _set_menu_button(self):
         """Set the Telegram Menu Button to open the Mini App for all users."""
-        bot_client = telegram_handler.bot_client
-        if bot_client is None:
-            logger.warning("_set_menu_button: no bot_client, skipping")
-            return
         try:
-            from telethon.tl.functions.bots import SetBotMenuButtonRequest
-            from telethon.tl.types import BotMenuButtonWebApp, InputUserEmpty
+            import aiohttp
             from handlers_v2.mini_app import MINI_APP_URL
-
-            await bot_client(SetBotMenuButtonRequest(
-                user_id=InputUserEmpty(),
-                button=BotMenuButtonWebApp(
-                    text='📊 CRM看板',
-                    url=MINI_APP_URL,
-                ),
-            ))
-            logger.info("Menu Button set to Mini App")
+            bot_token = os.getenv('BOT_TOKEN', '')
+            if not bot_token:
+                logger.warning("_set_menu_button: no BOT_TOKEN, skipping")
+                return
+            url = f"https://api.telegram.org/bot{bot_token}/setChatMenuButton"
+            payload = {
+                "menu_button": {
+                    "type": "web_app",
+                    "text": "📊 CRM看板",
+                    "web_app": {"url": MINI_APP_URL},
+                }
+            }
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload) as resp:
+                    data = await resp.json()
+                    if data.get('ok'):
+                        logger.info("Menu Button set to Mini App via Bot API")
+                    else:
+                        logger.warning(f"_set_menu_button API error: {data}")
         except Exception as e:
             logger.warning(f"_set_menu_button failed: {e}")
 
