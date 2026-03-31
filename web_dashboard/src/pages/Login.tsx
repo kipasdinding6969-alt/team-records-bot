@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, isAuthenticated, setToken } from '../api'
+import { api, isAuthenticated, setAuthState } from '../api'
 
 export default function Login() {
   const nav = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -19,8 +20,19 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      const res = await api.login(username, password)
-      setToken(res.access_token)
+      const res = await api.login(username, password, rememberMe)
+      setAuthState(
+        {
+          token: res.access_token,
+          username: res.username,
+          display_name: res.display_name,
+          role: res.role,
+          team_scope: res.team_scope,
+          staff_id: res.staff_id,
+          user_id: res.user_id,
+        },
+        rememberMe
+      )
       nav('/', { replace: true })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '登录失败')
@@ -66,7 +78,7 @@ export default function Login() {
               style={inputStyle}
             />
           </label>
-          <label style={{ display: 'block', marginBottom: 24 }}>
+          <label style={{ display: 'block', marginBottom: 16 }}>
             <span style={{ fontSize: 12, color: '#7f848e', display: 'block', marginBottom: 6 }}>
               密码
             </span>
@@ -77,6 +89,23 @@ export default function Login() {
               required
               style={inputStyle}
             />
+          </label>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginBottom: 24,
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={e => setRememberMe(e.target.checked)}
+              style={{ accentColor: '#00b894', width: 14, height: 14 }}
+            />
+            <span style={{ fontSize: 12, color: '#7f848e' }}>记住我 (30 天)</span>
           </label>
           {error && (
             <div
@@ -126,4 +155,5 @@ const inputStyle: React.CSSProperties = {
   color: '#e0e0e0',
   fontSize: 14,
   outline: 'none',
+  boxSizing: 'border-box',
 }

@@ -99,6 +99,28 @@ export interface ClientList {
   clients: Client[]
 }
 
+export interface DashboardUser {
+  id: number
+  username: string
+  display_name: string
+  role: 'owner' | 'admin' | 'member'
+  staff_id: number | null
+  team_scope: string | null
+  is_active: boolean
+  last_login: string | null
+  created_at: string
+}
+
+export interface AuthState {
+  token: string
+  username: string
+  role: 'owner' | 'admin' | 'member'
+  team_scope: string | null
+  display_name: string
+  staff_id: number | null
+  user_id: number | null
+}
+
 export const STATUS_COLORS: Record<string, string> = {
   new: '#7f848e',
   contacted: '#0f3460',
@@ -127,4 +149,16 @@ export const STATUS_LABELS: Record<string, string> = {
   scammed: '已诈骗',
   scheduled: '已预约',
   dead: '已终止',
+}
+
+export const ROLE_LABELS: Record<string, string> = {
+  owner: '拥有者',
+  admin: '管理员',
+  member: '成员',
+}
+
+export const ROLE_COLORS: Record<string, string> = {
+  owner: '#00b894',
+  admin: '#fdcb6e',
+  member: '#7f848e',
 }

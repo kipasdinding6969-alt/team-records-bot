@@ -132,6 +132,10 @@ def setup_db(temp_db_path):
 @pytest.fixture(scope='module')
 def client(temp_db_path, setup_db):
     os.environ['DB_PATH'] = temp_db_path
+    # Ensure our own credentials are active before reimporting (other test files may overwrite)
+    os.environ['DASHBOARD_USER'] = TEST_USER
+    os.environ['DASHBOARD_PASS'] = TEST_PASS
+    os.environ['JWT_SECRET'] = TEST_JWT_SECRET
     if 'web_dashboard_api' in sys.modules:
         del sys.modules['web_dashboard_api']
     import web_dashboard_api

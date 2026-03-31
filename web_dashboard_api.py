@@ -1,11 +1,14 @@
 """Web Dashboard API for Team Records Bot V2 — port 8501.
 
-Separate from mini_app_api.py (port 8500). Uses JWT auth for managers.
+Separate from mini_app_api.py (port 8500). Uses JWT auth with 3-tier RBAC:
+OWNER → ADMIN → MEMBER backed by dashboard_users table (bcrypt passwords).
 """
+import bcrypt
 import csv
 import io
 import logging
 import os
+import secrets
 from contextlib import asynccontextmanager as _acm
 from datetime import UTC, date, datetime, timedelta
 from typing import Optional
@@ -22,8 +25,6 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-import secrets
-
 DB_PATH = os.getenv('DB_PATH', './team_records_v2.db')
 DASHBOARD_USER = os.getenv('DASHBOARD_USER', '')
 DASHBOARD_PASS = os.getenv('DASHBOARD_PASS', '')
@@ -33,79 +34,30 @@ JWT_EXPIRE_HOURS = 24
 DASHBOARD_DIST = os.path.join(os.path.dirname(__file__), 'web_dashboard', 'dist')
 
 logging.basicConfig(level=logging.INFO)
-_startup_logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 if not JWT_SECRET:
     JWT_SECRET = secrets.token_hex(32)
-    _startup_logger.warning(
+    logger.warning(
         'JWT_SECRET not set — generated random secret. '
         'Sessions will NOT survive restart. Set JWT_SECRET env var for production.'
     )
 
-if not DASHBOARD_USER or not DASHBOARD_PASS:
-    raise RuntimeError(
-        'DASHBOARD_USER and DASHBOARD_PASS must be set as environment variables. '
-        'Refusing to start with empty or default admin credentials.'
-    )
-
-logger = logging.getLogger(__name__)
-
-app = FastAPI(title='Team Records Dashboard API', version='1.0.0')
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=['*'],
-    allow_credentials=True,
-    allow_methods=['*'],
-    allow_headers=['*'],
+_CREATE_DASHBOARD_USERS_SQL = """
+CREATE TABLE IF NOT EXISTS dashboard_users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('owner', 'admin', 'member')),
+    staff_id INTEGER REFERENCES staff(id),
+    team_scope TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_by INTEGER REFERENCES dashboard_users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_login TIMESTAMP
 )
-
-
-# ─── Auth ─────────────────────────────────────────────────────────────────────
-
-security = HTTPBearer(auto_error=False)
-
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-
-def create_token(username: str) -> str:
-    payload = {
-        'sub': username,
-        'exp': datetime.now(UTC) + timedelta(hours=JWT_EXPIRE_HOURS),
-        'iat': datetime.now(UTC),
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-
-def verify_token(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> str:
-    if not credentials:
-        raise HTTPException(status_code=401, detail='Missing token')
-    try:
-        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        username = payload.get('sub')
-        if not username:
-            raise HTTPException(status_code=401, detail='Invalid token')
-        return username
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail='Token expired')
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail='Invalid token')
-
-
-@app.post('/api/auth/login')
-async def login(body: LoginRequest):
-    if body.username != DASHBOARD_USER or body.password != DASHBOARD_PASS:
-        raise HTTPException(status_code=401, detail='Invalid credentials')
-    token = create_token(body.username)
-    return {'access_token': token, 'token_type': 'bearer'}
-
-
-@app.get('/api/auth/verify')
-async def verify_auth(username: str = Depends(verify_token)):
-    return {'ok': True, 'username': username}
+"""
 
 
 # ─── DB helpers ───────────────────────────────────────────────────────────────
@@ -121,16 +73,472 @@ def row_to_dict(row) -> dict:
     return dict(row)
 
 
-# ─── Dashboard aggregate ──────────────────────────────────────────────────────
+# ─── Password helpers ─────────────────────────────────────────────────────────
+
+def _hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+
+def _verify_password(password: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+    except Exception:
+        return False
+
+
+# ─── Lifespan: create table + auto-migrate from env vars ──────────────────────
+
+@_acm
+async def _lifespan(app):
+    async with _connect_db() as db:
+        await db.execute(_CREATE_DASHBOARD_USERS_SQL)
+        await db.commit()
+        async with db.execute('SELECT COUNT(*) AS cnt FROM dashboard_users') as cur:
+            count = (await cur.fetchone())['cnt']
+        if count == 0 and DASHBOARD_USER and DASHBOARD_PASS:
+            hashed = _hash_password(DASHBOARD_PASS)
+            await db.execute(
+                """INSERT INTO dashboard_users
+                   (username, password_hash, display_name, role, team_scope, is_active)
+                   VALUES (?, ?, ?, 'owner', NULL, 1)""",
+                (DASHBOARD_USER, hashed, 'Owner'),
+            )
+            await db.commit()
+            logger.info(f'Auto-migrated owner account from env: {DASHBOARD_USER}')
+    yield
+
+
+app = FastAPI(title='Team Records Dashboard API', version='2.0.0', lifespan=_lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=['*'],
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*'],
+)
+
+
+# ─── Auth models ──────────────────────────────────────────────────────────────
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+    remember_me: bool = False
+
+
+class SetupRequest(BaseModel):
+    username: str
+    password: str
+    display_name: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class ResetPasswordRequest(BaseModel):
+    new_password: str
+
+
+class CreateUserRequest(BaseModel):
+    username: str
+    password: str
+    display_name: str
+    role: str
+    team_scope: Optional[str] = None
+    staff_id: Optional[int] = None
+
+
+class UpdateUserRequest(BaseModel):
+    display_name: Optional[str] = None
+    role: Optional[str] = None
+    team_scope: Optional[str] = None
+    staff_id: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+# ─── JWT + auth dependencies ──────────────────────────────────────────────────
+
+security = HTTPBearer(auto_error=False)
+
+
+def _create_token(user: dict, remember_me: bool = False) -> str:
+    hours = 24 * 30 if remember_me else JWT_EXPIRE_HOURS
+    payload = {
+        'sub': user['username'],
+        'role': user['role'],
+        'team_scope': user.get('team_scope'),
+        'staff_id': user.get('staff_id'),
+        'user_id': user['id'],
+        'display_name': user['display_name'],
+        'exp': datetime.now(UTC) + timedelta(hours=hours),
+        'iat': datetime.now(UTC),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+async def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> dict:
+    if not credentials:
+        raise HTTPException(status_code=401, detail='Missing token')
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        username = payload.get('sub')
+        if not username:
+            raise HTTPException(status_code=401, detail='Invalid token')
+        return {
+            'username': username,
+            'role': payload.get('role', 'member'),
+            'team_scope': payload.get('team_scope'),
+            'staff_id': payload.get('staff_id'),
+            'user_id': payload.get('user_id'),
+            'display_name': payload.get('display_name', username),
+        }
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail='Token expired')
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail='Invalid token')
+
+
+def _require_owner_or_admin(user: dict = Depends(get_current_user)) -> dict:
+    if user['role'] not in ('owner', 'admin'):
+        raise HTTPException(status_code=403, detail='Admin or owner access required')
+    return user
+
+
+# ─── Data scoping helpers ─────────────────────────────────────────────────────
+
+def _scope_clients(user: dict) -> tuple[list[str], list]:
+    """WHERE conditions for queries joining clients c with staff s."""
+    role = user['role']
+    if role == 'owner':
+        return [], []
+    if role == 'admin':
+        return ['s.team = ?'], [user['team_scope']]
+    # member: staff_id required
+    sid = user.get('staff_id')
+    if sid:
+        return ['c.frontdesk_id = ?'], [sid]
+    return ['1 = 0'], []
+
+
+def _scope_staff(user: dict) -> tuple[list[str], list]:
+    """WHERE conditions for queries on staff s only."""
+    role = user['role']
+    if role == 'owner':
+        return [], []
+    if role == 'admin':
+        return ['s.team = ?'], [user['team_scope']]
+    sid = user.get('staff_id')
+    if sid:
+        return ['s.id = ?'], [sid]
+    return ['1 = 0'], []
+
+
+def _scope_daily_stats(user: dict) -> tuple[list[str], list]:
+    """WHERE conditions for daily_stats joined with staff."""
+    role = user['role']
+    if role == 'owner':
+        return [], []
+    if role == 'admin':
+        return ['s.team = ?'], [user['team_scope']]
+    sid = user.get('staff_id')
+    if sid:
+        return ['ds.staff_id = ?'], [sid]
+    return ['1 = 0'], []
+
+
+# ─── Auth endpoints ───────────────────────────────────────────────────────────
+
+@app.post('/api/auth/setup')
+async def setup_first_owner(body: SetupRequest):
+    """Create first owner account. Only works when dashboard_users is empty."""
+    async with _connect_db() as db:
+        async with db.execute('SELECT COUNT(*) AS cnt FROM dashboard_users') as cur:
+            count = (await cur.fetchone())['cnt']
+        if count > 0:
+            raise HTTPException(status_code=400, detail='Setup already complete')
+        if len(body.password) < 6:
+            raise HTTPException(status_code=400, detail='Password must be at least 6 characters')
+        hashed = _hash_password(body.password)
+        await db.execute(
+            """INSERT INTO dashboard_users (username, password_hash, display_name, role, is_active)
+               VALUES (?, ?, ?, 'owner', 1)""",
+            (body.username, hashed, body.display_name),
+        )
+        await db.commit()
+    return {'ok': True, 'message': 'Owner account created'}
+
+
+@app.post('/api/auth/login')
+async def login(body: LoginRequest):
+    async with _connect_db() as db:
+        async with db.execute(
+            """SELECT id, username, password_hash, display_name, role, team_scope,
+                      staff_id, is_active
+               FROM dashboard_users WHERE username = ?""",
+            (body.username,)
+        ) as cur:
+            row = await cur.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=401, detail='Invalid credentials')
+    user = row_to_dict(row)
+    if not user['is_active']:
+        raise HTTPException(status_code=401, detail='Account deactivated')
+    if not _verify_password(body.password, user['password_hash']):
+        raise HTTPException(status_code=401, detail='Invalid credentials')
+
+    # Update last_login
+    async with _connect_db() as db:
+        await db.execute(
+            'UPDATE dashboard_users SET last_login = CURRENT_TIMESTAMP WHERE id = ?',
+            (user['id'],)
+        )
+        await db.commit()
+
+    token = _create_token(user, body.remember_me)
+    return {
+        'access_token': token,
+        'token_type': 'bearer',
+        'username': user['username'],
+        'display_name': user['display_name'],
+        'role': user['role'],
+        'team_scope': user['team_scope'],
+        'staff_id': user['staff_id'],
+        'user_id': user['id'],
+    }
+
+
+@app.get('/api/auth/verify')
+async def verify_auth(user: dict = Depends(get_current_user)):
+    return {
+        'ok': True,
+        'username': user['username'],
+        'role': user['role'],
+        'team_scope': user['team_scope'],
+        'display_name': user['display_name'],
+        'staff_id': user['staff_id'],
+        'user_id': user['user_id'],
+    }
+
+
+@app.post('/api/auth/change-password')
+async def change_password(body: ChangePasswordRequest, user: dict = Depends(get_current_user)):
+    async with _connect_db() as db:
+        async with db.execute(
+            'SELECT password_hash FROM dashboard_users WHERE username = ?',
+            (user['username'],)
+        ) as cur:
+            row = await cur.fetchone()
+        if not row or not _verify_password(body.current_password, row['password_hash']):
+            raise HTTPException(status_code=401, detail='Current password incorrect')
+        if len(body.new_password) < 6:
+            raise HTTPException(status_code=400, detail='Password must be at least 6 characters')
+        hashed = _hash_password(body.new_password)
+        await db.execute(
+            'UPDATE dashboard_users SET password_hash = ? WHERE username = ?',
+            (hashed, user['username'])
+        )
+        await db.commit()
+    return {'ok': True}
+
+
+# ─── User management endpoints ────────────────────────────────────────────────
+
+@app.get('/api/users')
+async def list_users(user: dict = Depends(_require_owner_or_admin)):
+    async with _connect_db() as db:
+        if user['role'] == 'owner':
+            async with db.execute(
+                """SELECT id, username, display_name, role, team_scope, staff_id,
+                          is_active, last_login, created_at
+                   FROM dashboard_users ORDER BY created_at"""
+            ) as cur:
+                rows = [row_to_dict(r) for r in await cur.fetchall()]
+        else:
+            async with db.execute(
+                """SELECT id, username, display_name, role, team_scope, staff_id,
+                          is_active, last_login, created_at
+                   FROM dashboard_users WHERE team_scope = ?
+                   ORDER BY created_at""",
+                (user['team_scope'],)
+            ) as cur:
+                rows = [row_to_dict(r) for r in await cur.fetchall()]
+    return rows
+
+
+@app.post('/api/users', status_code=201)
+async def create_user(body: CreateUserRequest, user: dict = Depends(_require_owner_or_admin)):
+    # RBAC: admin can only create members in their own team
+    if user['role'] == 'admin':
+        if body.role != 'member':
+            raise HTTPException(status_code=403, detail='Admin can only create member accounts')
+        if body.team_scope != user['team_scope']:
+            raise HTTPException(status_code=403, detail='Admin can only create users in their own team')
+
+    valid_roles = ('owner', 'admin', 'member')
+    if body.role not in valid_roles:
+        raise HTTPException(status_code=400, detail=f'Invalid role. Must be one of: {valid_roles}')
+    if len(body.password) < 6:
+        raise HTTPException(status_code=400, detail='Password must be at least 6 characters')
+
+    hashed = _hash_password(body.password)
+    async with _connect_db() as db:
+        try:
+            await db.execute(
+                """INSERT INTO dashboard_users
+                   (username, password_hash, display_name, role, team_scope, staff_id, is_active, created_by)
+                   VALUES (?, ?, ?, ?, ?, ?, 1, ?)""",
+                (body.username, hashed, body.display_name, body.role,
+                 body.team_scope, body.staff_id, user['user_id'])
+            )
+            await db.commit()
+            async with db.execute(
+                'SELECT id FROM dashboard_users WHERE username = ?', (body.username,)
+            ) as cur:
+                new_id = (await cur.fetchone())['id']
+        except aiosqlite.IntegrityError:
+            raise HTTPException(status_code=409, detail='Username already exists')
+
+    return {'ok': True, 'id': new_id}
+
+
+@app.put('/api/users/{user_id}')
+async def update_user(
+    user_id: int, body: UpdateUserRequest, actor: dict = Depends(_require_owner_or_admin)
+):
+    async with _connect_db() as db:
+        async with db.execute(
+            'SELECT id, username, role, team_scope, is_active FROM dashboard_users WHERE id = ?',
+            (user_id,)
+        ) as cur:
+            target = await cur.fetchone()
+        if not target:
+            raise HTTPException(status_code=404, detail='User not found')
+        target = row_to_dict(target)
+
+        # RBAC checks
+        if actor['role'] == 'admin':
+            if target['team_scope'] != actor['team_scope']:
+                raise HTTPException(status_code=403, detail='Cannot edit users outside your team')
+            if target['role'] != 'member':
+                raise HTTPException(status_code=403, detail='Admin can only edit member accounts')
+            if body.role is not None and body.role != 'member':
+                raise HTTPException(status_code=403, detail='Admin cannot change role to non-member')
+            if body.team_scope is not None and body.team_scope != actor['team_scope']:
+                raise HTTPException(status_code=403, detail='Admin cannot move users to other teams')
+
+        updates = {}
+        if body.display_name is not None:
+            updates['display_name'] = body.display_name
+        if body.role is not None:
+            if body.role not in ('owner', 'admin', 'member'):
+                raise HTTPException(status_code=400, detail='Invalid role')
+            updates['role'] = body.role
+        if body.team_scope is not None:
+            updates['team_scope'] = body.team_scope
+        if body.staff_id is not None:
+            updates['staff_id'] = body.staff_id
+        if body.is_active is not None:
+            updates['is_active'] = 1 if body.is_active else 0
+
+        if not updates:
+            return {'ok': True}
+
+        set_clause = ', '.join(f'{k} = ?' for k in updates)
+        params = list(updates.values()) + [user_id]
+        await db.execute(f'UPDATE dashboard_users SET {set_clause} WHERE id = ?', params)
+        await db.commit()
+
+    return {'ok': True}
+
+
+@app.delete('/api/users/{user_id}')
+async def deactivate_user(user_id: int, actor: dict = Depends(_require_owner_or_admin)):
+    if actor['user_id'] == user_id:
+        raise HTTPException(status_code=400, detail='Cannot deactivate your own account')
+
+    async with _connect_db() as db:
+        async with db.execute(
+            'SELECT id, role, team_scope FROM dashboard_users WHERE id = ?', (user_id,)
+        ) as cur:
+            target = await cur.fetchone()
+        if not target:
+            raise HTTPException(status_code=404, detail='User not found')
+        target = row_to_dict(target)
+
+        if actor['role'] == 'admin':
+            if target['team_scope'] != actor['team_scope']:
+                raise HTTPException(status_code=403, detail='Cannot deactivate users outside your team')
+            if target['role'] != 'member':
+                raise HTTPException(status_code=403, detail='Admin can only deactivate members')
+
+        await db.execute('UPDATE dashboard_users SET is_active = 0 WHERE id = ?', (user_id,))
+        await db.commit()
+
+    return {'ok': True}
+
+
+@app.post('/api/users/{user_id}/reset-password')
+async def reset_password(
+    user_id: int, body: ResetPasswordRequest, actor: dict = Depends(_require_owner_or_admin)
+):
+    async with _connect_db() as db:
+        async with db.execute(
+            'SELECT id, role, team_scope FROM dashboard_users WHERE id = ?', (user_id,)
+        ) as cur:
+            target = await cur.fetchone()
+        if not target:
+            raise HTTPException(status_code=404, detail='User not found')
+        target = row_to_dict(target)
+
+        if actor['role'] == 'admin':
+            if target['team_scope'] != actor['team_scope']:
+                raise HTTPException(status_code=403, detail='Cannot reset password for users outside your team')
+            if target['role'] != 'member':
+                raise HTTPException(status_code=403, detail='Admin can only reset member passwords')
+
+        if len(body.new_password) < 6:
+            raise HTTPException(status_code=400, detail='Password must be at least 6 characters')
+
+        hashed = _hash_password(body.new_password)
+        await db.execute('UPDATE dashboard_users SET password_hash = ? WHERE id = ?', (hashed, user_id))
+        await db.commit()
+
+    return {'ok': True}
+
+
+# ─── Dashboard aggregate (scoped) ─────────────────────────────────────────────
 
 @app.get('/api/dashboard')
-async def get_dashboard(username: str = Depends(verify_token)):
+async def get_dashboard(user: dict = Depends(get_current_user)):
     today = date.today().isoformat()
     now_iso = datetime.now(UTC).isoformat()
+    scope_conds, scope_params = _scope_clients(user)
+
+    # Build client-level scope for the aggregate (no staff join in subquery)
+    if user['role'] == 'owner':
+        client_where = ''
+        client_params: list = []
+    elif user['role'] == 'admin':
+        client_where = 'WHERE frontdesk_id IN (SELECT id FROM staff WHERE team = ?)'
+        client_params = [user['team_scope']]
+    else:
+        sid = user.get('staff_id')
+        if sid:
+            client_where = 'WHERE frontdesk_id = ?'
+            client_params = [sid]
+        else:
+            client_where = 'WHERE 1 = 0'
+            client_params = []
+
     async with _connect_db() as db:
-        # Combined clients aggregation — replaces 6 separate COUNT queries
         async with db.execute(
-            """SELECT
+            f"""SELECT
                 COUNT(*) AS total_clients,
                 SUM(CASE WHEN status IN ('new','contacted','replied','registered','training','scheduled')
                     THEN 1 ELSE 0 END) AS total_active,
@@ -141,24 +549,64 @@ async def get_dashboard(username: str = Depends(verify_token)):
                     AND status NOT IN ('ordered','withdrew','dead','blocked','scammed')
                     THEN 1 ELSE 0 END) AS overdue_followups,
                 SUM(CASE WHEN status = 'ordered' THEN 1 ELSE 0 END) AS ordered_count
-               FROM clients""",
-            (today, today, today, now_iso)
+               FROM clients {client_where}""",
+            (today, today, today, now_iso, *client_params)
         ) as cur:
             agg = row_to_dict(await cur.fetchone())
 
-        async with db.execute('SELECT status, COUNT(*) AS cnt FROM clients GROUP BY status') as cur:
+        async with db.execute(
+            f'SELECT status, COUNT(*) AS cnt FROM clients {client_where} GROUP BY status',
+            client_params
+        ) as cur:
             by_status = {r['status']: r['cnt'] for r in await cur.fetchall()}
 
+        deposit_where = client_where.replace('frontdesk_id', 'client_id IN (SELECT id FROM clients WHERE frontdesk_id')
+        # Simpler: just subquery for scoped deposits
+        if user['role'] == 'owner':
+            dep_filter = ''
+            dep_params: list = []
+        elif user['role'] == 'admin':
+            dep_filter = 'WHERE client_id IN (SELECT c.id FROM clients c JOIN staff s ON c.frontdesk_id = s.id WHERE s.team = ?)'
+            dep_params = [user['team_scope']]
+        else:
+            sid = user.get('staff_id')
+            if sid:
+                dep_filter = 'WHERE client_id IN (SELECT id FROM clients WHERE frontdesk_id = ?)'
+                dep_params = [sid]
+            else:
+                dep_filter = 'WHERE 1 = 0'
+                dep_params = []
+
         async with db.execute(
+            f"SELECT COALESCE(SUM(amount), 0) AS total FROM deposits {dep_filter} AND DATE(deposit_date) = ?"
+            if dep_filter else
             "SELECT COALESCE(SUM(amount), 0) AS total FROM deposits WHERE DATE(deposit_date) = ?",
-            (today,)
+            (*dep_params, today) if dep_filter else (today,)
         ) as cur:
             today_deposits = float((await cur.fetchone())['total'])
 
-        async with db.execute("SELECT COALESCE(SUM(amount), 0) AS total FROM deposits") as cur:
+        async with db.execute(
+            f"SELECT COALESCE(SUM(amount), 0) AS total FROM deposits {dep_filter}",
+            dep_params
+        ) as cur:
             total_deposits = float((await cur.fetchone())['total'])
 
-        async with db.execute("SELECT COUNT(*) AS cnt FROM staff WHERE is_active = 1") as cur:
+        if user['role'] == 'owner':
+            staff_sql = 'SELECT COUNT(*) AS cnt FROM staff WHERE is_active = 1'
+            staff_params: list = []
+        elif user['role'] == 'admin':
+            staff_sql = 'SELECT COUNT(*) AS cnt FROM staff WHERE is_active = 1 AND team = ?'
+            staff_params = [user['team_scope']]
+        else:
+            sid = user.get('staff_id')
+            if sid:
+                staff_sql = 'SELECT COUNT(*) AS cnt FROM staff WHERE is_active = 1 AND id = ?'
+                staff_params = [sid]
+            else:
+                staff_sql = 'SELECT 0 AS cnt'
+                staff_params = []
+
+        async with db.execute(staff_sql, staff_params) as cur:
             total_staff = (await cur.fetchone())['cnt']
 
     total_clients = agg['total_clients'] or 0
@@ -180,63 +628,103 @@ async def get_dashboard(username: str = Depends(verify_token)):
     }
 
 
-# ─── Funnel ───────────────────────────────────────────────────────────────────
+# ─── Funnel (scoped) ──────────────────────────────────────────────────────────
 
 PIPELINE_STAGES = ['new', 'contacted', 'replied', 'registered', 'training', 'ordered']
 
 
 @app.get('/api/funnel')
-async def get_funnel(username: str = Depends(verify_token)):
+async def get_funnel(user: dict = Depends(get_current_user)):
+    if user['role'] == 'owner':
+        where, params = '', []
+    elif user['role'] == 'admin':
+        where = 'WHERE frontdesk_id IN (SELECT id FROM staff WHERE team = ?)'
+        params = [user['team_scope']]
+    else:
+        sid = user.get('staff_id')
+        if sid:
+            where, params = 'WHERE frontdesk_id = ?', [sid]
+        else:
+            where, params = 'WHERE 1 = 0', []
+
     async with _connect_db() as db:
-        async with db.execute('SELECT status, COUNT(*) AS cnt FROM clients GROUP BY status') as cur:
+        async with db.execute(
+            f'SELECT status, COUNT(*) AS cnt FROM clients {where} GROUP BY status', params
+        ) as cur:
             counts = {r['status']: r['cnt'] for r in await cur.fetchall()}
 
     top = counts.get('new', 0) or 1
     funnel = []
     for stage in PIPELINE_STAGES:
         cnt = counts.get(stage, 0)
-        funnel.append({
-            'stage': stage,
-            'count': cnt,
-            'pct': round(cnt / top * 100, 1),
-        })
+        funnel.append({'stage': stage, 'count': cnt, 'pct': round(cnt / top * 100, 1)})
     return funnel
 
 
-# ─── Activity feed ────────────────────────────────────────────────────────────
+# ─── Activity feed (scoped) ───────────────────────────────────────────────────
 
 @app.get('/api/activity')
-async def get_activity(username: str = Depends(verify_token)):
+async def get_activity(user: dict = Depends(get_current_user)):
+    if user['role'] == 'owner':
+        where, params = '', []
+    elif user['role'] == 'admin':
+        where = 'WHERE s.team = ?'
+        params = [user['team_scope']]
+    else:
+        sid = user.get('staff_id')
+        if sid:
+            where, params = 'WHERE cn.staff_id = ?', [sid]
+        else:
+            where, params = 'WHERE 1 = 0', []
+
     async with _connect_db() as db:
         async with db.execute(
-            """SELECT cn.id, cn.note_type, cn.old_status, cn.new_status, cn.content,
+            f"""SELECT cn.id, cn.note_type, cn.old_status, cn.new_status, cn.content,
                       cn.created_at, s.display_name AS staff_name,
                       c.phone AS client_phone, c.id AS client_id
                FROM client_notes cn
                LEFT JOIN staff s ON cn.staff_id = s.id
                LEFT JOIN clients c ON cn.client_id = c.id
+               {where}
                ORDER BY cn.created_at DESC
-               LIMIT 50"""
+               LIMIT 50""",
+            params
         ) as cur:
             return [row_to_dict(r) for r in await cur.fetchall()]
 
 
-# ─── Staff list ───────────────────────────────────────────────────────────────
+# ─── Staff list (scoped) ──────────────────────────────────────────────────────
 
 @app.get('/api/staff')
-async def get_staff(username: str = Depends(verify_token)):
+async def get_staff(user: dict = Depends(get_current_user)):
     today = date.today().isoformat()
+
+    if user['role'] == 'owner':
+        staff_where = 'WHERE s.is_active = 1'
+        staff_params: list = []
+    elif user['role'] == 'admin':
+        staff_where = 'WHERE s.is_active = 1 AND s.team = ?'
+        staff_params = [user['team_scope']]
+    else:
+        sid = user.get('staff_id')
+        if sid:
+            staff_where = 'WHERE s.is_active = 1 AND s.id = ?'
+            staff_params = [sid]
+        else:
+            return []
+
     async with _connect_db() as db:
         async with db.execute(
-            """SELECT s.id, s.display_name, s.role, s.team, s.is_active, s.daily_target,
+            f"""SELECT s.id, s.display_name, s.role, s.team, s.is_active, s.daily_target,
                       COALESCE(SUM(x.xp_amount), 0) AS xp_total,
                       COALESCE(st.current_streak, 0) AS current_streak
                FROM staff s
                LEFT JOIN xp_events x ON x.staff_id = s.id
                LEFT JOIN streaks st ON st.staff_id = s.id
-               WHERE s.is_active = 1
+               {staff_where}
                GROUP BY s.id
-               ORDER BY xp_total DESC"""
+               ORDER BY xp_total DESC""",
+            staff_params
         ) as cur:
             staff_rows = [row_to_dict(r) for r in await cur.fetchall()]
 
@@ -293,17 +781,31 @@ async def get_staff(username: str = Depends(verify_token)):
     return result
 
 
-# ─── Team performance ─────────────────────────────────────────────────────────
+# ─── Team performance (scoped) ────────────────────────────────────────────────
 
 @app.get('/api/team/{team}/performance')
-async def get_team_performance(team: str, username: str = Depends(verify_token)):
+async def get_team_performance(team: str, user: dict = Depends(get_current_user)):
+    # Admin can only view their own team
+    if user['role'] == 'admin' and user['team_scope'] != team:
+        raise HTTPException(status_code=403, detail='Access denied to other teams')
+
     today = date.today().isoformat()
     async with _connect_db() as db:
-        async with db.execute(
-            "SELECT id, display_name, role FROM staff WHERE team = ? AND is_active = 1",
-            (team,)
-        ) as cur:
-            members = [row_to_dict(r) for r in await cur.fetchall()]
+        if user['role'] == 'member':
+            sid = user.get('staff_id')
+            if not sid:
+                return {'team': team, 'members': [], 'totals': {}}
+            async with db.execute(
+                'SELECT id, display_name, role FROM staff WHERE team = ? AND is_active = 1 AND id = ?',
+                (team, sid)
+            ) as cur:
+                members = [row_to_dict(r) for r in await cur.fetchall()]
+        else:
+            async with db.execute(
+                'SELECT id, display_name, role FROM staff WHERE team = ? AND is_active = 1',
+                (team,)
+            ) as cur:
+                members = [row_to_dict(r) for r in await cur.fetchall()]
 
         if not members:
             return {'team': team, 'members': [], 'totals': {}}
@@ -332,33 +834,61 @@ async def get_team_performance(team: str, username: str = Depends(verify_token))
     return {'team': team, 'members': members, 'totals': totals}
 
 
-# ─── Trends (30 days) ─────────────────────────────────────────────────────────
+# ─── Trends (scoped) ──────────────────────────────────────────────────────────
 
 @app.get('/api/trends')
-async def get_trends(username: str = Depends(verify_token)):
+async def get_trends(user: dict = Depends(get_current_user)):
+    if user['role'] == 'owner':
+        client_filter, dep_filter = '', ''
+        c_params: list = []
+        d_params: list = []
+    elif user['role'] == 'admin':
+        client_filter = 'AND frontdesk_id IN (SELECT id FROM staff WHERE team = ?)'
+        dep_filter = 'AND client_id IN (SELECT c.id FROM clients c JOIN staff s ON c.frontdesk_id = s.id WHERE s.team = ?)'
+        c_params = [user['team_scope']]
+        d_params = [user['team_scope']]
+    else:
+        sid = user.get('staff_id')
+        if sid:
+            client_filter = 'AND frontdesk_id = ?'
+            dep_filter = 'AND client_id IN (SELECT id FROM clients WHERE frontdesk_id = ?)'
+            c_params = [sid]
+            d_params = [sid]
+        else:
+            client_filter = 'AND 1 = 0'
+            dep_filter = 'AND 1 = 0'
+            c_params = []
+            d_params = []
+
     async with _connect_db() as db:
         async with db.execute(
-            """SELECT DATE(created_at) AS day, COUNT(*) AS new_clients
+            f"""SELECT DATE(created_at) AS day, COUNT(*) AS new_clients
                FROM clients
                WHERE DATE(created_at) >= DATE('now', '-30 days')
-               GROUP BY day ORDER BY day"""
+               {client_filter}
+               GROUP BY day ORDER BY day""",
+            c_params
         ) as cur:
             daily_new = [row_to_dict(r) for r in await cur.fetchall()]
 
         async with db.execute(
-            """SELECT DATE(first_order_at) AS day, COUNT(*) AS orders
+            f"""SELECT DATE(first_order_at) AS day, COUNT(*) AS orders
                FROM clients
                WHERE first_order_at IS NOT NULL
                AND DATE(first_order_at) >= DATE('now', '-30 days')
-               GROUP BY day ORDER BY day"""
+               {client_filter}
+               GROUP BY day ORDER BY day""",
+            c_params
         ) as cur:
             daily_orders = [row_to_dict(r) for r in await cur.fetchall()]
 
         async with db.execute(
-            """SELECT DATE(deposit_date) AS day, COALESCE(SUM(amount), 0) AS total
+            f"""SELECT DATE(deposit_date) AS day, COALESCE(SUM(amount), 0) AS total
                FROM deposits
                WHERE DATE(deposit_date) >= DATE('now', '-30 days')
-               GROUP BY day ORDER BY day"""
+               {dep_filter}
+               GROUP BY day ORDER BY day""",
+            d_params
         ) as cur:
             daily_deposits = [row_to_dict(r) for r in await cur.fetchall()]
 
@@ -369,7 +899,7 @@ async def get_trends(username: str = Depends(verify_token)):
     }
 
 
-# ─── Clients list (paginated, filterable) ─────────────────────────────────────
+# ─── Clients list (paginated, filterable, scoped) ─────────────────────────────
 
 @app.get('/api/clients')
 async def list_clients(
@@ -379,18 +909,26 @@ async def list_clients(
     search: Optional[str] = None,
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=50, le=200),
-    username: str = Depends(verify_token),
+    user: dict = Depends(get_current_user),
 ):
     conditions: list[str] = []
     params: list = []
 
+    # Data scope: apply before user filters
+    scope_conds, scope_params = _scope_clients(user)
+    conditions.extend(scope_conds)
+    params.extend(scope_params)
+
     if status:
         conditions.append('c.status = ?')
         params.append(status)
-    if team:
+    # Admin can't bypass their team scope via team param
+    if team and user['role'] == 'owner':
         conditions.append('s.team = ?')
         params.append(team)
-    if staff_id:
+    elif team and user['role'] == 'admin' and team == user['team_scope']:
+        pass  # already scoped to their team
+    if staff_id and user['role'] != 'member':
         conditions.append('c.frontdesk_id = ?')
         params.append(staff_id)
     if search:
@@ -424,16 +962,17 @@ async def list_clients(
     return {'total': total, 'page': page, 'per_page': per_page, 'clients': clients}
 
 
-# ─── Client detail ────────────────────────────────────────────────────────────
+# ─── Client detail (scoped) ───────────────────────────────────────────────────
 
 @app.get('/api/clients/{client_id}')
-async def get_client_detail(client_id: int, username: str = Depends(verify_token)):
+async def get_client_detail(client_id: int, user: dict = Depends(get_current_user)):
     async with _connect_db() as db:
         async with db.execute(
             """SELECT c.id, c.phone, c.status, c.source, c.total_deposited,
                       c.created_at, c.contacted_at, c.replied_at, c.registered_at,
                       c.training_at, c.first_order_at, c.next_followup,
-                      s.display_name AS frontdesk_name, s.team
+                      s.display_name AS frontdesk_name, s.team, c.frontdesk_id,
+                      s.team AS staff_team
                FROM clients c
                LEFT JOIN staff s ON c.frontdesk_id = s.id
                WHERE c.id = ?""",
@@ -444,6 +983,14 @@ async def get_client_detail(client_id: int, username: str = Depends(verify_token
         if not row:
             raise HTTPException(status_code=404, detail='Client not found')
         client = row_to_dict(row)
+
+        # Scope check
+        if user['role'] == 'admin' and client.get('staff_team') != user['team_scope']:
+            raise HTTPException(status_code=403, detail='Access denied')
+        if user['role'] == 'member':
+            sid = user.get('staff_id')
+            if client.get('frontdesk_id') != sid:
+                raise HTTPException(status_code=403, detail='Access denied')
 
         async with db.execute(
             """SELECT cn.id, cn.content, cn.note_type, cn.old_status, cn.new_status,
@@ -464,25 +1011,33 @@ async def get_client_detail(client_id: int, username: str = Depends(verify_token
         ) as cur:
             client['deposits'] = [row_to_dict(r) for r in await cur.fetchall()]
 
+    # Remove internal fields before returning
+    client.pop('frontdesk_id', None)
+    client.pop('staff_team', None)
     return client
 
 
-# ─── Export clients CSV ───────────────────────────────────────────────────────
+# ─── Export clients CSV (scoped) ──────────────────────────────────────────────
 
 @app.get('/api/export/clients')
 async def export_clients(
     status: Optional[str] = None,
     team: Optional[str] = None,
-    username: str = Depends(verify_token),
+    user: dict = Depends(get_current_user),
 ):
     conditions: list[str] = []
     params: list = []
+    scope_conds, scope_params = _scope_clients(user)
+    conditions.extend(scope_conds)
+    params.extend(scope_params)
+
     if status:
         conditions.append('c.status = ?')
         params.append(status)
-    if team:
+    if team and user['role'] == 'owner':
         conditions.append('s.team = ?')
         params.append(team)
+
     where = f'WHERE {" AND ".join(conditions)}' if conditions else ''
 
     async with _connect_db() as db:
@@ -515,25 +1070,42 @@ async def export_clients(
     )
 
 
-# ─── Export report CSV ────────────────────────────────────────────────────────
+# ─── Export report CSV (scoped) ───────────────────────────────────────────────
 
 @app.get('/api/export/report')
 async def export_report(
     period: str = Query(default='daily', pattern='^(daily|weekly|monthly)$'),
-    username: str = Depends(verify_token),
+    user: dict = Depends(get_current_user),
 ):
     today = date.today().isoformat()
+
+    if user['role'] == 'owner':
+        scope_where = ''
+        scope_params: list = []
+    elif user['role'] == 'admin':
+        scope_where = 'AND s.team = ?'
+        scope_params = [user['team_scope']]
+    else:
+        sid = user.get('staff_id')
+        if sid:
+            scope_where = 'AND ds.staff_id = ?'
+            scope_params = [sid]
+        else:
+            scope_where = 'AND 1 = 0'
+            scope_params = []
+
     async with _connect_db() as db:
         if period == 'daily':
             async with db.execute(
-                """SELECT s.display_name, s.team, ds.new_leads, ds.contacted,
+                f"""SELECT s.display_name, s.team, ds.new_leads, ds.contacted,
                           ds.replied, ds.registered, ds.new_orders, ds.total_deposit,
                           ds.reply_rate, ds.conversion_rate
                    FROM daily_stats ds
                    JOIN staff s ON ds.staff_id = s.id
                    WHERE ds.stat_date = ?
+                   {scope_where}
                    ORDER BY ds.new_orders DESC""",
-                (today,)
+                (today, *scope_params)
             ) as cur:
                 rows = [row_to_dict(r) for r in await cur.fetchall()]
         else:
@@ -549,8 +1121,10 @@ async def export_report(
                    FROM daily_stats ds
                    JOIN staff s ON ds.staff_id = s.id
                    WHERE ds.stat_date >= DATE('now', '-{days} days')
+                   {scope_where}
                    GROUP BY ds.staff_id
-                   ORDER BY new_orders DESC"""
+                   ORDER BY new_orders DESC""",
+                scope_params
             ) as cur:
                 rows = [row_to_dict(r) for r in await cur.fetchall()]
 

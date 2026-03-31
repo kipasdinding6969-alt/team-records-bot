@@ -1,30 +1,64 @@
 import type {
   Activity,
+  AuthState,
   Client,
   ClientDetail,
   ClientList,
   DashboardStats,
+  DashboardUser,
   FunnelStage,
   Staff,
   Trends,
 } from './types'
 
 const BASE = ''
+const AUTH_STATE_KEY = 'dashboard_auth_state'
+
+// ─── Auth state storage ────────────────────────────────────────────────────────
+
+export function getAuthState(): AuthState | null {
+  const raw = localStorage.getItem(AUTH_STATE_KEY) || sessionStorage.getItem(AUTH_STATE_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as AuthState
+  } catch {
+    return null
+  }
+}
+
+export function setAuthState(state: AuthState, persistent = true) {
+  const raw = JSON.stringify(state)
+  if (persistent) {
+    localStorage.setItem(AUTH_STATE_KEY, raw)
+  } else {
+    sessionStorage.setItem(AUTH_STATE_KEY, raw)
+  }
+}
+
+export function clearAuthState() {
+  localStorage.removeItem(AUTH_STATE_KEY)
+  sessionStorage.removeItem(AUTH_STATE_KEY)
+  localStorage.removeItem('dashboard_token')
+}
 
 export function getToken(): string {
-  return localStorage.getItem('dashboard_token') || ''
+  return getAuthState()?.token || localStorage.getItem('dashboard_token') || ''
 }
 
 export function setToken(token: string) {
   localStorage.setItem('dashboard_token', token)
 }
 
-export function clearToken() {
-  localStorage.removeItem('dashboard_token')
-}
-
 export function isAuthenticated(): boolean {
   return !!getToken()
+}
+
+export function getRole(): AuthState['role'] | null {
+  return getAuthState()?.role ?? null
+}
+
+export function getTeamScope(): string | null {
+  return getAuthState()?.team_scope ?? null
 }
 
 function authHeaders(): Record<string, string> {
@@ -42,7 +76,7 @@ async function req<T>(path: string, options: RequestInit = {}): Promise<T> {
     },
   })
   if (res.status === 401) {
-    clearToken()
+    clearAuthState()
     window.location.href = '/login'
     throw new Error('Unauthorized')
   }
@@ -66,13 +100,43 @@ async function downloadCsv(path: string, filename: string) {
 }
 
 export const api = {
-  login: (username: string, password: string) =>
-    req<{ access_token: string; token_type: string }>('/api/auth/login', {
+  setup: (username: string, password: string, display_name: string) =>
+    req<{ ok: boolean; message: string }>('/api/auth/setup', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, display_name }),
     }),
 
-  verify: () => req<{ ok: boolean; username: string }>('/api/auth/verify'),
+  login: (username: string, password: string, remember_me = false) =>
+    req<{
+      access_token: string
+      token_type: string
+      username: string
+      display_name: string
+      role: AuthState['role']
+      team_scope: string | null
+      staff_id: number | null
+      user_id: number
+    }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, remember_me }),
+    }),
+
+  verify: () =>
+    req<{
+      ok: boolean
+      username: string
+      role: AuthState['role']
+      team_scope: string | null
+      display_name: string
+      staff_id: number | null
+      user_id: number
+    }>('/api/auth/verify'),
+
+  changePassword: (current_password: string, new_password: string) =>
+    req<{ ok: boolean }>('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password, new_password }),
+    }),
 
   dashboard: () => req<DashboardStats>('/api/dashboard'),
 
@@ -94,7 +158,6 @@ export const api = {
 
   clientDetail: (id: number) => req<ClientDetail>(`/api/clients/${id}`),
 
-  // pipeline endpoint reused from mini app (same DB)
   pipeline: () => req<Record<string, Client[]>>('/api/pipeline'),
 
   exportClients: (status?: string, team?: string) => {
@@ -109,4 +172,44 @@ export const api = {
     const today = new Date().toISOString().split('T')[0]
     return downloadCsv(`/api/export/report?period=${period}`, `report_${period}_${today}.csv`)
   },
+
+  // User management
+  listUsers: () => req<DashboardUser[]>('/api/users'),
+
+  createUser: (data: {
+    username: string
+    password: string
+    display_name: string
+    role: string
+    team_scope?: string | null
+    staff_id?: number | null
+  }) =>
+    req<{ ok: boolean; id: number }>('/api/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateUser: (
+    id: number,
+    data: {
+      display_name?: string
+      role?: string
+      team_scope?: string | null
+      staff_id?: number | null
+      is_active?: boolean
+    }
+  ) =>
+    req<{ ok: boolean }>(`/api/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deactivateUser: (id: number) =>
+    req<{ ok: boolean }>(`/api/users/${id}`, { method: 'DELETE' }),
+
+  resetPassword: (id: number, new_password: string) =>
+    req<{ ok: boolean }>(`/api/users/${id}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ new_password }),
+    }),
 }
