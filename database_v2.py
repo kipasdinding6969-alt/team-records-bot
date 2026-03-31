@@ -383,6 +383,54 @@ class DatabaseV2:
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_broadcast_log_staff ON broadcast_log(staff_id, started_at);
+
+                -- Phase 9A: Smart Tags
+                CREATE TABLE IF NOT EXISTS client_tags (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id   INTEGER NOT NULL REFERENCES clients(id),
+                    tag         TEXT NOT NULL,
+                    tagged_by   INTEGER REFERENCES staff(id),
+                    created_at  TIMESTAMP DEFAULT (datetime('now')),
+                    UNIQUE(client_id, tag)
+                );
+                CREATE INDEX IF NOT EXISTS idx_client_tags_client ON client_tags(client_id);
+                CREATE INDEX IF NOT EXISTS idx_client_tags_tag ON client_tags(tag);
+
+                -- Phase 9B: Client Timeline
+                CREATE TABLE IF NOT EXISTS client_events (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id   INTEGER NOT NULL REFERENCES clients(id),
+                    event_type  TEXT NOT NULL,
+                    event_data  TEXT,
+                    staff_id    INTEGER REFERENCES staff(id),
+                    created_at  TIMESTAMP DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_client_events_client ON client_events(client_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_client_events_type ON client_events(event_type, created_at);
+
+                -- Phase 9C: SLA Tracking
+                CREATE TABLE IF NOT EXISTS sla_events (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id       INTEGER NOT NULL REFERENCES clients(id),
+                    staff_id        INTEGER NOT NULL REFERENCES staff(id),
+                    event_type      TEXT NOT NULL,
+                    target_minutes  INTEGER NOT NULL,
+                    actual_minutes  INTEGER,
+                    met             BOOLEAN,
+                    started_at      TIMESTAMP NOT NULL,
+                    completed_at    TIMESTAMP,
+                    created_at      TIMESTAMP DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_sla_events_staff ON sla_events(staff_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_sla_events_open ON sla_events(completed_at, started_at);
+
+                CREATE TABLE IF NOT EXISTS sla_config (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_type      TEXT NOT NULL UNIQUE,
+                    target_minutes  INTEGER NOT NULL,
+                    warning_minutes INTEGER NOT NULL,
+                    critical_minutes INTEGER NOT NULL
+                );
             """)
             await db.commit()
 
@@ -406,6 +454,7 @@ class DatabaseV2:
 
         await self.seed_team_structure()
         await self.auto_assign_teams()
+        await self.seed_sla_defaults()
         logger.info("DatabaseV2 initialized")
 
     # ─── Staff CRUD ─────────────────────────────────────────────────────────
@@ -2209,6 +2258,317 @@ class DatabaseV2:
                     (limit,))
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
+
+
+    # ─── Phase 9A: Client Tags ────────────────────────────────────────────────
+
+    async def add_tag(self, client_id: int, tag: str, tagged_by: int) -> bool:
+        """Add a tag to a client. Returns True if inserted, False if already existed."""
+        async with self.get_connection() as db:
+            try:
+                await db.execute(
+                    'INSERT INTO client_tags (client_id, tag, tagged_by) VALUES (?,?,?)',
+                    (client_id, tag.lower().strip(), tagged_by))
+                await db.commit()
+                return True
+            except Exception:
+                return False
+
+    async def remove_tag(self, client_id: int, tag: str) -> bool:
+        """Remove a tag from a client. Returns True if deleted."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'DELETE FROM client_tags WHERE client_id=? AND tag=?',
+                (client_id, tag.lower().strip()))
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def get_client_tags(self, client_id: int) -> List[str]:
+        """Return list of tag strings for a client."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT tag FROM client_tags WHERE client_id=? ORDER BY created_at',
+                (client_id,))
+            rows = await cur.fetchall()
+            return [r['tag'] for r in rows]
+
+    async def get_all_tags_with_counts(self, team: Optional[str] = None) -> List[Dict]:
+        """Return all tags with usage counts, optionally scoped to a team."""
+        async with self.get_connection() as db:
+            if team:
+                cur = await db.execute(
+                    """SELECT ct.tag, COUNT(*) as cnt
+                       FROM client_tags ct
+                       JOIN clients c ON ct.client_id = c.id
+                       JOIN staff s ON c.frontdesk_id = s.id
+                       WHERE s.team = ?
+                       GROUP BY ct.tag ORDER BY cnt DESC""",
+                    (team,))
+            else:
+                cur = await db.execute(
+                    'SELECT tag, COUNT(*) as cnt FROM client_tags GROUP BY tag ORDER BY cnt DESC')
+            rows = await cur.fetchall()
+            return [{'tag': r['tag'], 'count': r['cnt']} for r in rows]
+
+    async def filter_clients_by_criteria(self, frontdesk_id: Optional[int],
+                                          team: Optional[str],
+                                          criteria: Dict) -> List[Dict]:
+        """Filter clients by tag, status, source, stale days, registered flag."""
+        async with self.get_connection() as db:
+            conditions = []
+            params: list = []
+
+            if frontdesk_id:
+                conditions.append('c.frontdesk_id = ?')
+                params.append(frontdesk_id)
+            elif team:
+                conditions.append('s.team = ?')
+                params.append(team)
+
+            tag = criteria.get('tag')
+            status = criteria.get('status')
+            source = criteria.get('source')
+            stale_days = criteria.get('stale')
+            registered = criteria.get('registered')
+
+            if tag:
+                conditions.append('EXISTS (SELECT 1 FROM client_tags ct WHERE ct.client_id=c.id AND ct.tag=?)')
+                params.append(tag.lower())
+            if status:
+                conditions.append('c.status = ?')
+                params.append(status)
+            if source:
+                conditions.append('c.source LIKE ?')
+                params.append(f'%{source}%')
+            if stale_days is not None:
+                cutoff = datetime.now() - timedelta(days=int(stale_days))
+                conditions.append('c.updated_at < ?')
+                params.append(cutoff.strftime('%Y-%m-%d %H:%M:%S'))
+            if registered == 'no':
+                conditions.append("c.status NOT IN ('registered','training','withdrew','ordered')")
+            elif registered == 'yes':
+                conditions.append("c.status IN ('registered','training','withdrew','ordered')")
+
+            where = ('WHERE ' + ' AND '.join(conditions)) if conditions else ''
+            sql = f"""SELECT c.id, c.phone, c.nickname, c.status, c.source,
+                             c.updated_at, s.display_name as frontdesk_name
+                      FROM clients c
+                      JOIN staff s ON c.frontdesk_id = s.id
+                      {where}
+                      ORDER BY c.updated_at DESC LIMIT 50"""
+            cur = await db.execute(sql, params)
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+    # ─── Phase 9B: Client Events (Timeline) ──────────────────────────────────
+
+    async def log_event(self, client_id: int, event_type: str,
+                         event_data: Optional[str], staff_id: Optional[int]) -> int:
+        """Insert a client timeline event. Returns inserted id."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """INSERT INTO client_events (client_id, event_type, event_data, staff_id)
+                   VALUES (?,?,?,?)""",
+                (client_id, event_type, event_data, staff_id))
+            await db.commit()
+            return cur.lastrowid
+
+    async def get_client_timeline(self, client_id: int,
+                                   limit: int = 10,
+                                   today_only: bool = False) -> List[Dict]:
+        """Return timeline events for a client, newest first."""
+        async with self.get_connection() as db:
+            if today_only:
+                cur = await db.execute(
+                    """SELECT ce.*, s.display_name as staff_name
+                       FROM client_events ce
+                       LEFT JOIN staff s ON ce.staff_id = s.id
+                       WHERE ce.client_id=? AND DATE(ce.created_at)=DATE('now')
+                       ORDER BY ce.created_at DESC""",
+                    (client_id,))
+            else:
+                cur = await db.execute(
+                    """SELECT ce.*, s.display_name as staff_name
+                       FROM client_events ce
+                       LEFT JOIN staff s ON ce.staff_id = s.id
+                       WHERE ce.client_id=?
+                       ORDER BY ce.created_at DESC LIMIT ?""",
+                    (client_id, limit))
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+    # ─── Phase 9C: SLA ───────────────────────────────────────────────────────
+
+    async def seed_sla_defaults(self):
+        """Insert default SLA config rows if not present."""
+        defaults = [
+            ('first_response',    30,  20,  45),
+            ('status_update',     120, 90,  180),
+            ('follow_up_response', 60, 45,  90),
+        ]
+        async with self.get_connection() as db:
+            for ev_type, target, warn, crit in defaults:
+                try:
+                    await db.execute(
+                        """INSERT OR IGNORE INTO sla_config
+                           (event_type, target_minutes, warning_minutes, critical_minutes)
+                           VALUES (?,?,?,?)""",
+                        (ev_type, target, warn, crit))
+                except Exception:
+                    pass
+            await db.commit()
+
+    async def get_sla_config(self, event_type: Optional[str] = None) -> List[Dict]:
+        async with self.get_connection() as db:
+            if event_type:
+                cur = await db.execute(
+                    'SELECT * FROM sla_config WHERE event_type=?', (event_type,))
+            else:
+                cur = await db.execute('SELECT * FROM sla_config ORDER BY event_type')
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+    async def set_sla_config(self, event_type: str, target_minutes: int,
+                              warning_minutes: int, critical_minutes: int):
+        async with self.get_connection() as db:
+            await db.execute(
+                """INSERT INTO sla_config (event_type, target_minutes, warning_minutes, critical_minutes)
+                   VALUES (?,?,?,?)
+                   ON CONFLICT(event_type) DO UPDATE SET
+                   target_minutes=excluded.target_minutes,
+                   warning_minutes=excluded.warning_minutes,
+                   critical_minutes=excluded.critical_minutes""",
+                (event_type, target_minutes, warning_minutes, critical_minutes))
+            await db.commit()
+
+    async def start_sla_event(self, client_id: int, staff_id: int,
+                               event_type: str, target_minutes: int,
+                               started_at: Optional[datetime] = None) -> int:
+        """Open a new SLA event. Returns inserted id."""
+        ts = started_at or datetime.utcnow()
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """INSERT INTO sla_events
+                   (client_id, staff_id, event_type, target_minutes, started_at)
+                   VALUES (?,?,?,?,?)""",
+                (client_id, staff_id, event_type, target_minutes,
+                 ts.strftime('%Y-%m-%d %H:%M:%S')))
+            await db.commit()
+            return cur.lastrowid
+
+    async def complete_sla_event(self, sla_id: int, completed_at: Optional[datetime] = None) -> bool:
+        """Close an open SLA event, compute actual_minutes and met."""
+        now = completed_at or datetime.utcnow()
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT started_at, target_minutes FROM sla_events WHERE id=? AND completed_at IS NULL',
+                (sla_id,))
+            row = await cur.fetchone()
+            if not row:
+                return False
+            started = datetime.fromisoformat(row['started_at'])
+            actual = int((now - started).total_seconds() / 60)
+            met = actual <= row['target_minutes']
+            await db.execute(
+                """UPDATE sla_events SET actual_minutes=?, met=?, completed_at=?
+                   WHERE id=?""",
+                (actual, met, now.strftime('%Y-%m-%d %H:%M:%S'), sla_id))
+            await db.commit()
+            return True
+
+    async def get_open_sla_events(self) -> List[Dict]:
+        """Return all SLA events that are still open (completed_at IS NULL)."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT se.*, s.display_name as staff_name, s.tg_chat_id,
+                          c.phone as client_phone
+                   FROM sla_events se
+                   JOIN staff s ON se.staff_id = s.id
+                   JOIN clients c ON se.client_id = c.id
+                   WHERE se.completed_at IS NULL
+                   ORDER BY se.started_at""")
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+    async def get_sla_stats(self, staff_id: Optional[int] = None,
+                             team: Optional[str] = None,
+                             days: int = 7) -> Dict:
+        """Aggregate SLA compliance stats."""
+        async with self.get_connection() as db:
+            cutoff = (datetime.utcnow() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+            if staff_id:
+                cur = await db.execute(
+                    """SELECT COUNT(*) as total,
+                              SUM(CASE WHEN met=1 THEN 1 ELSE 0 END) as met_count,
+                              AVG(actual_minutes) as avg_minutes,
+                              event_type
+                       FROM sla_events
+                       WHERE staff_id=? AND completed_at IS NOT NULL AND created_at >= ?
+                       GROUP BY event_type""",
+                    (staff_id, cutoff))
+            elif team:
+                cur = await db.execute(
+                    """SELECT COUNT(*) as total,
+                              SUM(CASE WHEN se.met=1 THEN 1 ELSE 0 END) as met_count,
+                              AVG(se.actual_minutes) as avg_minutes,
+                              se.event_type
+                       FROM sla_events se
+                       JOIN staff s ON se.staff_id = s.id
+                       WHERE s.team=? AND se.completed_at IS NOT NULL AND se.created_at >= ?
+                       GROUP BY se.event_type""",
+                    (team, cutoff))
+            else:
+                cur = await db.execute(
+                    """SELECT COUNT(*) as total,
+                              SUM(CASE WHEN met=1 THEN 1 ELSE 0 END) as met_count,
+                              AVG(actual_minutes) as avg_minutes,
+                              event_type
+                       FROM sla_events
+                       WHERE completed_at IS NOT NULL AND created_at >= ?
+                       GROUP BY event_type""",
+                    (cutoff,))
+            rows = await cur.fetchall()
+            result: Dict = {}
+            for r in rows:
+                total = r['total'] or 0
+                met_count = r['met_count'] or 0
+                result[r['event_type']] = {
+                    'total': total,
+                    'met': met_count,
+                    'compliance_pct': round(met_count / total * 100, 1) if total > 0 else 0.0,
+                    'avg_minutes': round(r['avg_minutes'] or 0, 1),
+                }
+            return result
+
+    async def get_staff_sla_summary(self, days: int = 7) -> List[Dict]:
+        """Per-staff SLA compliance summary for the dashboard."""
+        async with self.get_connection() as db:
+            cutoff = (datetime.utcnow() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+            cur = await db.execute(
+                """SELECT s.id as staff_id, s.display_name,
+                          COUNT(*) as total,
+                          SUM(CASE WHEN se.met=1 THEN 1 ELSE 0 END) as met_count,
+                          AVG(se.actual_minutes) as avg_minutes
+                   FROM sla_events se
+                   JOIN staff s ON se.staff_id = s.id
+                   WHERE se.completed_at IS NOT NULL AND se.created_at >= ?
+                   GROUP BY se.staff_id
+                   ORDER BY met_count DESC""",
+                (cutoff,))
+            rows = await cur.fetchall()
+            out = []
+            for r in rows:
+                total = r['total'] or 0
+                met = r['met_count'] or 0
+                out.append({
+                    'staff_id': r['staff_id'],
+                    'display_name': r['display_name'],
+                    'total': total,
+                    'met': met,
+                    'compliance_pct': round(met / total * 100, 1) if total > 0 else 0.0,
+                    'avg_minutes': round(r['avg_minutes'] or 0, 1),
+                })
+            return out
 
 
 # Global singleton

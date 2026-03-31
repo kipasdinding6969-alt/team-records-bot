@@ -29,6 +29,10 @@ from handlers_v2.nl_handler import NL_HANDLER_COMMANDS, NL_HANDLER_CALLBACKS, NL
 from handlers_v2.inline_flows import INLINE_FLOWS_COMMANDS, INLINE_FLOWS_CALLBACKS, INLINE_FLOWS_CONVERSATIONS
 from handlers_v2.broadcast_handler import BROADCAST_COMMANDS, BROADCAST_CALLBACKS, BROADCAST_CONVERSATIONS
 from handlers_v2.export_handler import EXPORT_HANDLER_COMMANDS, EXPORT_HANDLER_CALLBACKS, EXPORT_HANDLER_CONVERSATIONS
+from handlers_v2.tags import TAGS_COMMANDS, TAGS_CALLBACKS, TAGS_CONVERSATIONS
+from handlers_v2.timeline import TIMELINE_COMMANDS, TIMELINE_CALLBACKS, TIMELINE_CONVERSATIONS
+from handlers_v2.sla import SLA_COMMANDS, SLA_CALLBACKS, SLA_CONVERSATIONS
+from handlers_v2.coaching import COACHING_COMMANDS, COACHING_CALLBACKS, COACHING_CONVERSATIONS
 import engines.sheet_sync_v2 as _sheet_sync_v2_mod
 import engines.dashboard_sheets as _dashboard_mod
 
@@ -74,6 +78,7 @@ class RalphLoop:
         self.last_followup_processing = None
         self.last_morning_digest = None
         self.last_evening_digest = None
+        self.last_sla_check = None
 
         # Command and callback handlers registry
         self.command_handlers = {}
@@ -259,6 +264,10 @@ class RalphLoop:
         all_commands.update(INLINE_FLOWS_COMMANDS)
         all_commands.update(BROADCAST_COMMANDS)
         all_commands.update(EXPORT_HANDLER_COMMANDS)  # overrides management.py CSV export
+        all_commands.update(TAGS_COMMANDS)
+        all_commands.update(TIMELINE_COMMANDS)
+        all_commands.update(SLA_COMMANDS)
+        all_commands.update(COACHING_COMMANDS)
 
         all_callbacks = {}
         all_callbacks.update(QUICK_ACTIONS_CALLBACKS)
@@ -276,6 +285,10 @@ class RalphLoop:
         all_callbacks.update(INLINE_FLOWS_CALLBACKS)
         all_callbacks.update(BROADCAST_CALLBACKS)
         all_callbacks.update(EXPORT_HANDLER_CALLBACKS)
+        all_callbacks.update(TAGS_CALLBACKS)
+        all_callbacks.update(TIMELINE_CALLBACKS)
+        all_callbacks.update(SLA_CALLBACKS)
+        all_callbacks.update(COACHING_CALLBACKS)
 
         all_conversations = {}
         all_conversations.update(QUICK_ACTIONS_CONVERSATIONS)
@@ -293,6 +306,10 @@ class RalphLoop:
         all_conversations.update(INLINE_FLOWS_CONVERSATIONS)
         all_conversations.update(BROADCAST_CONVERSATIONS)
         all_conversations.update(EXPORT_HANDLER_CONVERSATIONS)
+        all_conversations.update(TAGS_CONVERSATIONS)
+        all_conversations.update(TIMELINE_CONVERSATIONS)
+        all_conversations.update(SLA_CONVERSATIONS)
+        all_conversations.update(COACHING_CONVERSATIONS)
 
         self.command_handlers = all_commands
         self.callback_handlers = all_callbacks
@@ -737,6 +754,7 @@ class RalphLoop:
         await self._maint_followup_processing(current_time)
         await self._maint_morning_digest(current_time)
         await self._maint_evening_digest(current_time)
+        await self._maint_sla_check(current_time)
 
     async def _maint_health_check(self, current_time: datetime):
         """Schedule periodic health check task."""
@@ -1001,6 +1019,20 @@ class RalphLoop:
                 self.last_evening_digest = current_time
             except Exception as e:
                 logger.error(f'Evening digest error: {e}')
+
+    async def _maint_sla_check(self, current_time: datetime):
+        """Check open SLA events every 5 minutes for warnings and escalations."""
+        if not self.last_sla_check or (current_time - self.last_sla_check).total_seconds() > 300:
+            try:
+                from engines.sla_engine import check_sla_breaches
+                team_leader_chat = None
+                if config.bot.manager_chat_ids:
+                    team_leader_chat = config.bot.manager_chat_ids[0] if isinstance(
+                        config.bot.manager_chat_ids, list) else config.bot.manager_chat_ids
+                await check_sla_breaches(telegram_handler, team_leader_chat)
+            except Exception as e:
+                logger.error(f'SLA check error: {e}')
+            self.last_sla_check = current_time
 
     def _should_generate_daily_report(self) -> bool:
         """Check if daily report should be generated."""
