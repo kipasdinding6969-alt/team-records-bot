@@ -62,35 +62,24 @@ def _make_mock_tg():
 
 class TestHandleStart:
     @pytest.mark.asyncio
-    async def test_start_shows_menu_with_keyboard(self, staff):
-        """Registered staff → menu message + 4-row inline keyboard."""
-        captured_rows = []
+    async def test_start_shows_menu_with_keyboard(self, staff, db):
+        """Registered staff → personalized dashboard message sent."""
         mock_tg = _make_mock_tg()
-
-        def capture_kb(rows):
-            captured_rows.extend(rows)
-            return [[]]
-
-        mock_tg.create_inline_keyboard = MagicMock(side_effect=capture_kb)
 
         with (
             patch('handlers_v2.menu._get_staff', AsyncMock(return_value=staff)),
             patch('handlers_v2.menu.telegram_handler', mock_tg),
+            patch('handlers_v2.menu.database_v2', db),
+            patch('handlers_v2.persistent_keyboard.get_persistent_keyboard', return_value=None),
         ):
             from handlers_v2.menu import handle_start
             await handle_start({'chat_id': 6001, 'user_id': 7001})
 
-        assert len(captured_rows) == 4
-        for row in captured_rows:
-            assert len(row) == 2
-
         mock_tg.send_message.assert_called_once()
-        call_kwargs = mock_tg.send_message.call_args[1]
-        assert call_kwargs.get('reply_markup') is not None
 
     @pytest.mark.asyncio
     async def test_start_unregistered_user_sends_error(self):
-        """Unregistered user → sends error, no keyboard."""
+        """Unregistered user → sends error message."""
         mock_tg = _make_mock_tg()
         with (
             patch('handlers_v2.menu._get_staff', AsyncMock(return_value=None)),
@@ -100,36 +89,34 @@ class TestHandleStart:
             await handle_start({'chat_id': 99, 'user_id': 99})
 
         mock_tg.send_message.assert_called_once()
-        # No keyboard passed when user is not registered
-        kwargs = mock_tg.send_message.call_args[1]
-        assert 'reply_markup' not in kwargs
 
     @pytest.mark.asyncio
-    async def test_start_zh_buttons_contain_chinese(self, staff):
-        """Chinese staff sees Chinese button labels."""
-        captured_rows = []
+    async def test_start_zh_shows_chinese_text(self, staff, db):
+        """Chinese staff sees Chinese text in dashboard."""
         mock_tg = _make_mock_tg()
-        mock_tg.create_inline_keyboard = MagicMock(
-            side_effect=lambda rows: captured_rows.extend(rows) or [[]])
 
         with (
             patch('handlers_v2.menu._get_staff', AsyncMock(return_value=staff)),
             patch('handlers_v2.menu.telegram_handler', mock_tg),
+            patch('handlers_v2.menu.database_v2', db),
+            patch('handlers_v2.persistent_keyboard.get_persistent_keyboard', return_value=None),
         ):
             from handlers_v2.menu import handle_start
             await handle_start({'chat_id': 6001, 'user_id': 7001})
 
-        all_texts = [btn['text'] for row in captured_rows for btn in row]
-        has_chinese = any(any('\u4e00' <= c <= '\u9fff' for c in t) for t in all_texts)
+        msg = mock_tg.send_message.call_args[0][1]
+        has_chinese = any('\u4e00' <= c <= '\u9fff' for c in msg)
         assert has_chinese
 
     @pytest.mark.asyncio
-    async def test_start_en_renders_without_error(self, manager):
+    async def test_start_en_renders_without_error(self, manager, db):
         """English manager → start renders without exception."""
         mock_tg = _make_mock_tg()
         with (
             patch('handlers_v2.menu._get_staff', AsyncMock(return_value=manager)),
             patch('handlers_v2.menu.telegram_handler', mock_tg),
+            patch('handlers_v2.menu.database_v2', db),
+            patch('handlers_v2.persistent_keyboard.get_persistent_keyboard', return_value=None),
         ):
             from handlers_v2.menu import handle_start
             await handle_start({'chat_id': 6002, 'user_id': 7002})

@@ -33,6 +33,9 @@ from handlers_v2.tags import TAGS_COMMANDS, TAGS_CALLBACKS, TAGS_CONVERSATIONS
 from handlers_v2.timeline import TIMELINE_COMMANDS, TIMELINE_CALLBACKS, TIMELINE_CONVERSATIONS
 from handlers_v2.sla import SLA_COMMANDS, SLA_CALLBACKS, SLA_CONVERSATIONS
 from handlers_v2.coaching import COACHING_COMMANDS, COACHING_CALLBACKS, COACHING_CONVERSATIONS
+from handlers_v2.persistent_keyboard import (
+    KEYBOARD_COMMANDS, KEYBOARD_CALLBACKS, KEYBOARD_CONVERSATIONS, KEYBOARD_ROUTES,
+)
 import engines.sheet_sync_v2 as _sheet_sync_v2_mod
 import engines.dashboard_sheets as _dashboard_mod
 
@@ -179,6 +182,9 @@ class RalphLoop:
             # Register V2 bot commands with Telegram (visible in command menu)
             await self._register_bot_commands()
 
+            # Set Menu Button → Mini App for all users
+            await self._set_menu_button()
+
             # First-boot: populate dashboard tabs if never done
             await self._init_dashboard_if_needed()
 
@@ -268,6 +274,7 @@ class RalphLoop:
         all_commands.update(TIMELINE_COMMANDS)
         all_commands.update(SLA_COMMANDS)
         all_commands.update(COACHING_COMMANDS)
+        all_commands.update(KEYBOARD_COMMANDS)
 
         all_callbacks = {}
         all_callbacks.update(QUICK_ACTIONS_CALLBACKS)
@@ -289,6 +296,7 @@ class RalphLoop:
         all_callbacks.update(TIMELINE_CALLBACKS)
         all_callbacks.update(SLA_CALLBACKS)
         all_callbacks.update(COACHING_CALLBACKS)
+        all_callbacks.update(KEYBOARD_CALLBACKS)
 
         all_conversations = {}
         all_conversations.update(QUICK_ACTIONS_CONVERSATIONS)
@@ -310,6 +318,7 @@ class RalphLoop:
         all_conversations.update(TIMELINE_CONVERSATIONS)
         all_conversations.update(SLA_CONVERSATIONS)
         all_conversations.update(COACHING_CONVERSATIONS)
+        all_conversations.update(KEYBOARD_CONVERSATIONS)
 
         self.command_handlers = all_commands
         self.callback_handlers = all_callbacks
@@ -344,24 +353,12 @@ class RalphLoop:
             from telethon.tl.types import BotCommand, BotCommandScopeDefault
 
             commands = [
-                BotCommand('start',    '🚀 Start / Register'),
-                BotCommand('me',       '📊 My dashboard (all-in-one)'),
-                BotCommand('overview', '🏢 Team overview (managers)'),
-                BotCommand('add',      '➕ Add client: /add <phone> <source>'),
-                BotCommand('u',        '🔄 Update status: /u <phone> <status>'),
-                BotCommand('pipeline', '📊 Pipeline funnel view'),
-                BotCommand('followup', '🔥 Clients needing follow-up'),
-                BotCommand('today',    '📈 Today\'s stats'),
-                BotCommand('search',   '🔍 Search: /search <query>'),
-                BotCommand('note',     '📝 Add note: /note <phone> <text>'),
-                BotCommand('remind',   '⏰ Set reminder: /remind <phone> <time> <msg>'),
-                BotCommand('handoff',  '🤝 Handoff to maintenance'),
-                BotCommand('export',   '📥 Export CSV'),
-                BotCommand('profile',  '👤 View profile'),
-                BotCommand('sync',     '🔄 Force sync (managers)'),
-                BotCommand('help',     '❓ Help guide'),
-                BotCommand('menu',     '📋 Legacy menu'),
-                BotCommand('app',      '📊 Open Mini App dashboard'),
+                BotCommand('start',  '🚀 开始'),
+                BotCommand('me',     '📊 我的仪表板'),
+                BotCommand('add',    '➕ 添加客户'),
+                BotCommand('app',    '📊 打开看板'),
+                BotCommand('search', '🔍 搜索客户'),
+                BotCommand('help',   '❓ 帮助'),
             ]
             await bot_client(SetBotCommandsRequest(
                 scope=BotCommandScopeDefault(),
@@ -371,6 +368,28 @@ class RalphLoop:
             logger.info(f"Registered {len(commands)} bot commands with Telegram")
         except Exception as e:
             logger.warning(f"_register_bot_commands failed: {e}")
+
+    async def _set_menu_button(self):
+        """Set the Telegram Menu Button to open the Mini App for all users."""
+        bot_client = telegram_handler.bot_client
+        if bot_client is None:
+            logger.warning("_set_menu_button: no bot_client, skipping")
+            return
+        try:
+            from telethon.tl.functions.bots import SetBotMenuButtonRequest
+            from telethon.tl.types import BotMenuButtonWebApp, InputUserEmpty
+            from handlers_v2.mini_app import MINI_APP_URL
+
+            await bot_client(SetBotMenuButtonRequest(
+                user_id=InputUserEmpty(),
+                button=BotMenuButtonWebApp(
+                    text='📊 CRM看板',
+                    url=MINI_APP_URL,
+                ),
+            ))
+            logger.info("Menu Button set to Mini App")
+        except Exception as e:
+            logger.warning(f"_set_menu_button failed: {e}")
 
     async def _init_dashboard_if_needed(self):
         """On first boot (or reset), populate all 5 dashboard tabs immediately."""
@@ -581,8 +600,15 @@ class RalphLoop:
             return False
 
     async def _handle_nl_message_task(self, data: Dict[str, Any]) -> bool:
-        """Handle plain-text NL message — delegate to NL handler."""
+        """Handle plain-text NL message — check keyboard routes first, then NL handler."""
         try:
+            # Check persistent keyboard button texts BEFORE NL handler
+            text = (data.get('text') or '').strip()
+            if text in KEYBOARD_ROUTES:
+                handler = KEYBOARD_ROUTES[text]
+                await asyncio.wait_for(handler(data), timeout=30.0)
+                return True
+
             from handlers_v2.nl_handler import handle_nl_message
             await asyncio.wait_for(handle_nl_message(data), timeout=35.0)
             return True

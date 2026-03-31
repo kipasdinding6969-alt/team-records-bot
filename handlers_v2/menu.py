@@ -42,7 +42,7 @@ def _main_menu_keyboard(lang: str):
 
 
 async def handle_start(task_data: Dict[str, Any]):
-    """/start — show the visual main menu."""
+    """/start — personalized dashboard + persistent reply keyboard."""
     chat_id = task_data.get('chat_id')
     user_id = task_data.get('user_id')
 
@@ -52,10 +52,55 @@ async def handle_start(task_data: Dict[str, Any]):
         return
 
     lang = staff.language
-    keyboard = _main_menu_keyboard(lang)
-    msg = t('main_menu_title', lang) + '\n' + t('main_menu_select', lang)
-    await telegram_handler.send_message(chat_id, msg, parse_mode='markdown',
-                                        reply_markup=keyboard)
+
+    # Gather personalized stats
+    try:
+        from datetime import date
+        from database_v2 import database_v2
+
+        clients = await database_v2.get_clients_by_frontdesk(staff.id, limit=500)
+        total_clients = len(clients)
+
+        overdue = await database_v2.get_followup_due(staff.id)
+        overdue_count = len(overdue)
+
+        daily = await database_v2.get_daily_stats(staff.id)
+        today_new = daily.new_leads if daily else 0
+
+        streak_info = await database_v2.get_streak(staff.id)
+        streak = streak_info.get('current_streak', 0) if streak_info else 0
+    except Exception:
+        total_clients = overdue_count = today_new = streak = 0
+
+    name = staff.display_name
+    overdue_flag = ' ⚠️' if overdue_count > 0 else ''
+
+    if lang == 'zh':
+        msg = (
+            f'👋 你好 {name}！\n\n'
+            f'📊 今日统计\n'
+            f'├ 我的客户: {total_clients}\n'
+            f'├ 待跟进: {overdue_count}{overdue_flag}\n'
+            f'├ 今日新增: {today_new}\n'
+            f'└ 🔥 连续 {streak} 天\n\n'
+            f'💡 点击下方按钮开始工作\n'
+            f'   或发送🎤语音消息更新客户'
+        )
+    else:
+        msg = (
+            f'👋 Hi {name}!\n\n'
+            f'📊 Today\'s Stats\n'
+            f'├ My Clients: {total_clients}\n'
+            f'├ Follow-ups: {overdue_count}{overdue_flag}\n'
+            f'├ Added Today: {today_new}\n'
+            f'└ 🔥 {streak}-day streak\n\n'
+            f'💡 Tap a button below to start\n'
+            f'   or send a 🎤 voice message'
+        )
+
+    from handlers_v2.persistent_keyboard import get_persistent_keyboard
+    kb = get_persistent_keyboard(lang)
+    await telegram_handler.send_message(chat_id, msg, reply_markup=kb)
 
 
 async def handle_menu_callback(task_data: Dict[str, Any]):
