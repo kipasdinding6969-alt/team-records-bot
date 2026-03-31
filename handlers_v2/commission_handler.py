@@ -1,6 +1,6 @@
 """Phase 10A: Commission tracking handler — commands + callbacks."""
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict
 
 from database_v2 import database_v2
@@ -30,7 +30,11 @@ async def handle_commission(task_data: Dict[str, Any]):
     elif subcmd == 'set' and len(parts) >= 4:
         await _set_rule(chat_id, staff, parts[1], parts[2], parts[3])
     elif subcmd == 'approve':
-        target_staff_id = int(parts[1]) if len(parts) > 1 else None
+        try:
+            target_staff_id = int(parts[1]) if len(parts) > 1 else None
+        except ValueError:
+            await telegram_handler.send_message(chat_id, "Invalid staff ID.")
+            return
         period = parts[2] if len(parts) > 2 else None
         await _approve_commissions(chat_id, staff, target_staff_id, period)
     elif subcmd == 'team':
@@ -164,12 +168,9 @@ def _commission_buttons(staff_id: int, period: str):
     now = datetime.utcnow()
     week = f'{now.year}-W{now.isocalendar()[1]:02d}'
     month = f'{now.year}-{now.month:02d}'
-    last_week_num = now.isocalendar()[1] - 1
-    last_week_year = now.year
-    if last_week_num <= 0:
-        last_week_num = 52
-        last_week_year -= 1
-    last_week = f'{last_week_year}-W{last_week_num:02d}'
+    last_week_dt = now - timedelta(weeks=1)
+    lw_iso = last_week_dt.isocalendar()
+    last_week = f'{lw_iso[0]}-W{lw_iso[1]:02d}'
 
     return [
         [
@@ -207,7 +208,10 @@ async def handle_commission_callback(task_data: Dict[str, Any]):
             await telegram_handler.send_message(chat_id, t('err_permission_denied', staff.language))
 
     elif action == 'detail':
-        s_id = int(parts[2])
+        try:
+            s_id = int(parts[2])
+        except ValueError:
+            return
         period = parts[3] if len(parts) > 3 else None
         commissions = await database_v2.get_commissions(staff_id=s_id, period=period)
         text = f"📊 Commission Detail — {period or 'all'}\n" + "━" * 25 + "\n"

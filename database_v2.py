@@ -462,6 +462,10 @@ class DatabaseV2:
                 );
                 CREATE INDEX IF NOT EXISTS idx_commissions_staff ON commissions(staff_id, period);
                 CREATE INDEX IF NOT EXISTS idx_commissions_status ON commissions(status, created_at);
+                CREATE INDEX IF NOT EXISTS idx_commission_rules_active_trigger ON commission_rules(status_trigger, team, is_active);
+                CREATE INDEX IF NOT EXISTS idx_commissions_staff_period ON commissions(staff_id, period, status);
+                CREATE INDEX IF NOT EXISTS idx_clients_frontdesk_status ON clients(frontdesk_id, status);
+                CREATE INDEX IF NOT EXISTS idx_deposits_client_id ON deposits(client_id);
 
                 -- Phase 10C: Shift Handoffs
                 CREATE TABLE IF NOT EXISTS shift_handoffs (
@@ -476,6 +480,7 @@ class DatabaseV2:
                     accepted_at     TIMESTAMP,
                     completed_at    TIMESTAMP
                 );
+                CREATE INDEX IF NOT EXISTS idx_handoffs_status_team ON shift_handoffs(status, team, to_staff_id);
             """)
             await db.commit()
 
@@ -2879,32 +2884,38 @@ class DatabaseV2:
 
     async def get_conversion_rates(self, period_start: str, period_end: str,
                                     team: Optional[str] = None) -> Dict:
-        """Stage-to-stage conversion rates for a period."""
+        """Stage-to-stage conversion rates for a period (single query)."""
         async with self.get_connection() as db:
-            base_sql = 'SELECT COUNT(*) FROM clients c'
             join = ''
             team_cond = ''
-            params_base: list = [period_start, period_end]
+            params: list = [period_start, period_end]
             if team:
                 join = ' JOIN staff s ON c.frontdesk_id = s.id'
                 team_cond = ' AND s.team=?'
-                params_base.append(team)
+                params.append(team)
 
-            stages = [
-                ('total', "c.created_at >= ? AND c.created_at <= ?" + team_cond),
-                ('contacted', "c.contacted_at IS NOT NULL AND c.created_at >= ? AND c.created_at <= ?" + team_cond),
-                ('replied', "c.replied_at IS NOT NULL AND c.created_at >= ? AND c.created_at <= ?" + team_cond),
-                ('registered', "c.registered_at IS NOT NULL AND c.created_at >= ? AND c.created_at <= ?" + team_cond),
-                ('deposited', "c.total_deposited > 0 AND c.created_at >= ? AND c.created_at <= ?" + team_cond),
-            ]
-            result = {}
-            for name, cond in stages:
-                sql = f'{base_sql}{join} WHERE {cond}'
-                cur = await db.execute(sql, params_base)
-                result[name] = (await cur.fetchone())[0]
+            sql = f"""SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN c.contacted_at IS NOT NULL THEN 1 ELSE 0 END) as contacted,
+                SUM(CASE WHEN c.replied_at IS NOT NULL THEN 1 ELSE 0 END) as replied,
+                SUM(CASE WHEN c.registered_at IS NOT NULL THEN 1 ELSE 0 END) as registered,
+                SUM(CASE WHEN c.total_deposited > 0 THEN 1 ELSE 0 END) as deposited
+                FROM clients c{join}
+                WHERE c.created_at >= ? AND c.created_at <= ?{team_cond}"""
+
+            cur = await db.execute(sql, params)
+            row = await cur.fetchone()
+
+            result = {
+                'total': row[0] or 0,
+                'contacted': row[1] or 0,
+                'replied': row[2] or 0,
+                'registered': row[3] or 0,
+                'deposited': row[4] or 0,
+            }
 
             # Calculate rates
-            total = result.get('total', 0)
+            total = result['total']
             result['contact_rate'] = round(result['contacted'] / total * 100, 1) if total > 0 else 0
             result['reply_rate'] = round(result['replied'] / result['contacted'] * 100, 1) if result['contacted'] > 0 else 0
             result['register_rate'] = round(result['registered'] / result['replied'] * 100, 1) if result['replied'] > 0 else 0

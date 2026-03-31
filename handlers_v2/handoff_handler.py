@@ -59,6 +59,9 @@ async def _create_handoff(chat_id: int, staff, target_name: str = None):
                 to_staff_id = s.id
                 to_display = s.display_name
                 break
+        else:
+            await telegram_handler.send_message(
+                chat_id, f"⚠️ Staff '{target_name}' not found. Handoff will be sent to any available staff.")
 
     client_ids = [c.id for c in active_clients]
 
@@ -78,7 +81,7 @@ async def _create_handoff(chat_id: int, staff, target_name: str = None):
     text += f"Active Clients ({len(active_clients)}):\n\n"
 
     for i, c in enumerate(active_clients[:10], 1):
-        status_note = c.status_note or ''
+        status_note = (c.status_note or '').replace('<', '&lt;').replace('>', '&gt;').replace('&', '&amp;')
         last_update = ''
         if c.updated_at:
             delta = datetime.utcnow() - c.updated_at.replace(tzinfo=None)
@@ -162,6 +165,7 @@ async def _list_handoffs(chat_id: int, staff):
         return
 
     text = "📋 Pending Handoffs\n" + "━" * 25 + "\n\n"
+    all_buttons: list = []
     for h in handoffs:
         from_staff = await database_v2.get_staff_by_id(h.from_staff_id)
         from_name = from_staff.display_name if from_staff else 'Unknown'
@@ -180,12 +184,12 @@ async def _list_handoffs(chat_id: int, staff):
         text += f"#{h.id}: {from_name} → {to_name}{age}\n"
         text += f"  Clients: {len(client_ids)}\n"
 
-        buttons = [[
+        all_buttons.append([
             {'text': f'✅ Accept #{h.id}', 'callback_data': f'handoff:accept:{h.id}'},
             {'text': f'❌ Decline #{h.id}', 'callback_data': f'handoff:decline:{h.id}'},
-        ]]
+        ])
 
-    await telegram_handler.send_message(chat_id, text, reply_markup={'inline_keyboard': buttons})
+    await telegram_handler.send_message(chat_id, text, reply_markup={'inline_keyboard': all_buttons})
 
 
 async def handle_handoff_callback(task_data: Dict[str, Any]):
@@ -202,7 +206,10 @@ async def handle_handoff_callback(task_data: Dict[str, Any]):
         return
 
     action = parts[1]
-    handoff_id = int(parts[2])
+    try:
+        handoff_id = int(parts[2])
+    except ValueError:
+        return
 
     if action == 'accept':
         await _accept_handoff(chat_id, staff, handoff_id)

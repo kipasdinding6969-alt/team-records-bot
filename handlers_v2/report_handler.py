@@ -195,7 +195,8 @@ async def handle_funnel(task_data: Dict[str, Any]):
         try:
             period_start, period_end = _parse_period(args)
         except ValueError:
-            pass
+            await telegram_handler.send_message(chat_id, "Invalid period format. Use YYYY-Wnn or YYYY-MM.")
+            return
 
     rates = await database_v2.get_conversion_rates(period_start, period_end, team)
     max_val = max(rates.get('total', 1), 1)
