@@ -28,6 +28,7 @@ uvicorn[standard]>=0.27.0
 python-multipart>=0.0.9
 httpx>=0.26.0
 PyJWT>=2.7.0
+bcrypt>=4.0.0
 
 # Excel import/export
 openpyxl>=3.1.0
@@ -36,3 +37,4 @@ openpyxl>=3.1.0
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
 pytest-mock>=3.12.0
+pytest-timeout>=2.2.0
