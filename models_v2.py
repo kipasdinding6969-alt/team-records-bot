@@ -330,3 +330,50 @@ class ReportTemplate:
     team_name: Optional[str] = None
     date_range: Optional[str] = None
     parameters: Dict[str, Any] = field(default_factory=dict)
+
+
+# ── Phase 10 Models ──────────────────────────────────────────────────────────
+
+@dataclass
+class CommissionRule:
+    """Rule for calculating commissions."""
+    status_trigger: str  # 'deposit', 'first_deposit', 'registration'
+    rate_type: str  # 'percentage', 'fixed'
+    rate_value: float  # 0.05 = 5% or 50 = $50 fixed
+    id: Optional[int] = None
+    team: Optional[str] = None  # NULL = applies to all teams
+    min_amount: float = 0.0
+    max_commission: Optional[float] = None
+    is_active: bool = True
+    created_at: Optional[datetime] = None
+
+
+@dataclass
+class Commission:
+    """Commission record earned by staff."""
+    staff_id: int
+    trigger_type: str  # 'deposit', 'first_deposit', 'registration'
+    amount: float
+    id: Optional[int] = None
+    client_id: Optional[int] = None
+    deposit_id: Optional[int] = None
+    rule_id: Optional[int] = None
+    status: str = 'pending'  # pending, approved, paid, rejected
+    approved_by: Optional[int] = None
+    period: Optional[str] = None  # '2026-W13', '2026-03'
+    created_at: Optional[datetime] = None
+
+
+@dataclass
+class ShiftHandoff:
+    """Shift handoff between staff members."""
+    from_staff_id: int
+    id: Optional[int] = None
+    to_staff_id: Optional[int] = None
+    team: Optional[str] = None
+    status: str = 'pending'  # pending, accepted, completed
+    notes: Optional[str] = None
+    client_ids: Optional[str] = None  # JSON array
+    created_at: Optional[datetime] = None
+    accepted_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None

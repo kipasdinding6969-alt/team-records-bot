@@ -36,6 +36,12 @@ from handlers_v2.coaching import COACHING_COMMANDS, COACHING_CALLBACKS, COACHING
 from handlers_v2.persistent_keyboard import (
     KEYBOARD_COMMANDS, KEYBOARD_CALLBACKS, KEYBOARD_CONVERSATIONS, KEYBOARD_ROUTES,
 )
+from handlers_v2.commission_handler import (
+    COMMISSION_COMMANDS, COMMISSION_CALLBACKS, COMMISSION_CONVERSATIONS,
+    auto_calculate_deposit_commission, auto_calculate_registration_commission,
+)
+from handlers_v2.report_handler import REPORT_COMMANDS, REPORT_CALLBACKS, REPORT_CONVERSATIONS
+from handlers_v2.handoff_handler import HANDOFF_COMMANDS, HANDOFF_CALLBACKS, HANDOFF_CONVERSATIONS
 import engines.sheet_sync_v2 as _sheet_sync_v2_mod
 import engines.dashboard_sheets as _dashboard_mod
 
@@ -179,6 +185,15 @@ class RalphLoop:
             except Exception as e:
                 logger.warning(f"followup seed/hooks failed: {e}")
 
+            # Seed commission rules + register commission hooks
+            try:
+                await database_v2.seed_commission_rules()
+                from database_v2 import _status_change_hooks
+                _status_change_hooks.append(auto_calculate_registration_commission)
+                logger.info("Commission rules seeded, hooks registered")
+            except Exception as e:
+                logger.warning(f"Commission setup failed: {e}")
+
             # Register V2 bot commands with Telegram (visible in command menu)
             await self._register_bot_commands()
 
@@ -275,6 +290,9 @@ class RalphLoop:
         all_commands.update(SLA_COMMANDS)
         all_commands.update(COACHING_COMMANDS)
         all_commands.update(KEYBOARD_COMMANDS)
+        all_commands.update(COMMISSION_COMMANDS)
+        all_commands.update(REPORT_COMMANDS)
+        all_commands.update(HANDOFF_COMMANDS)
 
         all_callbacks = {}
         all_callbacks.update(QUICK_ACTIONS_CALLBACKS)
@@ -297,6 +315,9 @@ class RalphLoop:
         all_callbacks.update(SLA_CALLBACKS)
         all_callbacks.update(COACHING_CALLBACKS)
         all_callbacks.update(KEYBOARD_CALLBACKS)
+        all_callbacks.update(COMMISSION_CALLBACKS)
+        all_callbacks.update(REPORT_CALLBACKS)
+        all_callbacks.update(HANDOFF_CALLBACKS)
 
         all_conversations = {}
         all_conversations.update(QUICK_ACTIONS_CONVERSATIONS)
@@ -319,6 +340,9 @@ class RalphLoop:
         all_conversations.update(SLA_CONVERSATIONS)
         all_conversations.update(COACHING_CONVERSATIONS)
         all_conversations.update(KEYBOARD_CONVERSATIONS)
+        all_conversations.update(COMMISSION_CONVERSATIONS)
+        all_conversations.update(REPORT_CONVERSATIONS)
+        all_conversations.update(HANDOFF_CONVERSATIONS)
 
         self.command_handlers = all_commands
         self.callback_handlers = all_callbacks

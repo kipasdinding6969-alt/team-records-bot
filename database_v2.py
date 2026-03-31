@@ -15,8 +15,9 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 import aiosqlite
 
 from models_v2 import (
-    Client, ClientNote, ClientStatus, DailyStat, Deposit, NoteType,
-    PeriodType, Reminder, Staff, StaffRole, TeamTarget,
+    Client, ClientNote, ClientStatus, Commission, CommissionRule, DailyStat,
+    Deposit, NoteType, PeriodType, Reminder, ShiftHandoff, Staff, StaffRole,
+    TeamTarget,
 )
 
 # Fallback team structure — authoritative source is team_structure.json.
@@ -430,6 +431,50 @@ class DatabaseV2:
                     target_minutes  INTEGER NOT NULL,
                     warning_minutes INTEGER NOT NULL,
                     critical_minutes INTEGER NOT NULL
+                );
+
+                -- Phase 10A: Commission Rules
+                CREATE TABLE IF NOT EXISTS commission_rules (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    team            TEXT,
+                    status_trigger  TEXT NOT NULL,
+                    rate_type       TEXT NOT NULL,
+                    rate_value      REAL NOT NULL,
+                    min_amount      REAL DEFAULT 0,
+                    max_commission  REAL,
+                    is_active       INTEGER DEFAULT 1,
+                    created_at      TIMESTAMP DEFAULT (datetime('now'))
+                );
+
+                -- Phase 10A: Commissions
+                CREATE TABLE IF NOT EXISTS commissions (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    staff_id        INTEGER NOT NULL REFERENCES staff(id),
+                    client_id       INTEGER REFERENCES clients(id),
+                    deposit_id      INTEGER REFERENCES deposits(id),
+                    rule_id         INTEGER REFERENCES commission_rules(id),
+                    trigger_type    TEXT NOT NULL,
+                    amount          REAL NOT NULL,
+                    status          TEXT DEFAULT 'pending',
+                    approved_by     INTEGER REFERENCES staff(id),
+                    period          TEXT,
+                    created_at      TIMESTAMP DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_commissions_staff ON commissions(staff_id, period);
+                CREATE INDEX IF NOT EXISTS idx_commissions_status ON commissions(status, created_at);
+
+                -- Phase 10C: Shift Handoffs
+                CREATE TABLE IF NOT EXISTS shift_handoffs (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    from_staff_id   INTEGER NOT NULL REFERENCES staff(id),
+                    to_staff_id     INTEGER REFERENCES staff(id),
+                    team            TEXT,
+                    status          TEXT DEFAULT 'pending',
+                    notes           TEXT,
+                    client_ids      TEXT,
+                    created_at      TIMESTAMP DEFAULT (datetime('now')),
+                    accepted_at     TIMESTAMP,
+                    completed_at    TIMESTAMP
                 );
             """)
             await db.commit()
@@ -2570,6 +2615,532 @@ class DatabaseV2:
                     'avg_minutes': round(r['avg_minutes'] or 0, 1),
                 })
             return out
+
+
+    # ─── Phase 10A: Commission Rules & Commissions ─────────────────────────
+
+    async def seed_commission_rules(self):
+        """Insert default commission rules if none exist."""
+        async with self.get_connection() as db:
+            cur = await db.execute('SELECT COUNT(*) FROM commission_rules')
+            count = (await cur.fetchone())[0]
+            if count > 0:
+                return
+            defaults = [
+                (None, 'deposit', 'percentage', 0.05, 0, None),
+                (None, 'first_deposit', 'fixed', 10.0, 0, None),
+                (None, 'registration', 'fixed', 2.0, 0, None),
+            ]
+            for team, trigger, rtype, rval, min_amt, max_comm in defaults:
+                await db.execute(
+                    """INSERT INTO commission_rules
+                       (team, status_trigger, rate_type, rate_value, min_amount, max_commission)
+                       VALUES (?,?,?,?,?,?)""",
+                    (team, trigger, rtype, rval, min_amt, max_comm))
+            await db.commit()
+
+    def _row_to_commission_rule(self, row) -> CommissionRule:
+        return CommissionRule(
+            id=row['id'],
+            team=row['team'],
+            status_trigger=row['status_trigger'],
+            rate_type=row['rate_type'],
+            rate_value=row['rate_value'],
+            min_amount=row['min_amount'] or 0.0,
+            max_commission=row['max_commission'],
+            is_active=bool(row['is_active']),
+            created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None,
+        )
+
+    def _row_to_commission(self, row) -> Commission:
+        return Commission(
+            id=row['id'],
+            staff_id=row['staff_id'],
+            client_id=row['client_id'],
+            deposit_id=row['deposit_id'],
+            rule_id=row['rule_id'],
+            trigger_type=row['trigger_type'],
+            amount=row['amount'],
+            status=row['status'],
+            approved_by=row['approved_by'],
+            period=row['period'],
+            created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None,
+        )
+
+    async def get_active_commission_rules(self, team: Optional[str] = None,
+                                           trigger: Optional[str] = None) -> List[CommissionRule]:
+        """Get active commission rules, optionally filtered by team/trigger."""
+        async with self.get_connection() as db:
+            sql = 'SELECT * FROM commission_rules WHERE is_active=1'
+            params: list = []
+            if trigger:
+                sql += ' AND status_trigger=?'
+                params.append(trigger)
+            if team:
+                sql += ' AND (team IS NULL OR team=?)'
+                params.append(team)
+            else:
+                sql += ' AND team IS NULL'
+            cur = await db.execute(sql, params)
+            rows = await cur.fetchall()
+            return [self._row_to_commission_rule(r) for r in rows]
+
+    async def set_commission_rule(self, trigger: str, rate_type: str,
+                                   rate_value: float, team: Optional[str] = None,
+                                   min_amount: float = 0, max_commission: Optional[float] = None) -> int:
+        """Create or update a commission rule for a trigger/team combo."""
+        async with self.get_connection() as db:
+            # Deactivate existing rules for same trigger/team
+            if team:
+                await db.execute(
+                    'UPDATE commission_rules SET is_active=0 WHERE status_trigger=? AND team=?',
+                    (trigger, team))
+            else:
+                await db.execute(
+                    'UPDATE commission_rules SET is_active=0 WHERE status_trigger=? AND team IS NULL',
+                    (trigger,))
+            cur = await db.execute(
+                """INSERT INTO commission_rules
+                   (team, status_trigger, rate_type, rate_value, min_amount, max_commission)
+                   VALUES (?,?,?,?,?,?)""",
+                (team, trigger, rate_type, rate_value, min_amount, max_commission))
+            await db.commit()
+            return cur.lastrowid
+
+    def _current_week_period(self) -> str:
+        """Return ISO week period string like '2026-W13'."""
+        now = datetime.utcnow()
+        return f'{now.year}-W{now.isocalendar()[1]:02d}'
+
+    def _current_month_period(self) -> str:
+        """Return month period string like '2026-03'."""
+        now = datetime.utcnow()
+        return f'{now.year}-{now.month:02d}'
+
+    async def calculate_commission(self, staff_id: int, client_id: Optional[int],
+                                    deposit_id: Optional[int], trigger_type: str,
+                                    amount: float = 0, team: Optional[str] = None) -> Optional[int]:
+        """Calculate and create commission record based on active rules.
+
+        Returns commission record ID, or None if no rule matched.
+        """
+        rules = await self.get_active_commission_rules(team=team, trigger=trigger_type)
+        if not rules:
+            # Fallback: try global rules (team=None)
+            if team:
+                rules = await self.get_active_commission_rules(team=None, trigger=trigger_type)
+        if not rules:
+            return None
+
+        rule = rules[0]  # Use first matching rule
+
+        if rule.min_amount and amount < rule.min_amount:
+            return None
+
+        if rule.rate_type == 'percentage':
+            commission_amount = amount * rule.rate_value
+        else:  # fixed
+            commission_amount = rule.rate_value
+
+        if rule.max_commission and commission_amount > rule.max_commission:
+            commission_amount = rule.max_commission
+
+        commission_amount = round(commission_amount, 2)
+        period = self._current_week_period()
+
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """INSERT INTO commissions
+                   (staff_id, client_id, deposit_id, rule_id, trigger_type, amount, status, period)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (staff_id, client_id, deposit_id, rule.id, trigger_type,
+                 commission_amount, 'pending', period))
+            await db.commit()
+            return cur.lastrowid
+
+    async def get_commissions(self, staff_id: Optional[int] = None,
+                               period: Optional[str] = None,
+                               status: Optional[str] = None,
+                               team: Optional[str] = None) -> List[Commission]:
+        """Get commission records with optional filters."""
+        async with self.get_connection() as db:
+            sql = 'SELECT c.* FROM commissions c'
+            conditions: list = []
+            params: list = []
+            if team:
+                sql += ' JOIN staff s ON c.staff_id = s.id'
+                conditions.append('s.team=?')
+                params.append(team)
+            if staff_id:
+                conditions.append('c.staff_id=?')
+                params.append(staff_id)
+            if period:
+                conditions.append('c.period=?')
+                params.append(period)
+            if status:
+                conditions.append('c.status=?')
+                params.append(status)
+            if conditions:
+                sql += ' WHERE ' + ' AND '.join(conditions)
+            sql += ' ORDER BY c.created_at DESC'
+            cur = await db.execute(sql, params)
+            rows = await cur.fetchall()
+            return [self._row_to_commission(r) for r in rows]
+
+    async def get_commission_summary(self, staff_id: Optional[int] = None,
+                                      period: Optional[str] = None,
+                                      team: Optional[str] = None) -> Dict:
+        """Summarize commissions: total, pending, approved, by trigger type."""
+        async with self.get_connection() as db:
+            sql = """SELECT
+                        COUNT(*) as total_count,
+                        COALESCE(SUM(c.amount), 0) as total_amount,
+                        COALESCE(SUM(CASE WHEN c.status='pending' THEN c.amount ELSE 0 END), 0) as pending_amount,
+                        COALESCE(SUM(CASE WHEN c.status='approved' THEN c.amount ELSE 0 END), 0) as approved_amount,
+                        COALESCE(SUM(CASE WHEN c.status='paid' THEN c.amount ELSE 0 END), 0) as paid_amount
+                     FROM commissions c"""
+            conditions: list = []
+            params: list = []
+            if team:
+                sql += ' JOIN staff s ON c.staff_id = s.id'
+                conditions.append('s.team=?')
+                params.append(team)
+            if staff_id:
+                conditions.append('c.staff_id=?')
+                params.append(staff_id)
+            if period:
+                conditions.append('c.period=?')
+                params.append(period)
+            if conditions:
+                sql += ' WHERE ' + ' AND '.join(conditions)
+            cur = await db.execute(sql, params)
+            row = await cur.fetchone()
+            return {
+                'total_count': row['total_count'] or 0,
+                'total_amount': round(row['total_amount'] or 0, 2),
+                'pending_amount': round(row['pending_amount'] or 0, 2),
+                'approved_amount': round(row['approved_amount'] or 0, 2),
+                'paid_amount': round(row['paid_amount'] or 0, 2),
+            }
+
+    async def approve_commissions(self, approver_id: int,
+                                    staff_id: Optional[int] = None,
+                                    period: Optional[str] = None) -> int:
+        """Approve all pending commissions. Returns count approved."""
+        async with self.get_connection() as db:
+            sql = "UPDATE commissions SET status='approved', approved_by=? WHERE status='pending'"
+            params: list = [approver_id]
+            if staff_id:
+                sql += ' AND staff_id=?'
+                params.append(staff_id)
+            if period:
+                sql += ' AND period=?'
+                params.append(period)
+            cur = await db.execute(sql, params)
+            await db.commit()
+            return cur.rowcount
+
+    async def is_first_deposit(self, client_id: int) -> bool:
+        """Check if client has no prior deposits."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT COUNT(*) FROM deposits WHERE client_id=?', (client_id,))
+            count = (await cur.fetchone())[0]
+            return count == 0
+
+    async def is_first_registration(self, client_id: int) -> bool:
+        """Check if this is the first time client reached 'registered' status."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT COUNT(*) FROM client_notes
+                   WHERE client_id=? AND note_type='status_change' AND new_status='registered'""",
+                (client_id,))
+            count = (await cur.fetchone())[0]
+            # 0 means this is the first (about to happen), 1 means it already happened once
+            return count <= 1
+
+    # ─── Phase 10B: Advanced Analytics ─────────────────────────────────────
+
+    async def get_pipeline_stats(self, period_start: str, period_end: str,
+                                  team: Optional[str] = None) -> Dict[str, int]:
+        """Count clients per status created/changed within a date range."""
+        async with self.get_connection() as db:
+            sql = """SELECT c.status, COUNT(*) as cnt FROM clients c"""
+            conditions = ['c.created_at >= ?', 'c.created_at <= ?']
+            params: list = [period_start, period_end]
+            if team:
+                sql += ' JOIN staff s ON c.frontdesk_id = s.id'
+                conditions.append('s.team=?')
+                params.append(team)
+            sql += ' WHERE ' + ' AND '.join(conditions) + ' GROUP BY c.status'
+            cur = await db.execute(sql, params)
+            rows = await cur.fetchall()
+            return {r['status']: r['cnt'] for r in rows}
+
+    async def get_conversion_rates(self, period_start: str, period_end: str,
+                                    team: Optional[str] = None) -> Dict:
+        """Stage-to-stage conversion rates for a period."""
+        async with self.get_connection() as db:
+            base_sql = 'SELECT COUNT(*) FROM clients c'
+            join = ''
+            team_cond = ''
+            params_base: list = [period_start, period_end]
+            if team:
+                join = ' JOIN staff s ON c.frontdesk_id = s.id'
+                team_cond = ' AND s.team=?'
+                params_base.append(team)
+
+            stages = [
+                ('total', "c.created_at >= ? AND c.created_at <= ?" + team_cond),
+                ('contacted', "c.contacted_at IS NOT NULL AND c.created_at >= ? AND c.created_at <= ?" + team_cond),
+                ('replied', "c.replied_at IS NOT NULL AND c.created_at >= ? AND c.created_at <= ?" + team_cond),
+                ('registered', "c.registered_at IS NOT NULL AND c.created_at >= ? AND c.created_at <= ?" + team_cond),
+                ('deposited', "c.total_deposited > 0 AND c.created_at >= ? AND c.created_at <= ?" + team_cond),
+            ]
+            result = {}
+            for name, cond in stages:
+                sql = f'{base_sql}{join} WHERE {cond}'
+                cur = await db.execute(sql, params_base)
+                result[name] = (await cur.fetchone())[0]
+
+            # Calculate rates
+            total = result.get('total', 0)
+            result['contact_rate'] = round(result['contacted'] / total * 100, 1) if total > 0 else 0
+            result['reply_rate'] = round(result['replied'] / result['contacted'] * 100, 1) if result['contacted'] > 0 else 0
+            result['register_rate'] = round(result['registered'] / result['replied'] * 100, 1) if result['replied'] > 0 else 0
+            result['deposit_rate'] = round(result['deposited'] / result['registered'] * 100, 1) if result['registered'] > 0 else 0
+            return result
+
+    async def get_staff_rankings(self, period_start: str, period_end: str,
+                                  team: Optional[str] = None,
+                                  metric: str = 'deposits') -> List[Dict]:
+        """Ranked staff by metric (deposits, registrations, new_clients)."""
+        async with self.get_connection() as db:
+            if metric == 'deposits':
+                sql = """SELECT s.id as staff_id, s.display_name,
+                                COUNT(d.id) as count, COALESCE(SUM(d.amount), 0) as total_amount
+                         FROM staff s
+                         LEFT JOIN deposits d ON s.id = d.frontdesk_id
+                              AND d.deposit_date >= ? AND d.deposit_date <= ?
+                         WHERE s.is_active=1"""
+                params: list = [period_start, period_end]
+                if team:
+                    sql += ' AND s.team=?'
+                    params.append(team)
+                sql += ' GROUP BY s.id ORDER BY total_amount DESC'
+            elif metric == 'registrations':
+                sql = """SELECT s.id as staff_id, s.display_name,
+                                COUNT(cn.id) as count, 0 as total_amount
+                         FROM staff s
+                         LEFT JOIN client_notes cn ON s.id = cn.staff_id
+                              AND cn.note_type='status_change' AND cn.new_status='registered'
+                              AND cn.created_at >= ? AND cn.created_at <= ?
+                         WHERE s.is_active=1"""
+                params = [period_start, period_end]
+                if team:
+                    sql += ' AND s.team=?'
+                    params.append(team)
+                sql += ' GROUP BY s.id ORDER BY count DESC'
+            else:  # new_clients
+                sql = """SELECT s.id as staff_id, s.display_name,
+                                COUNT(c.id) as count, 0 as total_amount
+                         FROM staff s
+                         LEFT JOIN clients c ON s.id = c.frontdesk_id
+                              AND c.created_at >= ? AND c.created_at <= ?
+                         WHERE s.is_active=1"""
+                params = [period_start, period_end]
+                if team:
+                    sql += ' AND s.team=?'
+                    params.append(team)
+                sql += ' GROUP BY s.id ORDER BY count DESC'
+            cur = await db.execute(sql, params)
+            rows = await cur.fetchall()
+            return [{'staff_id': r['staff_id'], 'display_name': r['display_name'],
+                     'count': r['count'], 'total_amount': round(r['total_amount'], 2)} for r in rows]
+
+    async def get_source_analysis(self, period_start: str, period_end: str,
+                                   team: Optional[str] = None) -> List[Dict]:
+        """Breakdown of clients by lead source with conversion info."""
+        async with self.get_connection() as db:
+            sql = """SELECT c.source,
+                            COUNT(*) as total,
+                            SUM(CASE WHEN c.status IN ('registered','training','withdrew','ordered') THEN 1 ELSE 0 END) as converted,
+                            COALESCE(SUM(c.total_deposited), 0) as deposit_total
+                     FROM clients c"""
+            conditions = ['c.created_at >= ?', 'c.created_at <= ?']
+            params: list = [period_start, period_end]
+            if team:
+                sql += ' JOIN staff s ON c.frontdesk_id = s.id'
+                conditions.append('s.team=?')
+                params.append(team)
+            sql += ' WHERE ' + ' AND '.join(conditions) + ' GROUP BY c.source ORDER BY total DESC'
+            cur = await db.execute(sql, params)
+            rows = await cur.fetchall()
+            return [{'source': r['source'], 'total': r['total'],
+                     'converted': r['converted'],
+                     'conversion_rate': round(r['converted'] / r['total'] * 100, 1) if r['total'] > 0 else 0,
+                     'deposit_total': round(r['deposit_total'], 2)} for r in rows]
+
+    async def get_period_comparison(self, period1_start: str, period1_end: str,
+                                     period2_start: str, period2_end: str,
+                                     team: Optional[str] = None) -> Dict:
+        """Compare two periods — returns counts and deltas."""
+        p1 = await self.get_conversion_rates(period1_start, period1_end, team)
+        p2 = await self.get_conversion_rates(period2_start, period2_end, team)
+        comparison = {}
+        for key in ['total', 'contacted', 'replied', 'registered', 'deposited']:
+            v1 = p1.get(key, 0)
+            v2 = p2.get(key, 0)
+            delta = v1 - v2
+            pct_change = round((delta / v2) * 100, 1) if v2 > 0 else 0
+            comparison[key] = {'current': v1, 'previous': v2, 'delta': delta, 'pct_change': pct_change}
+        return comparison
+
+    async def get_stale_clients_analytics(self, days: int = 7,
+                                           team: Optional[str] = None) -> List[Dict]:
+        """Clients with no activity in N days — for analytics reports."""
+        cutoff = (datetime.utcnow() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+        active = [s.value for s in ClientStatus.active_statuses()]
+        placeholders = ','.join('?' * len(active))
+        async with self.get_connection() as db:
+            sql = f"""SELECT c.id, c.phone, c.nickname, c.status, c.updated_at,
+                             s.display_name as staff_name
+                      FROM clients c
+                      JOIN staff s ON c.frontdesk_id = s.id
+                      WHERE c.status IN ({placeholders}) AND c.updated_at < ?"""
+            params: list = list(active) + [cutoff]
+            if team:
+                sql += ' AND s.team=?'
+                params.append(team)
+            sql += ' ORDER BY c.updated_at ASC'
+            cur = await db.execute(sql, params)
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+    async def get_deposit_total(self, period_start: str, period_end: str,
+                                 team: Optional[str] = None) -> float:
+        """Total deposit amount for a period."""
+        async with self.get_connection() as db:
+            sql = 'SELECT COALESCE(SUM(d.amount), 0) FROM deposits d'
+            conditions = ['d.deposit_date >= ?', 'd.deposit_date <= ?']
+            params: list = [period_start, period_end]
+            if team:
+                sql += ' JOIN staff s ON d.frontdesk_id = s.id'
+                conditions.append('s.team=?')
+                params.append(team)
+            sql += ' WHERE ' + ' AND '.join(conditions)
+            cur = await db.execute(sql, params)
+            return round((await cur.fetchone())[0], 2)
+
+    # ─── Phase 10C: Shift Handoffs ────────────────────────────────────────
+
+    def _row_to_handoff(self, row) -> ShiftHandoff:
+        def _dt(v): return datetime.fromisoformat(v) if v else None
+        return ShiftHandoff(
+            id=row['id'],
+            from_staff_id=row['from_staff_id'],
+            to_staff_id=row['to_staff_id'],
+            team=row['team'],
+            status=row['status'],
+            notes=row['notes'],
+            client_ids=row['client_ids'],
+            created_at=_dt(row['created_at']),
+            accepted_at=_dt(row['accepted_at']),
+            completed_at=_dt(row['completed_at']),
+        )
+
+    async def create_handoff(self, handoff: ShiftHandoff) -> int:
+        """Create a shift handoff record."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """INSERT INTO shift_handoffs
+                   (from_staff_id, to_staff_id, team, status, notes, client_ids)
+                   VALUES (?,?,?,?,?,?)""",
+                (handoff.from_staff_id, handoff.to_staff_id, handoff.team,
+                 handoff.status, handoff.notes, handoff.client_ids))
+            await db.commit()
+            return cur.lastrowid
+
+    async def get_handoff_by_id(self, handoff_id: int) -> Optional[ShiftHandoff]:
+        async with self.get_connection() as db:
+            cur = await db.execute('SELECT * FROM shift_handoffs WHERE id=?', (handoff_id,))
+            row = await cur.fetchone()
+            return self._row_to_handoff(row) if row else None
+
+    async def get_pending_handoffs(self, team: Optional[str] = None,
+                                    to_staff_id: Optional[int] = None) -> List[ShiftHandoff]:
+        """Get pending handoffs for a team or specific staff."""
+        async with self.get_connection() as db:
+            sql = "SELECT * FROM shift_handoffs WHERE status='pending'"
+            params: list = []
+            if team:
+                sql += ' AND team=?'
+                params.append(team)
+            if to_staff_id:
+                sql += ' AND (to_staff_id=? OR to_staff_id IS NULL)'
+                params.append(to_staff_id)
+            sql += ' ORDER BY created_at DESC'
+            cur = await db.execute(sql, params)
+            rows = await cur.fetchall()
+            return [self._row_to_handoff(r) for r in rows]
+
+    async def accept_handoff(self, handoff_id: int, accepting_staff_id: int) -> bool:
+        """Accept a handoff — update status and reassign clients."""
+        async with self.get_connection() as db:
+            try:
+                cur = await db.execute(
+                    'SELECT * FROM shift_handoffs WHERE id=? AND status=?',
+                    (handoff_id, 'pending'))
+                row = await cur.fetchone()
+                if not row:
+                    return False
+
+                handoff = self._row_to_handoff(row)
+
+                # Update handoff status
+                await db.execute(
+                    """UPDATE shift_handoffs
+                       SET status='accepted', to_staff_id=?,
+                           accepted_at=datetime('now'), completed_at=datetime('now')
+                       WHERE id=?""",
+                    (accepting_staff_id, handoff_id))
+
+                # Reassign clients
+                import json
+                if handoff.client_ids:
+                    client_ids = json.loads(handoff.client_ids)
+                    for cid in client_ids:
+                        await db.execute(
+                            'UPDATE clients SET frontdesk_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+                            (accepting_staff_id, cid))
+
+                await db.commit()
+                return True
+            except Exception:
+                await db.rollback()
+                raise
+
+    async def decline_handoff(self, handoff_id: int) -> bool:
+        """Decline/cancel a handoff."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                "UPDATE shift_handoffs SET status='completed', completed_at=datetime('now') WHERE id=? AND status='pending'",
+                (handoff_id,))
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def get_active_clients_for_staff(self, staff_id: int) -> List[Client]:
+        """Get all clients in active statuses for a staff member."""
+        active = [s.value for s in ClientStatus.active_statuses()]
+        placeholders = ','.join('?' * len(active))
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                f"""SELECT * FROM clients
+                    WHERE frontdesk_id=? AND status IN ({placeholders})
+                    ORDER BY updated_at DESC""",
+                (staff_id, *active))
+            rows = await cur.fetchall()
+            return [self._row_to_client(r) for r in rows]
 
 
 # Global singleton
