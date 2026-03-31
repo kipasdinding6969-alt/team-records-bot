@@ -66,7 +66,7 @@ async def _show_my_commission(chat_id: int, staff, period: str = None):
             status_icon = {'pending': '⏳', 'approved': '✅', 'paid': '💵', 'rejected': '❌'}.get(c.status, '❓')
             text += f"  {status_icon} {c.trigger_type}: ${c.amount:.2f}\n"
 
-    buttons = _commission_buttons(staff.id, period)
+    buttons = _commission_buttons(staff.id, period, is_manager=staff.is_manager_or_above())
     await telegram_handler.send_message(chat_id, text, reply_markup={'inline_keyboard': buttons})
 
 
@@ -146,6 +146,13 @@ async def _set_rule(chat_id: int, staff, trigger: str, rate_type: str, rate_valu
         await telegram_handler.send_message(chat_id, "Invalid rate value.")
         return
 
+    if rate_value < 0:
+        await telegram_handler.send_message(chat_id, "Rate value cannot be negative.")
+        return
+    if rate_type == 'percentage' and (rate_value <= 0 or rate_value > 1.0):
+        await telegram_handler.send_message(chat_id, "Percentage rate must be between 0 (exclusive) and 1.0 (inclusive).")
+        return
+
     rule_id = await database_v2.set_commission_rule(trigger, rate_type, rate_value)
     await telegram_handler.send_message(chat_id, f"✅ Commission rule updated: {trigger} = {rate_value} ({rate_type})")
 
@@ -163,25 +170,25 @@ async def _approve_commissions(chat_id: int, staff, target_staff_id: int = None,
     await telegram_handler.send_message(chat_id, f"✅ Approved {count} commission(s) for {period}")
 
 
-def _commission_buttons(staff_id: int, period: str):
+def _commission_buttons(staff_id: int, period: str, is_manager: bool = False):
     """Build inline keyboard for commission display."""
     now = datetime.utcnow()
-    week = f'{now.year}-W{now.isocalendar()[1]:02d}'
     month = f'{now.year}-{now.month:02d}'
     last_week_dt = now - timedelta(weeks=1)
     lw_iso = last_week_dt.isocalendar()
     last_week = f'{lw_iso[0]}-W{lw_iso[1]:02d}'
 
-    return [
-        [
-            {'text': '✅ Approve All', 'callback_data': f'comm:approve:{period}'},
-            {'text': '📊 Breakdown', 'callback_data': f'comm:detail:{staff_id}:{period}'},
-        ],
-        [
-            {'text': '📅 Last Week', 'callback_data': f'comm:period:{last_week}'},
-            {'text': '📅 This Month', 'callback_data': f'comm:period:{month}'},
-        ],
-    ]
+    rows = []
+    row1 = []
+    if is_manager:
+        row1.append({'text': '✅ Approve All', 'callback_data': f'comm:approve:{period}'})
+    row1.append({'text': '📊 Breakdown', 'callback_data': f'comm:detail:{staff_id}:{period}'})
+    rows.append(row1)
+    rows.append([
+        {'text': '📅 Last Week', 'callback_data': f'comm:period:{last_week}'},
+        {'text': '📅 This Month', 'callback_data': f'comm:period:{month}'},
+    ])
+    return rows
 
 
 async def handle_commission_callback(task_data: Dict[str, Any]):
@@ -201,8 +208,9 @@ async def handle_commission_callback(task_data: Dict[str, Any]):
 
     if action == 'approve':
         period = parts[2]
+        target_staff_id = int(parts[3]) if len(parts) > 3 else None
         if staff.is_manager_or_above():
-            count = await database_v2.approve_commissions(staff.id, period=period)
+            count = await database_v2.approve_commissions(staff.id, staff_id=target_staff_id, period=period)
             await telegram_handler.send_message(chat_id, f"✅ Approved {count} commission(s)")
         else:
             await telegram_handler.send_message(chat_id, t('err_permission_denied', staff.language))

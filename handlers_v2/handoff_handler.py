@@ -104,7 +104,16 @@ async def _create_handoff(chat_id: int, staff, target_name: str = None):
         ]
     ]
 
-    await telegram_handler.send_message(chat_id, text, reply_markup={'inline_keyboard': buttons})
+    # Send accept/decline buttons to the TARGET staff, not the creator
+    if to_staff_id:
+        to_staff_obj = await database_v2.get_staff_by_id(to_staff_id)
+        if to_staff_obj and to_staff_obj.tg_chat_id:
+            await telegram_handler.send_message(to_staff_obj.tg_chat_id, text, reply_markup={'inline_keyboard': buttons})
+        else:
+            logger.warning(f"Could not send handoff buttons to staff {to_staff_id}: no chat_id")
+
+    # Send confirmation (no buttons) to the creator
+    await telegram_handler.send_message(chat_id, text)
 
     # Log timeline events for each client
     for cid in client_ids:
@@ -158,7 +167,16 @@ async def _accept_handoff(chat_id: int, staff, handoff_id: int):
 async def _list_handoffs(chat_id: int, staff):
     """List pending handoffs for the staff's team."""
     team = staff.team
-    handoffs = await database_v2.get_pending_handoffs(team=team, to_staff_id=staff.id)
+    # Get handoffs targeted to this staff OR open to any available (to_staff_id IS NULL) in the same team
+    targeted = await database_v2.get_pending_handoffs(team=team, to_staff_id=staff.id)
+    open_handoffs = await database_v2.get_pending_handoffs(team=team)
+    # Merge: open_handoffs without to_staff_id + targeted (deduplicate by id)
+    seen_ids = {h.id for h in targeted}
+    handoffs = list(targeted)
+    for h in open_handoffs:
+        if h.to_staff_id is None and h.id not in seen_ids:
+            handoffs.append(h)
+            seen_ids.add(h.id)
 
     if not handoffs:
         await telegram_handler.send_message(chat_id, "No pending handoffs.")
@@ -214,6 +232,19 @@ async def handle_handoff_callback(task_data: Dict[str, Any]):
     if action == 'accept':
         await _accept_handoff(chat_id, staff, handoff_id)
     elif action == 'decline':
+        handoff = await database_v2.get_handoff_by_id(handoff_id)
+        if not handoff:
+            await telegram_handler.send_message(chat_id, "Handoff not found or already processed.")
+            return
+        # Authorization: only from_staff, to_staff, or a manager can decline
+        is_authorized = (
+            staff.id == handoff.from_staff_id
+            or staff.id == handoff.to_staff_id
+            or staff.is_manager_or_above()
+        )
+        if not is_authorized:
+            await telegram_handler.send_message(chat_id, t('err_permission_denied', staff.language))
+            return
         success = await database_v2.decline_handoff(handoff_id)
         if success:
             await telegram_handler.send_message(chat_id, "❌ Handoff declined.")
