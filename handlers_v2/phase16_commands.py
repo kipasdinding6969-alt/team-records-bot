@@ -285,6 +285,110 @@ async def handle_revoke(task_data: Dict[str, Any]):
         f'❌ Revoked /{command} from {target.display_name}')
 
 
+# ─── Phase 16.5: /comment ─────────────────────────────────────────────────────
+
+async def handle_comment(task_data: Dict[str, Any]):
+    """/comment <number_or_id> <text> — Add a note to a client record."""
+    chat_id = task_data.get('chat_id')
+    user_id = task_data.get('user_id')
+    args = task_data.get('args', '').strip()
+
+    staff = await _get_staff(user_id)
+    if not staff:
+        await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
+        return
+
+    lang = staff.language
+    parts = args.split(None, 1)
+    if len(parts) < 2:
+        msg = '用法: /comment <号码或ID> <内容>' if lang == 'zh' else 'Usage: /comment <phone_or_id> <text>'
+        await telegram_handler.send_message(chat_id, msg)
+        return
+
+    target, content = parts[0], parts[1]
+
+    # Find client by ID or phone
+    client = None
+    if target.isdigit() and len(target) < 8:
+        client = await database_v2.get_client_by_id(int(target))
+    if not client:
+        client = await database_v2.get_client_by_phone(target)
+    if not client:
+        msg = f'找不到客户: {target}' if lang == 'zh' else f'Client not found: {target}'
+        await telegram_handler.send_message(chat_id, msg)
+        return
+
+    await database_v2.add_client_comment(
+        client.id, staff.id, staff.display_name, content,
+        note_type='comment',
+        phone_normalized=database_v2.normalize_phone(client.phone) if client.phone else None,
+    )
+    msg = (f'✅ 备注已添加到 #{client.id} ({client.phone})' if lang == 'zh'
+           else f'✅ Note added to #{client.id} ({client.phone})')
+    await telegram_handler.send_message(chat_id, msg)
+
+
+# ─── Phase 16.5: /stats ──────────────────────────────────────────────────────
+
+async def handle_stats(task_data: Dict[str, Any]):
+    """/stats [date] — Daily summary for the calling frontdesk's performance."""
+    chat_id = task_data.get('chat_id')
+    user_id = task_data.get('user_id')
+    args = task_data.get('args', '').strip()
+
+    staff = await _get_staff(user_id)
+    if not staff:
+        await telegram_handler.send_message(chat_id, t('err_not_registered', 'zh'))
+        return
+
+    lang = staff.language
+    from datetime import date, datetime, timezone
+
+    if args:
+        stat_date = args.split()[0]
+    else:
+        stat_date = datetime.now(timezone.utc).date().isoformat()
+
+    # Get daily stats
+    daily = await database_v2.get_performance_daily(stat_date)
+    my_stats = next((d for d in daily if d['staff_id'] == staff.id), None)
+
+    if not my_stats:
+        msg = (f'📊 {stat_date}: 暂无数据' if lang == 'zh'
+               else f'📊 {stat_date}: No data yet')
+        await telegram_handler.send_message(chat_id, msg)
+        return
+
+    if lang == 'zh':
+        lines = [
+            f'📊 {staff.display_name} — {stat_date}',
+            f'新粉丝: {my_stats["new_leads"]}',
+            f'回复率: {my_stats["reply_rate"]}%',
+            f'注册: {my_stats["registered"]}',
+            f'培训: {my_stats.get("training", 0)}',
+            f'提款: {my_stats.get("withdrew", 0)}',
+            f'新单: {my_stats["new_orders"]}',
+            f'转换率: {my_stats["conversion_rate"]}%',
+            f'充值: ${my_stats.get("total_deposit", 0):.0f}',
+            f'死客: {my_stats.get("dead", 0)}',
+        ]
+    else:
+        lines = [
+            f'📊 {staff.display_name} — {stat_date}',
+            f'New Leads: {my_stats["new_leads"]}',
+            f'Reply Rate: {my_stats["reply_rate"]}%',
+            f'Registered: {my_stats["registered"]}',
+            f'Training: {my_stats.get("training", 0)}',
+            f'Withdrew: {my_stats.get("withdrew", 0)}',
+            f'New Orders: {my_stats["new_orders"]}',
+            f'Conversion: {my_stats["conversion_rate"]}%',
+            f'Deposits: ${my_stats.get("total_deposit", 0):.0f}',
+            f'Dead: {my_stats.get("dead", 0)}',
+        ]
+
+    await telegram_handler.send_message(chat_id, '\n'.join(lines))
+
+
 # ─── Exports ─────────────────────────────────────────────────────────────────
 
 PHASE16_COMMANDS = {
@@ -295,6 +399,8 @@ PHASE16_COMMANDS = {
     'perms': handle_perms,
     'grant': handle_grant,
     'revoke': handle_revoke,
+    'comment': handle_comment,
+    'stats': handle_stats,
 }
 
 PHASE16_CALLBACKS = {}

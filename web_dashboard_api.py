@@ -1489,6 +1489,241 @@ async def delete_permission_override(
     return {'ok': True}
 
 
+# ─── Phase 16.5: Client Notes API ────────────────────────────────────────────
+
+class AddNoteRequest(BaseModel):
+    content: str
+    note_type: str = 'comment'
+    phone_normalized: Optional[str] = None
+
+
+@app.post('/api/clients/{client_id}/notes')
+async def add_client_note(
+    client_id: int,
+    body: AddNoteRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Add a comment/note to a client record."""
+    async with _connect_db() as db:
+        async with db.execute('SELECT id FROM clients WHERE id = ?', (client_id,)) as cur:
+            if not await cur.fetchone():
+                raise HTTPException(status_code=404, detail='Client not found')
+
+        valid_types = ('comment', 'status_change', 'flag', 'link_note')
+        if body.note_type not in valid_types:
+            raise HTTPException(status_code=400, detail=f'Invalid note_type. Valid: {valid_types}')
+
+        await db.execute(
+            """INSERT INTO client_notes
+               (client_id, staff_id, note_type, content, author_name, phone_normalized)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (client_id, user.get('staff_id'), body.note_type,
+             body.content, user['display_name'], body.phone_normalized)
+        )
+        await db.commit()
+    return {'ok': True}
+
+
+@app.get('/api/clients/{client_id}/notes')
+async def get_client_notes(client_id: int, user: dict = Depends(get_current_user)):
+    """Get all notes for a client."""
+    async with _connect_db() as db:
+        async with db.execute(
+            """SELECT cn.id, cn.note_type, cn.old_status, cn.new_status,
+                      cn.content, cn.author_name, cn.phone_normalized,
+                      cn.created_at, s.display_name AS staff_name
+               FROM client_notes cn
+               LEFT JOIN staff s ON cn.staff_id = s.id
+               WHERE cn.client_id = ?
+               ORDER BY cn.created_at DESC LIMIT 100""",
+            (client_id,)
+        ) as cur:
+            return [row_to_dict(r) for r in await cur.fetchall()]
+
+
+@app.get('/api/clients/{client_id}/timeline')
+async def get_client_timeline(client_id: int, user: dict = Depends(get_current_user)):
+    """Unified timeline: notes + status changes + links + events."""
+    items = []
+    async with _connect_db() as db:
+        # Notes and status changes
+        async with db.execute(
+            """SELECT cn.id, 'note' AS timeline_type, cn.note_type,
+                      cn.old_status, cn.new_status, cn.content,
+                      cn.created_at, cn.author_name,
+                      s.display_name AS staff_name
+               FROM client_notes cn
+               LEFT JOIN staff s ON cn.staff_id = s.id
+               WHERE cn.client_id = ?
+               ORDER BY cn.created_at DESC LIMIT 100""",
+            (client_id,)
+        ) as cur:
+            items.extend([row_to_dict(r) for r in await cur.fetchall()])
+
+        # Client links
+        async with db.execute(
+            """SELECT cl.id, 'link' AS timeline_type,
+                      cl.link_type AS note_type, cl.note AS content,
+                      cl.created_at,
+                      s.display_name AS staff_name,
+                      ca.phone AS phone_a, cb.phone AS phone_b
+               FROM client_links cl
+               JOIN clients ca ON cl.client_id_a = ca.id
+               JOIN clients cb ON cl.client_id_b = cb.id
+               LEFT JOIN staff s ON cl.created_by = s.id
+               WHERE cl.client_id_a = ? OR cl.client_id_b = ?
+               ORDER BY cl.created_at DESC""",
+            (client_id, client_id)
+        ) as cur:
+            items.extend([row_to_dict(r) for r in await cur.fetchall()])
+
+    items.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+    return items[:100]
+
+
+# ─── Phase 16.5: Performance Dashboard API ──────────────────────────────────
+
+@app.get('/api/performance/daily')
+async def get_performance_daily(
+    date: str = Query(default=None),
+    team: str = Query(default='all'),
+    user: dict = Depends(get_current_user),
+):
+    """Daily performance stats per frontdesk."""
+    from datetime import date as date_type
+    stat_date = date or date_type.today().isoformat()
+
+    # Scope enforcement
+    if user['role'] == 'admin' and team != user['team_scope'] and team != 'all':
+        raise HTTPException(status_code=403, detail='Access denied to other teams')
+
+    effective_team = team
+    if user['role'] == 'admin' and team == 'all':
+        effective_team = user['team_scope']
+    elif user['role'] == 'member':
+        # Member: only their own stats
+        pass
+
+    async with _connect_db() as db:
+        sql = """SELECT s.id AS staff_id, s.display_name, s.team,
+                        COALESCE(ds.new_leads, 0) AS new_leads,
+                        COALESCE(ds.contacted, 0) AS contacted,
+                        COALESCE(ds.replied, 0) AS replied,
+                        COALESCE(ds.registered, 0) AS registered,
+                        COALESCE(ds.training, 0) AS training,
+                        COALESCE(ds.withdrew, 0) AS withdrew,
+                        COALESCE(ds.new_orders, 0) AS new_orders,
+                        COALESCE(ds.ghosted, 0) AS ghosted,
+                        COALESCE(ds.dead, 0) AS dead,
+                        COALESCE(ds.total_deposit, 0) AS total_deposit
+                 FROM staff s
+                 LEFT JOIN daily_stats ds ON s.id = ds.staff_id AND ds.stat_date = ?
+                 WHERE s.is_active = 1
+                   AND s.role IN ('frontdesk', 'newbie', 'customer_service')"""
+        params: list = [stat_date]
+
+        if user['role'] == 'member':
+            sql += ' AND s.id = ?'
+            params.append(user.get('staff_id'))
+        elif effective_team and effective_team != 'all':
+            sql += ' AND s.team = ?'
+            params.append(effective_team)
+
+        sql += ' ORDER BY new_orders DESC, new_leads DESC'
+        async with db.execute(sql, params) as cur:
+            rows = [row_to_dict(r) for r in await cur.fetchall()]
+
+    # Compute rates
+    for d in rows:
+        nl = d.get('new_leads', 0) or 0
+        rp = d.get('replied', 0) or 0
+        reg = d.get('registered', 0) or 0
+        no = d.get('new_orders', 0) or 0
+        tr = d.get('training', 0) or 0
+        d['reply_rate'] = round(rp / max(nl, 1) * 100, 1)
+        d['registration_rate'] = round(reg / max(rp, 1) * 100, 1)
+        d['training_rate'] = round(tr / max(reg, 1) * 100, 1)
+        d['conversion_rate'] = round(no / max(nl, 1) * 100, 1)
+
+    # Team totals
+    totals = {}
+    for key in ['new_leads', 'contacted', 'replied', 'registered', 'training',
+                'withdrew', 'new_orders', 'ghosted', 'dead', 'total_deposit']:
+        totals[key] = sum(d.get(key, 0) or 0 for d in rows)
+    tnl = totals.get('new_leads', 0) or 0
+    trp = totals.get('replied', 0) or 0
+    treg = totals.get('registered', 0) or 0
+    tno = totals.get('new_orders', 0) or 0
+    ttr = totals.get('training', 0) or 0
+    totals['reply_rate'] = round(trp / max(tnl, 1) * 100, 1)
+    totals['registration_rate'] = round(treg / max(trp, 1) * 100, 1)
+    totals['training_rate'] = round(ttr / max(treg, 1) * 100, 1)
+    totals['conversion_rate'] = round(tno / max(tnl, 1) * 100, 1)
+    totals['total_deposit'] = round(totals.get('total_deposit', 0), 2)
+
+    return {'date': stat_date, 'team': team, 'staff': rows, 'totals': totals}
+
+
+@app.get('/api/performance/summary')
+async def get_performance_summary(
+    date_from: str = Query(..., alias='from'),
+    date_to: str = Query(..., alias='to'),
+    team: str = Query(default='all'),
+    user: dict = Depends(get_current_user),
+):
+    """Performance summary over a date range."""
+    if user['role'] == 'admin' and team != user['team_scope'] and team != 'all':
+        raise HTTPException(status_code=403, detail='Access denied')
+
+    effective_team = team
+    if user['role'] == 'admin' and team == 'all':
+        effective_team = user['team_scope']
+
+    async with _connect_db() as db:
+        sql = """SELECT s.id AS staff_id, s.display_name, s.team,
+                        COALESCE(SUM(ds.new_leads), 0) AS new_leads,
+                        COALESCE(SUM(ds.contacted), 0) AS contacted,
+                        COALESCE(SUM(ds.replied), 0) AS replied,
+                        COALESCE(SUM(ds.registered), 0) AS registered,
+                        COALESCE(SUM(ds.training), 0) AS training,
+                        COALESCE(SUM(ds.withdrew), 0) AS withdrew,
+                        COALESCE(SUM(ds.new_orders), 0) AS new_orders,
+                        COALESCE(SUM(ds.ghosted), 0) AS ghosted,
+                        COALESCE(SUM(ds.dead), 0) AS dead,
+                        COALESCE(SUM(ds.total_deposit), 0) AS total_deposit
+                 FROM staff s
+                 LEFT JOIN daily_stats ds ON s.id = ds.staff_id
+                      AND ds.stat_date >= ? AND ds.stat_date <= ?
+                 WHERE s.is_active = 1
+                   AND s.role IN ('frontdesk', 'newbie', 'customer_service')"""
+        params: list = [date_from, date_to]
+
+        if user['role'] == 'member':
+            sql += ' AND s.id = ?'
+            params.append(user.get('staff_id'))
+        elif effective_team and effective_team != 'all':
+            sql += ' AND s.team = ?'
+            params.append(effective_team)
+
+        sql += ' GROUP BY s.id ORDER BY new_orders DESC, new_leads DESC'
+        async with db.execute(sql, params) as cur:
+            rows = [row_to_dict(r) for r in await cur.fetchall()]
+
+    for d in rows:
+        nl = d.get('new_leads', 0) or 0
+        rp = d.get('replied', 0) or 0
+        reg = d.get('registered', 0) or 0
+        no = d.get('new_orders', 0) or 0
+        tr = d.get('training', 0) or 0
+        d['reply_rate'] = round(rp / max(nl, 1) * 100, 1)
+        d['registration_rate'] = round(reg / max(rp, 1) * 100, 1)
+        d['training_rate'] = round(tr / max(reg, 1) * 100, 1)
+        d['conversion_rate'] = round(no / max(nl, 1) * 100, 1)
+        d['total_deposit'] = round(d.get('total_deposit', 0) or 0, 2)
+
+    return {'from': date_from, 'to': date_to, 'team': team, 'staff': rows}
+
+
 # ─── Health ───────────────────────────────────────────────────────────────────
 
 @app.get('/health')

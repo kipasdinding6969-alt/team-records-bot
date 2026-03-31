@@ -22,6 +22,7 @@ const NAV_ALL: NavItem[] = [
   { path: '/clients', labelKey: 'nav.clients', icon: '≡', end: false },
   { path: '/phone-lookup', labelKey: 'nav.phone_lookup', icon: '☎', end: false },
   { path: '/reports', labelKey: 'nav.reports', icon: '⌬', end: false },
+  { path: '/performance', labelKey: 'nav.performance', icon: '⊞', end: false },
   { path: '/permissions', labelKey: 'nav.permissions', icon: '🔐', end: false, adminOnly: true },
   { path: '/users', labelKey: 'nav.users', icon: '◎', end: false, adminOnly: true },
 ]
@@ -29,7 +30,7 @@ const NAV_ALL: NavItem[] = [
 function buildNav(auth: AuthState | null) {
   if (!auth) return NAV_ALL.filter(n => !n.adminOnly)
   if (auth.role === 'member') {
-    return NAV_ALL.filter(n => n.path === '/' || n.path === '/clients' || n.path === '/phone-lookup')
+    return NAV_ALL.filter(n => n.path === '/' || n.path === '/clients' || n.path === '/phone-lookup' || n.path === '/performance')
   }
   return NAV_ALL
 }

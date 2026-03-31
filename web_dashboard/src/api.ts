@@ -255,4 +255,29 @@ export const api = {
 
   deletePermissionOverride: (staffId: number, command: string) =>
     req<{ ok: boolean }>(`/api/permissions/${staffId}/${command}`, { method: 'DELETE' }),
+
+  // Phase 16.5: Client Notes
+  clientNotes: (clientId: number) => req<any[]>(`/api/clients/${clientId}/notes`),
+
+  addClientNote: (clientId: number, data: { content: string; note_type?: string; phone_normalized?: string }) =>
+    req<{ ok: boolean }>(`/api/clients/${clientId}/notes`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  clientTimeline: (clientId: number) => req<any[]>(`/api/clients/${clientId}/timeline`),
+
+  // Phase 16.5: Performance Dashboard
+  performanceDaily: (date?: string, team?: string) => {
+    const p = new URLSearchParams()
+    if (date) p.set('date', date)
+    if (team) p.set('team', team)
+    return req<any>(`/api/performance/daily${p.toString() ? `?${p}` : ''}`)
+  },
+
+  performanceSummary: (from: string, to: string, team?: string) => {
+    const p = new URLSearchParams({ from, to })
+    if (team) p.set('team', team)
+    return req<any>(`/api/performance/summary?${p}`)
+  },
 }

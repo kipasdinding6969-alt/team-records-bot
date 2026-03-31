@@ -343,6 +343,56 @@ export default function PermissionManager() {
                   </div>
                 </div>
 
+                {/* Section-level permission toggles */}
+                <div style={{ ...S.sectionTitle, marginTop: 4 }}>
+                  {t('perm.section_permissions', lang)}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 20 }}>
+                  {['view_clients', 'edit_clients', 'add_clients', 'view_performance', 'export_data', 'manage_team'].map(section => {
+                    const ov = selected.overrides.find((o: PermOverride) => o.command === section)
+                    const isAllowed = ov ? ov.allowed : true
+                    return (
+                      <div
+                        key={section}
+                        onClick={async () => {
+                          try {
+                            await api.setPermissionOverride({
+                              staff_id: selected.staff_id,
+                              command: section,
+                              allowed: !isAllowed,
+                              reason: `Toggle from dashboard`,
+                            })
+                            await loadAll()
+                          } catch { /* silent */ }
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '10px 12px', borderRadius: 6, cursor: 'pointer',
+                          background: isAllowed ? '#00b89415' : '#d6303115',
+                          border: `1px solid ${isAllowed ? '#00b89444' : '#d6303144'}`,
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        <div style={{
+                          width: 36, height: 20, borderRadius: 10,
+                          background: isAllowed ? '#00b894' : '#636e72',
+                          position: 'relative', transition: 'background 0.15s',
+                        }}>
+                          <div style={{
+                            width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                            position: 'absolute', top: 2,
+                            left: isAllowed ? 18 : 2,
+                            transition: 'left 0.15s',
+                          }} />
+                        </div>
+                        <span style={{ fontSize: 12, color: '#e0e0e0', fontWeight: 500 }}>
+                          {t(`perm.${section}`, lang)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+
                 <div style={S.sectionTitle}>
                   {t('perm.overrides', lang)} ({selected.overrides.length})
                 </div>

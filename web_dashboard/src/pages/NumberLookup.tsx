@@ -174,6 +174,49 @@ const S = {
   },
 }
 
+function NoteForm({ clientId, lang }: { clientId: number; lang: string }) {
+  const [content, setContent] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  async function handleSave() {
+    if (!content.trim()) return
+    setSaving(true)
+    setMsg('')
+    try {
+      await api.addClientNote(clientId, { content: content.trim(), note_type: 'comment' })
+      setContent('')
+      setMsg('Saved')
+    } catch {
+      setMsg('Failed')
+    }
+    setSaving(false)
+  }
+
+  return (
+    <div style={{ ...S.card, background: '#0f3460' }}>
+      <div style={S.cardTitle}>{t('detail.add_note', lang)}</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input
+          style={{ ...S.input, flex: 1 }}
+          placeholder={t('detail.note_placeholder', lang)}
+          value={content}
+          onChange={e => setContent(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSave()}
+        />
+        <button style={S.btn} onClick={handleSave} disabled={saving || !content.trim()}>
+          {saving ? '...' : t('common.save', lang)}
+        </button>
+      </div>
+      {msg && <div style={{ fontSize: 12, marginTop: 6, color: msg === 'Failed' ? '#e88' : '#00b894' }}>{msg}</div>}
+    </div>
+  )
+}
+
+function addClientNote(clientId: number, data: { content: string; note_type: string }) {
+  return api.addClientNote(clientId, data)
+}
+
 export default function NumberLookup() {
   const lang = getLang()
   const auth = getAuthState()
@@ -330,6 +373,11 @@ export default function NumberLookup() {
             )}
           </div>
 
+          {/* Inline note form for linked clients */}
+          {result.linked_clients && result.linked_clients.length > 0 && (
+            <NoteForm clientId={result.linked_clients[0].id} lang={lang} />
+          )}
+
           {result.log && result.log.length > 0 && (
             <div style={S.card}>
               <div style={S.cardTitle}>{t('phone.history', lang)}</div>
@@ -354,12 +402,29 @@ export default function NumberLookup() {
               {result.linked_clients.length === 0 ? (
                 <div style={{ color: '#7f848e', fontSize: 13 }}>—</div>
               ) : (
-                result.linked_clients.map((c, i) => (
+                result.linked_clients.map((c: any, i: number) => (
                   <div key={i} style={S.clientRow}>
-                    <span style={{ color: '#e0e0e0', fontWeight: 600 }}>#{c.id}</span>
-                    <span style={{ color: '#e0e0e0' }}>{c.phone}</span>
+                    <a
+                      href={`/clients/${c.id}`}
+                      style={{ color: '#74b9ff', fontWeight: 600, textDecoration: 'none', cursor: 'pointer' }}
+                    >
+                      #{c.id}
+                    </a>
+                    <span style={{
+                      background: '#00b89422', color: '#00b894', padding: '2px 8px',
+                      borderRadius: 4, fontSize: 11, fontWeight: 600,
+                    }}>
+                      {c.phone}
+                    </span>
                     <span style={{ color: '#7f848e' }}>{c.status}</span>
-                    <span style={{ color: '#7f848e' }}>{c.frontdesk_name}</span>
+                    {c.frontdesk_name && (
+                      <span style={{
+                        background: '#fdcb6e22', color: '#fdcb6e', padding: '2px 8px',
+                        borderRadius: 4, fontSize: 11, fontWeight: 600,
+                      }}>
+                        {c.frontdesk_name}
+                      </span>
+                    )}
                   </div>
                 ))
               )}

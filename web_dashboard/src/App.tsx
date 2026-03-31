@@ -12,6 +12,7 @@ import Team from './pages/Team'
 import UserManagement from './pages/UserManagement'
 import NumberLookup from './pages/NumberLookup'
 import PermissionManager from './pages/PermissionManager'
+import Performance from './pages/Performance'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated() ? <>{children}</> : <Navigate to="/login" replace />
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="clients" element={<Clients />} />
           <Route path="clients/:id" element={<ClientDetail />} />
           <Route path="reports" element={<Reports />} />
+          <Route path="performance" element={<Performance />} />
           <Route
             path="users"
             element={

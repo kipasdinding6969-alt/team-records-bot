@@ -547,6 +547,18 @@ class DatabaseV2:
             ('clients',  'ALTER TABLE clients ADD COLUMN handoff_at TIMESTAMP'),
             ('clients',  'ALTER TABLE clients ADD COLUMN handoff_note TEXT'),
             ('staff',    'ALTER TABLE staff ADD COLUMN tg_username TEXT'),
+            # Phase 16.5: client_notes enhancements
+            ('client_notes', 'ALTER TABLE client_notes ADD COLUMN phone_normalized TEXT'),
+            ('client_notes', 'ALTER TABLE client_notes ADD COLUMN author_name TEXT'),
+            # Phase 16.5: phone_registry extra fields
+            ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN category TEXT'),
+            ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN recruiter TEXT'),
+            ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN account_id TEXT'),
+            ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN first_day_status TEXT'),
+            ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN second_day_status TEXT'),
+            ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN client_condition TEXT'),
+            ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN team_name TEXT'),
+            ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN leader_name TEXT'),
         ]
         async with self.get_connection() as db:
             for _tbl, sql in migrations:
@@ -3406,6 +3418,214 @@ class DatabaseV2:
                    WHERE po.staff_id = ?
                    ORDER BY po.command""",
                 (staff_id,))
+            return [dict(r) for r in await cur.fetchall()]
+
+    # ─── Phase 16.5: Enhanced Client Notes ────────────────────────────────────
+
+    async def add_client_comment(self, client_id: int, staff_id: int,
+                                  author_name: str, content: str,
+                                  note_type: str = 'comment',
+                                  phone_normalized: Optional[str] = None) -> int:
+        """Add a comment/note to a client record."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """INSERT INTO client_notes
+                   (client_id, staff_id, note_type, content, author_name, phone_normalized)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (client_id, staff_id, note_type, content, author_name, phone_normalized))
+            await db.commit()
+            return cur.lastrowid
+
+    async def get_client_comments(self, client_id: int, limit: int = 50) -> List[Dict]:
+        """Get all notes/comments for a client."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT cn.id, cn.client_id, cn.staff_id, cn.note_type,
+                          cn.old_status, cn.new_status, cn.content,
+                          cn.author_name, cn.phone_normalized, cn.created_at,
+                          s.display_name AS staff_name
+                   FROM client_notes cn
+                   LEFT JOIN staff s ON cn.staff_id = s.id
+                   WHERE cn.client_id = ?
+                   ORDER BY cn.created_at DESC LIMIT ?""",
+                (client_id, limit))
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def get_client_timeline(self, client_id: int, limit: int = 100) -> List[Dict]:
+        """Unified timeline: notes + status changes + links + events."""
+        items: List[Dict] = []
+        async with self.get_connection() as db:
+            # Notes and status changes
+            cur = await db.execute(
+                """SELECT cn.id, 'note' AS timeline_type, cn.note_type,
+                          cn.old_status, cn.new_status, cn.content,
+                          cn.created_at, cn.author_name,
+                          s.display_name AS staff_name
+                   FROM client_notes cn
+                   LEFT JOIN staff s ON cn.staff_id = s.id
+                   WHERE cn.client_id = ?
+                   ORDER BY cn.created_at DESC LIMIT ?""",
+                (client_id, limit))
+            items.extend([dict(r) for r in await cur.fetchall()])
+
+            # Client links
+            cur = await db.execute(
+                """SELECT cl.id, 'link' AS timeline_type,
+                          cl.link_type AS note_type, cl.note AS content,
+                          cl.created_at,
+                          s.display_name AS staff_name,
+                          ca.phone AS phone_a, cb.phone AS phone_b
+                   FROM client_links cl
+                   JOIN clients ca ON cl.client_id_a = ca.id
+                   JOIN clients cb ON cl.client_id_b = cb.id
+                   LEFT JOIN staff s ON cl.created_by = s.id
+                   WHERE cl.client_id_a = ? OR cl.client_id_b = ?
+                   ORDER BY cl.created_at DESC""",
+                (client_id, client_id))
+            items.extend([dict(r) for r in await cur.fetchall()])
+
+            # Client events
+            cur = await db.execute(
+                """SELECT ce.id, 'event' AS timeline_type,
+                          ce.event_type AS note_type, ce.event_data AS content,
+                          ce.created_at,
+                          s.display_name AS staff_name
+                   FROM client_events ce
+                   LEFT JOIN staff s ON ce.staff_id = s.id
+                   WHERE ce.client_id = ?
+                   ORDER BY ce.created_at DESC LIMIT ?""",
+                (client_id, limit))
+            items.extend([dict(r) for r in await cur.fetchall()])
+
+        # Sort by created_at descending
+        items.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        return items[:limit]
+
+    # ─── Phase 16.5: Performance Dashboard ────────────────────────────────────
+
+    async def get_performance_daily(self, stat_date: str,
+                                     team: Optional[str] = None) -> List[Dict]:
+        """Daily performance stats per frontdesk."""
+        async with self.get_connection() as db:
+            sql = """SELECT s.id AS staff_id, s.display_name, s.team,
+                            ds.new_leads, ds.contacted, ds.replied, ds.registered,
+                            ds.training, ds.withdrew, ds.new_orders,
+                            ds.ghosted, ds.dead,
+                            ds.reply_rate, ds.conversion_rate, ds.total_deposit
+                     FROM daily_stats ds
+                     JOIN staff s ON ds.staff_id = s.id
+                     WHERE ds.stat_date = ? AND s.is_active = 1"""
+            params: list = [stat_date]
+            if team and team != 'all':
+                sql += ' AND s.team = ?'
+                params.append(team)
+            sql += ' ORDER BY ds.new_orders DESC, ds.new_leads DESC'
+            cur = await db.execute(sql, params)
+            rows = await cur.fetchall()
+
+        result = []
+        for r in rows:
+            d = dict(r)
+            new_leads = d.get('new_leads', 0) or 0
+            replied = d.get('replied', 0) or 0
+            registered = d.get('registered', 0) or 0
+            new_orders = d.get('new_orders', 0) or 0
+            d['reply_rate'] = round(replied / max(new_leads, 1) * 100, 1)
+            d['registration_rate'] = round(registered / max(replied, 1) * 100, 1)
+            d['training_rate'] = round((d.get('training', 0) or 0) / max(registered, 1) * 100, 1)
+            d['conversion_rate'] = round(new_orders / max(new_leads, 1) * 100, 1)
+            result.append(d)
+        return result
+
+    async def get_performance_summary(self, date_from: str, date_to: str,
+                                       team: Optional[str] = None) -> List[Dict]:
+        """Performance summary over a date range, grouped by staff."""
+        async with self.get_connection() as db:
+            sql = """SELECT s.id AS staff_id, s.display_name, s.team,
+                            SUM(ds.new_leads) AS new_leads,
+                            SUM(ds.contacted) AS contacted,
+                            SUM(ds.replied) AS replied,
+                            SUM(ds.registered) AS registered,
+                            SUM(ds.training) AS training,
+                            SUM(ds.withdrew) AS withdrew,
+                            SUM(ds.new_orders) AS new_orders,
+                            SUM(ds.ghosted) AS ghosted,
+                            SUM(ds.dead) AS dead,
+                            SUM(ds.total_deposit) AS total_deposit
+                     FROM daily_stats ds
+                     JOIN staff s ON ds.staff_id = s.id
+                     WHERE ds.stat_date >= ? AND ds.stat_date <= ? AND s.is_active = 1"""
+            params: list = [date_from, date_to]
+            if team and team != 'all':
+                sql += ' AND s.team = ?'
+                params.append(team)
+            sql += ' GROUP BY s.id ORDER BY new_orders DESC, new_leads DESC'
+            cur = await db.execute(sql, params)
+            rows = await cur.fetchall()
+
+        result = []
+        for r in rows:
+            d = dict(r)
+            new_leads = d.get('new_leads', 0) or 0
+            replied = d.get('replied', 0) or 0
+            registered = d.get('registered', 0) or 0
+            new_orders = d.get('new_orders', 0) or 0
+            d['reply_rate'] = round(replied / max(new_leads, 1) * 100, 1)
+            d['registration_rate'] = round(registered / max(replied, 1) * 100, 1)
+            d['training_rate'] = round((d.get('training', 0) or 0) / max(registered, 1) * 100, 1)
+            d['conversion_rate'] = round(new_orders / max(new_leads, 1) * 100, 1)
+            d['total_deposit'] = round(d.get('total_deposit', 0) or 0, 2)
+            result.append(d)
+        return result
+
+    # ─── Phase 16.5: Enhanced Phone Registry ─────────────────────────────────
+
+    async def phone_registry_update_fields(self, phone: str, **kwargs) -> bool:
+        """Update extra fields on a phone registry entry."""
+        normalized = self.normalize_phone(phone)
+        allowed = {'category', 'recruiter', 'account_id', 'first_day_status',
+                    'second_day_status', 'client_condition', 'team_name', 'leader_name'}
+        updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+        if not updates:
+            return False
+        set_clause = ', '.join(f'{k} = ?' for k in updates)
+        params = list(updates.values()) + [normalized]
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                f'UPDATE phone_registry SET {set_clause} WHERE phone_normalized = ?',
+                params)
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def phone_registry_get_detail(self, phone: str) -> Optional[Dict]:
+        """Get full phone registry entry with all Phase 16.5 fields."""
+        normalized = self.normalize_phone(phone)
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT id, phone, phone_normalized, submitter_name,
+                          submitter_staff_id, source, submitted_at, created_at,
+                          category, recruiter, account_id, first_day_status,
+                          second_day_status, client_condition, team_name, leader_name
+                   FROM phone_registry WHERE phone_normalized = ?""",
+                (normalized,))
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+    # ─── Phase 16.5: Link by Phone ───────────────────────────────────────────
+
+    async def find_client_by_phone_fuzzy(self, phone: str) -> List[Dict]:
+        """Find clients by phone number (fuzzy last 8 digits)."""
+        normalized = self.normalize_phone(phone)
+        suffix = normalized[-8:] if len(normalized) >= 8 else normalized
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT c.id, c.phone, c.status, c.frontdesk_id,
+                          s.display_name AS frontdesk_name, s.team
+                   FROM clients c
+                   LEFT JOIN staff s ON c.frontdesk_id = s.id
+                   WHERE c.phone LIKE ?
+                   ORDER BY c.created_at DESC LIMIT 20""",
+                (f'%{suffix}%',))
             return [dict(r) for r in await cur.fetchall()]
 
 

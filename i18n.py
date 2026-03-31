@@ -2178,6 +2178,42 @@ STRINGS = {
             'No commands to memorize — just tap!'
         ),
     },
+
+    # ─── Phase 16.5: Comment/Notes ─────────────────────────────────────────
+    'comment_usage': {
+        'zh': '用法: /comment <号码或ID> <内容>',
+        'en': 'Usage: /comment <phone_or_id> <text>',
+    },
+    'comment_added': {
+        'zh': '✅ 备注已添加到 #{client_id} ({phone})',
+        'en': '✅ Note added to #{client_id} ({phone})',
+    },
+    'comment_client_not_found': {
+        'zh': '找不到客户: {target}',
+        'en': 'Client not found: {target}',
+    },
+
+    # ─── Phase 16.5: Stats ───────────────────────────────────────────────
+    'stats_no_data': {
+        'zh': '📊 {date}: 暂无数据',
+        'en': '📊 {date}: No data yet',
+    },
+    'stats_header': {
+        'zh': '📊 {name} — {date}',
+        'en': '📊 {name} — {date}',
+    },
+
+    # ─── Phase 16.5: Enhanced /add duplicate context ──────────────────────
+    'add_duplicate_context': {
+        'zh': (
+            '⚠️ 号码已存在！提交者: {submitter} ({date})'
+            ' | 团队: {team} | 你的操作被记录。'
+        ),
+        'en': (
+            '⚠️ Number exists! Submitted by: {submitter} ({date})'
+            ' | Team: {team} | Your action is logged.'
+        ),
+    },
 }
 
 
