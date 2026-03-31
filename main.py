@@ -42,6 +42,7 @@ from handlers_v2.commission_handler import (
 )
 from handlers_v2.report_handler import REPORT_COMMANDS, REPORT_CALLBACKS, REPORT_CONVERSATIONS
 from handlers_v2.handoff_handler import HANDOFF_COMMANDS, HANDOFF_CALLBACKS, HANDOFF_CONVERSATIONS
+from handlers_v2.phase16_commands import PHASE16_COMMANDS, PHASE16_CALLBACKS, PHASE16_CONVERSATIONS
 import engines.sheet_sync_v2 as _sheet_sync_v2_mod
 import engines.dashboard_sheets as _dashboard_mod
 
@@ -293,6 +294,7 @@ class RalphLoop:
         all_commands.update(COMMISSION_COMMANDS)
         all_commands.update(REPORT_COMMANDS)
         all_commands.update(HANDOFF_COMMANDS)
+        all_commands.update(PHASE16_COMMANDS)
 
         all_callbacks = {}
         all_callbacks.update(QUICK_ACTIONS_CALLBACKS)
@@ -318,6 +320,7 @@ class RalphLoop:
         all_callbacks.update(COMMISSION_CALLBACKS)
         all_callbacks.update(REPORT_CALLBACKS)
         all_callbacks.update(HANDOFF_CALLBACKS)
+        all_callbacks.update(PHASE16_CALLBACKS)
 
         all_conversations = {}
         all_conversations.update(QUICK_ACTIONS_CONVERSATIONS)
@@ -343,6 +346,7 @@ class RalphLoop:
         all_conversations.update(COMMISSION_CONVERSATIONS)
         all_conversations.update(REPORT_CONVERSATIONS)
         all_conversations.update(HANDOFF_CONVERSATIONS)
+        all_conversations.update(PHASE16_CONVERSATIONS)
 
         self.command_handlers = all_commands
         self.callback_handlers = all_callbacks

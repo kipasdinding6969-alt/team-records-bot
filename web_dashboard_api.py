@@ -1145,6 +1145,350 @@ async def export_report(
     )
 
 
+# ─── Phase 16: Phone Registry API ────────────────────────────────────────────
+
+import re as _re
+
+
+def _normalize_phone(phone: str) -> str:
+    return _re.sub(r'[^\d]', '', phone)
+
+
+class PhoneOverrideRequest(BaseModel):
+    new_submitter: str
+    new_staff_id: Optional[int] = None
+
+
+@app.get('/api/phone-registry/lookup')
+async def phone_registry_lookup(
+    phone: str = Query(..., min_length=1),
+    user: dict = Depends(get_current_user),
+):
+    """Look up a phone number in the registry."""
+    normalized = _normalize_phone(phone)
+    async with _connect_db() as db:
+        async with db.execute(
+            """SELECT id, phone, phone_normalized, submitter_name,
+                      submitter_staff_id, source, submitted_at, created_at
+               FROM phone_registry WHERE phone_normalized = ?""",
+            (normalized,)
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            return {'found': False, 'phone': phone}
+
+        entry = row_to_dict(row)
+
+        # Get linked clients
+        async with db.execute(
+            'SELECT id, phone, status, frontdesk_id FROM clients WHERE phone LIKE ?',
+            (f'%{normalized[-8:]}%',)
+        ) as cur:
+            clients = [row_to_dict(r) for r in await cur.fetchall()]
+
+        # Get log
+        async with db.execute(
+            """SELECT id, action, actor_name, details, created_at
+               FROM phone_registry_log
+               WHERE phone_normalized = ?
+               ORDER BY created_at DESC LIMIT 20""",
+            (normalized,)
+        ) as cur:
+            log = [row_to_dict(r) for r in await cur.fetchall()]
+
+    entry['found'] = True
+    entry['linked_clients'] = clients
+    entry['history'] = log
+    entry['log'] = log  # alias for frontend compatibility
+    return entry
+
+
+@app.get('/api/phone-registry/search')
+async def phone_registry_search(
+    q: str = Query(..., min_length=1),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    user: dict = Depends(get_current_user),
+):
+    """Search phone registry by number or submitter."""
+    normalized = _normalize_phone(q)
+    offset = (page - 1) * per_page
+    async with _connect_db() as db:
+        async with db.execute(
+            """SELECT COUNT(*) AS cnt FROM phone_registry
+               WHERE phone_normalized LIKE ? OR submitter_name LIKE ?""",
+            (f'%{normalized}%', f'%{q}%')
+        ) as cur:
+            total = (await cur.fetchone())['cnt']
+
+        async with db.execute(
+            """SELECT id, phone, phone_normalized, submitter_name,
+                      submitter_staff_id, source, submitted_at
+               FROM phone_registry
+               WHERE phone_normalized LIKE ? OR submitter_name LIKE ?
+               ORDER BY submitted_at DESC
+               LIMIT ? OFFSET ?""",
+            (f'%{normalized}%', f'%{q}%', per_page, offset)
+        ) as cur:
+            results = [row_to_dict(r) for r in await cur.fetchall()]
+
+    return {'total': total, 'page': page, 'per_page': per_page, 'results': results}
+
+
+@app.get('/api/phone-registry/stats')
+async def phone_registry_stats(user: dict = Depends(get_current_user)):
+    """Get phone registry statistics."""
+    async with _connect_db() as db:
+        async with db.execute('SELECT COUNT(*) AS cnt FROM phone_registry') as cur:
+            total = (await cur.fetchone())['cnt']
+        async with db.execute(
+            "SELECT COUNT(*) AS cnt FROM phone_registry_log WHERE action = 'duplicate_blocked'"
+        ) as cur:
+            duplicates = (await cur.fetchone())['cnt']
+        async with db.execute(
+            'SELECT source, COUNT(*) AS cnt FROM phone_registry GROUP BY source'
+        ) as cur:
+            by_source = {r['source']: r['cnt'] for r in await cur.fetchall()}
+    return {'total': total, 'total_registered': total, 'duplicates_blocked': duplicates, 'by_source': by_source}
+
+
+@app.post('/api/phone-registry/override')
+async def phone_registry_override(
+    phone: str = Query(...),
+    body: PhoneOverrideRequest = ...,
+    user: dict = Depends(_require_owner_or_admin),
+):
+    """Override phone number ownership. Owner/Admin only."""
+    normalized = _normalize_phone(phone)
+    async with _connect_db() as db:
+        async with db.execute(
+            'SELECT submitter_name FROM phone_registry WHERE phone_normalized = ?',
+            (normalized,)
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='Phone not in registry')
+
+        old_owner = row['submitter_name']
+        import json as _json
+        await db.execute(
+            'UPDATE phone_registry SET submitter_name = ?, submitter_staff_id = ? WHERE phone_normalized = ?',
+            (body.new_submitter, body.new_staff_id, normalized)
+        )
+        await db.execute(
+            """INSERT INTO phone_registry_log
+               (phone_normalized, action, actor_name, actor_staff_id, details)
+               VALUES (?, 'admin_override', ?, ?, ?)""",
+            (normalized, user['display_name'], user.get('staff_id'),
+             _json.dumps({'previous_owner': old_owner, 'new_owner': body.new_submitter}))
+        )
+        await db.commit()
+    return {'ok': True}
+
+
+# ─── Phase 16: Client Links API ─────────────────────────────────────────────
+
+class CreateLinkRequest(BaseModel):
+    client_id_a: int
+    client_id_b: int
+    link_type: str = 'related'
+    note: Optional[str] = None
+
+
+@app.get('/api/clients/{client_id}/links')
+async def get_client_links(client_id: int, user: dict = Depends(get_current_user)):
+    """Get all links for a client."""
+    async with _connect_db() as db:
+        async with db.execute(
+            """SELECT cl.id, cl.client_id_a, cl.client_id_b, cl.link_type,
+                      cl.note, cl.created_at,
+                      ca.phone AS phone_a, cb.phone AS phone_b,
+                      ca.status AS status_a, cb.status AS status_b,
+                      sa.display_name AS name_a, sb.display_name AS name_b
+               FROM client_links cl
+               JOIN clients ca ON cl.client_id_a = ca.id
+               JOIN clients cb ON cl.client_id_b = cb.id
+               LEFT JOIN staff sa ON ca.frontdesk_id = sa.id
+               LEFT JOIN staff sb ON cb.frontdesk_id = sb.id
+               WHERE cl.client_id_a = ? OR cl.client_id_b = ?
+               ORDER BY cl.created_at DESC""",
+            (client_id, client_id)
+        ) as cur:
+            return [row_to_dict(r) for r in await cur.fetchall()]
+
+
+@app.post('/api/client-links')
+async def create_client_link(body: CreateLinkRequest, user: dict = Depends(get_current_user)):
+    """Create a link between two clients."""
+    valid_types = ('related', 'same_person', 'referral', 'family')
+    if body.link_type not in valid_types:
+        raise HTTPException(status_code=400, detail=f'Invalid link_type. Valid: {valid_types}')
+
+    a, b = min(body.client_id_a, body.client_id_b), max(body.client_id_a, body.client_id_b)
+    async with _connect_db() as db:
+        try:
+            await db.execute(
+                'INSERT INTO client_links (client_id_a, client_id_b, link_type, note, created_by) VALUES (?, ?, ?, ?, ?)',
+                (a, b, body.link_type, body.note, user.get('staff_id'))
+            )
+            await db.commit()
+        except aiosqlite.IntegrityError:
+            raise HTTPException(status_code=409, detail='Link already exists')
+    return {'ok': True}
+
+
+@app.delete('/api/client-links/{link_id}')
+async def delete_client_link(link_id: int, user: dict = Depends(get_current_user)):
+    """Delete a client link."""
+    async with _connect_db() as db:
+        cur = await db.execute('DELETE FROM client_links WHERE id = ?', (link_id,))
+        await db.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail='Link not found')
+    return {'ok': True}
+
+
+# ─── Phase 16: Permission Overrides API ─────────────────────────────────────
+
+class PermissionOverrideRequest(BaseModel):
+    staff_id: int
+    command: str
+    allowed: bool
+    reason: Optional[str] = None
+
+
+@app.get('/api/permissions/{staff_id}')
+async def get_staff_permissions(staff_id: int, user: dict = Depends(get_current_user)):
+    """Get permission overrides for a staff member."""
+    # RBAC: admin can only see staff in their team
+    if user['role'] == 'admin':
+        async with _connect_db() as db:
+            async with db.execute('SELECT team FROM staff WHERE id = ?', (staff_id,)) as cur:
+                row = await cur.fetchone()
+            if not row or row['team'] != user['team_scope']:
+                raise HTTPException(status_code=403, detail='Access denied')
+
+    async with _connect_db() as db:
+        async with db.execute(
+            """SELECT s.id, s.display_name, s.role, s.team
+               FROM staff s WHERE s.id = ?""",
+            (staff_id,)
+        ) as cur:
+            staff_row = await cur.fetchone()
+        if not staff_row:
+            raise HTTPException(status_code=404, detail='Staff not found')
+
+        async with db.execute(
+            """SELECT po.id, po.command, po.allowed, po.reason,
+                      po.created_at, po.updated_at,
+                      gs.display_name AS granted_by_name
+               FROM permission_overrides po
+               LEFT JOIN staff gs ON po.granted_by = gs.id
+               WHERE po.staff_id = ?
+               ORDER BY po.command""",
+            (staff_id,)
+        ) as cur:
+            overrides = [row_to_dict(r) for r in await cur.fetchall()]
+
+    return {
+        'staff': row_to_dict(staff_row),
+        'overrides': overrides,
+    }
+
+
+@app.get('/api/permissions')
+async def list_all_permissions(user: dict = Depends(_require_owner_or_admin)):
+    """List all permission overrides. Owner/Admin only."""
+    async with _connect_db() as db:
+        if user['role'] == 'owner':
+            where, params = '', []
+        else:
+            where = 'WHERE s.team = ?'
+            params = [user['team_scope']]
+
+        async with db.execute(
+            f"""SELECT s.id AS staff_id, s.display_name, s.role, s.team,
+                       po.id AS override_id, po.command, po.allowed, po.reason
+               FROM staff s
+               LEFT JOIN permission_overrides po ON po.staff_id = s.id
+               {where}
+               ORDER BY s.display_name, po.command""",
+            params
+        ) as cur:
+            rows = [row_to_dict(r) for r in await cur.fetchall()]
+
+    # Group by staff
+    staff_map: dict = {}
+    for r in rows:
+        sid = r['staff_id']
+        if sid not in staff_map:
+            staff_map[sid] = {
+                'id': sid,
+                'display_name': r['display_name'],
+                'role': r['role'],
+                'team': r['team'],
+                'overrides': [],
+            }
+        if r.get('override_id'):
+            staff_map[sid]['overrides'].append({
+                'id': r['override_id'],
+                'command': r['command'],
+                'allowed': r['allowed'],
+                'reason': r['reason'],
+            })
+
+    return list(staff_map.values())
+
+
+@app.post('/api/permissions')
+async def set_permission_override(
+    body: PermissionOverrideRequest,
+    user: dict = Depends(_require_owner_or_admin),
+):
+    """Set or update a permission override."""
+    # RBAC: admin can only manage staff in their team
+    if user['role'] == 'admin':
+        async with _connect_db() as db:
+            async with db.execute('SELECT team FROM staff WHERE id = ?', (body.staff_id,)) as cur:
+                row = await cur.fetchone()
+            if not row or row['team'] != user['team_scope']:
+                raise HTTPException(status_code=403, detail='Cannot manage permissions for staff outside your team')
+
+    cmd = body.command.lstrip('/')
+    async with _connect_db() as db:
+        await db.execute(
+            """INSERT INTO permission_overrides
+               (staff_id, command, allowed, granted_by, reason)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(staff_id, command)
+               DO UPDATE SET allowed = excluded.allowed,
+                             granted_by = excluded.granted_by,
+                             reason = excluded.reason,
+                             updated_at = CURRENT_TIMESTAMP""",
+            (body.staff_id, cmd, body.allowed, user.get('staff_id'), body.reason)
+        )
+        await db.commit()
+    return {'ok': True}
+
+
+@app.delete('/api/permissions/{staff_id}/{command}')
+async def delete_permission_override(
+    staff_id: int,
+    command: str,
+    user: dict = Depends(_require_owner_or_admin),
+):
+    """Remove a permission override."""
+    async with _connect_db() as db:
+        cur = await db.execute(
+            'DELETE FROM permission_overrides WHERE staff_id = ? AND command = ?',
+            (staff_id, command)
+        )
+        await db.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail='Override not found')
+    return {'ok': True}
+
+
 # ─── Health ───────────────────────────────────────────────────────────────────
 
 @app.get('/health')

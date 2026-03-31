@@ -481,6 +481,61 @@ class DatabaseV2:
                     completed_at    TIMESTAMP
                 );
                 CREATE INDEX IF NOT EXISTS idx_handoffs_status_team ON shift_handoffs(status, team, to_staff_id);
+
+                -- Phase 16A: Phone Registry (duplicate guard)
+                CREATE TABLE IF NOT EXISTS phone_registry (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    phone TEXT NOT NULL,
+                    phone_normalized TEXT NOT NULL,
+                    submitter_name TEXT NOT NULL,
+                    submitter_staff_id INTEGER REFERENCES staff(id),
+                    source TEXT DEFAULT 'telegram',
+                    submitted_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(phone_normalized)
+                );
+                CREATE INDEX IF NOT EXISTS idx_phone_registry_normalized ON phone_registry(phone_normalized);
+                CREATE INDEX IF NOT EXISTS idx_phone_registry_submitter ON phone_registry(submitter_name);
+
+                -- Phase 16A: Phone Registry Audit Log
+                CREATE TABLE IF NOT EXISTS phone_registry_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    phone_normalized TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    actor_name TEXT NOT NULL,
+                    actor_staff_id INTEGER REFERENCES staff(id),
+                    details TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_phone_registry_log_phone ON phone_registry_log(phone_normalized);
+
+                -- Phase 16B: Client Links (cross-linking)
+                CREATE TABLE IF NOT EXISTS client_links (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id_a INTEGER NOT NULL REFERENCES clients(id),
+                    client_id_b INTEGER NOT NULL REFERENCES clients(id),
+                    link_type TEXT NOT NULL DEFAULT 'related',
+                    note TEXT,
+                    created_by INTEGER REFERENCES staff(id),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(client_id_a, client_id_b)
+                );
+                CREATE INDEX IF NOT EXISTS idx_client_links_a ON client_links(client_id_a);
+                CREATE INDEX IF NOT EXISTS idx_client_links_b ON client_links(client_id_b);
+
+                -- Phase 16C: Permission Overrides
+                CREATE TABLE IF NOT EXISTS permission_overrides (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    staff_id INTEGER NOT NULL REFERENCES staff(id),
+                    command TEXT NOT NULL,
+                    allowed BOOLEAN NOT NULL,
+                    granted_by INTEGER REFERENCES staff(id),
+                    reason TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(staff_id, command)
+                );
+                CREATE INDEX IF NOT EXISTS idx_permission_overrides_staff ON permission_overrides(staff_id);
             """)
             await db.commit()
 
@@ -3152,6 +3207,206 @@ class DatabaseV2:
                 (staff_id, *active))
             rows = await cur.fetchall()
             return [self._row_to_client(r) for r in rows]
+
+    # ─── Phase 16: Phone Registry ────────────────────────────────────────────
+
+    @staticmethod
+    def normalize_phone(phone: str) -> str:
+        """Strip non-digit characters for consistent lookup."""
+        import re
+        return re.sub(r'[^\d]', '', phone)
+
+    async def phone_registry_lookup(self, phone: str) -> Optional[Dict]:
+        """Look up a phone number in the registry. Returns dict or None."""
+        normalized = self.normalize_phone(phone)
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT id, phone, phone_normalized, submitter_name,
+                          submitter_staff_id, source, submitted_at, created_at
+                   FROM phone_registry WHERE phone_normalized = ?""",
+                (normalized,))
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+    async def phone_registry_insert(self, phone: str, submitter_name: str,
+                                     submitted_at: str, source: str = 'telegram',
+                                     submitter_staff_id: Optional[int] = None) -> int:
+        """Insert a phone into the registry. Returns row id."""
+        normalized = self.normalize_phone(phone)
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """INSERT INTO phone_registry
+                   (phone, phone_normalized, submitter_name, submitter_staff_id, source, submitted_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (phone, normalized, submitter_name, submitter_staff_id, source, submitted_at))
+            await db.commit()
+            return cur.lastrowid
+
+    async def phone_registry_log_action(self, phone: str, action: str,
+                                         actor_name: str, actor_staff_id: Optional[int] = None,
+                                         details: Optional[str] = None):
+        """Log an action in the phone registry audit trail."""
+        normalized = self.normalize_phone(phone)
+        async with self.get_connection() as db:
+            await db.execute(
+                """INSERT INTO phone_registry_log
+                   (phone_normalized, action, actor_name, actor_staff_id, details)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (normalized, action, actor_name, actor_staff_id, details))
+            await db.commit()
+
+    async def phone_registry_get_log(self, phone: str, limit: int = 50) -> List[Dict]:
+        """Get audit log entries for a phone number."""
+        normalized = self.normalize_phone(phone)
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT id, phone_normalized, action, actor_name,
+                          actor_staff_id, details, created_at
+                   FROM phone_registry_log
+                   WHERE phone_normalized = ?
+                   ORDER BY created_at DESC LIMIT ?""",
+                (normalized, limit))
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def phone_registry_override(self, phone: str, new_submitter: str,
+                                       new_staff_id: Optional[int] = None):
+        """Override ownership of a phone number in the registry."""
+        normalized = self.normalize_phone(phone)
+        async with self.get_connection() as db:
+            await db.execute(
+                """UPDATE phone_registry
+                   SET submitter_name = ?, submitter_staff_id = ?
+                   WHERE phone_normalized = ?""",
+                (new_submitter, new_staff_id, normalized))
+            await db.commit()
+
+    async def phone_registry_search(self, query: str, limit: int = 50) -> List[Dict]:
+        """Search phone registry by number or submitter name."""
+        normalized = self.normalize_phone(query)
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT id, phone, phone_normalized, submitter_name,
+                          submitter_staff_id, source, submitted_at, created_at
+                   FROM phone_registry
+                   WHERE phone_normalized LIKE ? OR submitter_name LIKE ?
+                   ORDER BY submitted_at DESC LIMIT ?""",
+                (f'%{normalized}%', f'%{query}%', limit))
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def phone_registry_count(self) -> int:
+        """Get total count of phone registry entries."""
+        async with self.get_connection() as db:
+            cur = await db.execute('SELECT COUNT(*) AS cnt FROM phone_registry')
+            return (await cur.fetchone())['cnt']
+
+    # ─── Phase 16: Client Links ──────────────────────────────────────────────
+
+    async def create_client_link(self, client_id_a: int, client_id_b: int,
+                                  link_type: str = 'related', note: Optional[str] = None,
+                                  created_by: Optional[int] = None) -> int:
+        """Link two clients. Always stores smaller id as client_id_a."""
+        a, b = min(client_id_a, client_id_b), max(client_id_a, client_id_b)
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """INSERT INTO client_links (client_id_a, client_id_b, link_type, note, created_by)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (a, b, link_type, note, created_by))
+            await db.commit()
+            return cur.lastrowid
+
+    async def remove_client_link(self, client_id_a: int, client_id_b: int) -> bool:
+        """Remove a link between two clients."""
+        a, b = min(client_id_a, client_id_b), max(client_id_a, client_id_b)
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'DELETE FROM client_links WHERE client_id_a = ? AND client_id_b = ?',
+                (a, b))
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def get_client_links(self, client_id: int) -> List[Dict]:
+        """Get all links for a client."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT cl.id, cl.client_id_a, cl.client_id_b, cl.link_type,
+                          cl.note, cl.created_by, cl.created_at,
+                          ca.phone AS phone_a, cb.phone AS phone_b,
+                          sa.display_name AS name_a, sb.display_name AS name_b
+                   FROM client_links cl
+                   JOIN clients ca ON cl.client_id_a = ca.id
+                   JOIN clients cb ON cl.client_id_b = cb.id
+                   LEFT JOIN staff sa ON ca.frontdesk_id = sa.id
+                   LEFT JOIN staff sb ON cb.frontdesk_id = sb.id
+                   WHERE cl.client_id_a = ? OR cl.client_id_b = ?
+                   ORDER BY cl.created_at DESC""",
+                (client_id, client_id))
+            return [dict(r) for r in await cur.fetchall()]
+
+    # ─── Phase 16: Permission Overrides ──────────────────────────────────────
+
+    async def get_permission_override(self, staff_id: int, command: str) -> Optional[Dict]:
+        """Check if there's an explicit permission override for staff+command."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT id, staff_id, command, allowed, granted_by, reason,
+                          created_at, updated_at
+                   FROM permission_overrides
+                   WHERE staff_id = ? AND command = ?""",
+                (staff_id, command))
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+    async def get_all_permission_overrides(self, staff_id: int) -> List[Dict]:
+        """Get all permission overrides for a staff member."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT id, staff_id, command, allowed, granted_by, reason,
+                          created_at, updated_at
+                   FROM permission_overrides
+                   WHERE staff_id = ?
+                   ORDER BY command""",
+                (staff_id,))
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def set_permission_override(self, staff_id: int, command: str,
+                                       allowed: bool, granted_by: Optional[int] = None,
+                                       reason: Optional[str] = None):
+        """Set or update a permission override."""
+        async with self.get_connection() as db:
+            await db.execute(
+                """INSERT INTO permission_overrides
+                   (staff_id, command, allowed, granted_by, reason)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(staff_id, command)
+                   DO UPDATE SET allowed = excluded.allowed,
+                                 granted_by = excluded.granted_by,
+                                 reason = excluded.reason,
+                                 updated_at = CURRENT_TIMESTAMP""",
+                (staff_id, command, allowed, granted_by, reason))
+            await db.commit()
+
+    async def remove_permission_override(self, staff_id: int, command: str) -> bool:
+        """Remove a permission override."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'DELETE FROM permission_overrides WHERE staff_id = ? AND command = ?',
+                (staff_id, command))
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def get_staff_permissions_summary(self, staff_id: int) -> List[Dict]:
+        """Get all permission overrides for a staff member with staff info."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT po.id, po.command, po.allowed, po.reason,
+                          po.created_at, po.updated_at,
+                          s.display_name AS granted_by_name
+                   FROM permission_overrides po
+                   LEFT JOIN staff s ON po.granted_by = s.id
+                   WHERE po.staff_id = ?
+                   ORDER BY po.command""",
+                (staff_id,))
+            return [dict(r) for r in await cur.fetchall()]
 
 
 # Global singleton

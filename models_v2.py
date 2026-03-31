@@ -29,12 +29,18 @@ _NEWBIE_CMDS = {'add', 'me', 'note', 'help'}
 _CS_CMDS = {'search', 'note', 'pipeline', 'dashboard', 'rag', 'export', 'me', 'help', 'today', 'leaderboard', 'hot', 'summary', 'template'}
 
 
-def check_permission(staff: 'Staff', command: str) -> bool:
+def check_permission(staff: 'Staff', command: str, overrides: Optional[Dict[str, bool]] = None) -> bool:
     """Check if staff member is allowed to execute command.
 
     command may include a leading slash (e.g. '/add') or not ('add').
+    overrides: dict of {command: allowed} from permission_overrides table.
     """
     cmd = command.lstrip('/')
+
+    # Phase 16: explicit overrides take priority
+    if overrides and cmd in overrides:
+        return overrides[cmd]
+
     role = staff.role
 
     if role == StaffRole.ADMIN:
@@ -52,6 +58,20 @@ def check_permission(staff: 'Staff', command: str) -> bool:
     if role == StaffRole.VIEWER:
         return cmd in _VIEWER_CMDS
     return False
+
+
+async def check_permission_with_db(staff: 'Staff', command: str, db=None) -> bool:
+    """Check permission with database override lookup.
+
+    If db (DatabaseV2 instance) is provided, checks permission_overrides first.
+    """
+    cmd = command.lstrip('/')
+    overrides = None
+    if db and staff.id:
+        override = await db.get_permission_override(staff.id, cmd)
+        if override:
+            return bool(override['allowed'])
+    return check_permission(staff, command)
 
 
 class ClientStatus(str, Enum):

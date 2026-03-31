@@ -101,15 +101,49 @@ async def handle_add_client(task_data: Dict[str, Any]):
         await telegram_handler.send_message(chat_id, t('policy_add_limit', lang, reason=reason))
         return
 
-    # Check duplicate
+    # Check duplicate (same frontdesk)
     existing = await database_v2.get_client_by_phone(phone, staff.id)
     if existing:
         msg = t('add_duplicate', lang, phone=phone, status=existing.status.value)
         await telegram_handler.send_message(chat_id, msg)
         return
 
+    # Phase 16: Phone Registry duplicate guard (cross-frontdesk)
+    registry_entry = await database_v2.phone_registry_lookup(phone)
+    if registry_entry:
+        owner_name = registry_entry['submitter_name']
+        owner_staff_id = registry_entry['submitter_staff_id']
+        submitted_at = registry_entry['submitted_at']
+        if owner_staff_id != staff.id:
+            # Different frontdesk owns this number — block
+            import json
+            await database_v2.phone_registry_log_action(
+                phone, 'duplicate_blocked', staff.display_name, staff.id,
+                json.dumps({'original_submitter': owner_name}, ensure_ascii=False))
+            msg = (
+                f"⚠️ 号码重复 / Duplicate Number\n"
+                f"该号码已由 {owner_name} 于 {submitted_at} 提交\n"
+                f"This number was submitted by {owner_name} on {submitted_at}\n"
+                f"如需覆盖请联系管理员 / Contact admin to override"
+            )
+            await telegram_handler.send_message(chat_id, msg)
+            return
+        # Same frontdesk — allow edit (fall through)
+
     client = Client(frontdesk_id=staff.id, phone=phone, source=source, account_id=account_id)
     client_id = await database_v2.create_client(client)
+
+    # Phase 16: Register phone in registry if not already there
+    if not registry_entry:
+        try:
+            from datetime import datetime as _dt
+            await database_v2.phone_registry_insert(
+                phone, staff.display_name, _dt.utcnow().isoformat(),
+                source='bot', submitter_staff_id=staff.id)
+            await database_v2.phone_registry_log_action(
+                phone, 'submit', staff.display_name, staff.id)
+        except Exception as _e:
+            logger.debug(f'Phone registry insert skipped: {_e}')
 
     acct_str = f'\n🆔 编号: {account_id}' if account_id else '\n💡 /num {phone} {编号} 设置编号'
     msg = t('add_success', lang, phone=phone, source=source, id=client_id) + acct_str

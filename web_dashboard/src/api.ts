@@ -212,4 +212,47 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ new_password }),
     }),
+
+  // Phase 16: Phone Registry
+  phoneRegistryLookup: (phone: string) =>
+    req<any>(`/api/phone-registry/lookup?phone=${encodeURIComponent(phone)}`),
+
+  phoneRegistrySearch: (q: string, page = 1) =>
+    req<{ total: number; page: number; per_page: number; results: any[] }>(
+      `/api/phone-registry/search?q=${encodeURIComponent(q)}&page=${page}`
+    ),
+
+  phoneRegistryStats: () => req<any>('/api/phone-registry/stats'),
+
+  phoneRegistryOverride: (phone: string, new_submitter: string, new_staff_id?: number) =>
+    req<{ ok: boolean }>(`/api/phone-registry/override?phone=${encodeURIComponent(phone)}`, {
+      method: 'POST',
+      body: JSON.stringify({ new_submitter, new_staff_id }),
+    }),
+
+  // Phase 16: Client Links
+  clientLinks: (clientId: number) => req<any[]>(`/api/clients/${clientId}/links`),
+
+  createClientLink: (data: { client_id_a: number; client_id_b: number; link_type?: string; note?: string }) =>
+    req<{ ok: boolean }>('/api/client-links', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  deleteClientLink: (linkId: number) =>
+    req<{ ok: boolean }>(`/api/client-links/${linkId}`, { method: 'DELETE' }),
+
+  // Phase 16: Permissions
+  staffPermissions: (staffId: number) => req<any>(`/api/permissions/${staffId}`),
+
+  allPermissions: () => req<any[]>('/api/permissions'),
+
+  setPermissionOverride: (data: { staff_id: number; command: string; allowed: boolean; reason?: string }) =>
+    req<{ ok: boolean }>('/api/permissions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  deletePermissionOverride: (staffId: number, command: string) =>
+    req<{ ok: boolean }>(`/api/permissions/${staffId}/${command}`, { method: 'DELETE' }),
 }

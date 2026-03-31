@@ -10,6 +10,8 @@ import Reports from './pages/Reports'
 import Setup from './pages/Setup'
 import Team from './pages/Team'
 import UserManagement from './pages/UserManagement'
+import NumberLookup from './pages/NumberLookup'
+import PermissionManager from './pages/PermissionManager'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated() ? <>{children}</> : <Navigate to="/login" replace />
@@ -47,6 +49,22 @@ export default function App() {
             element={
               <AdminRoute>
                 <UserManagement />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="phone-lookup"
+            element={
+              <ProtectedRoute>
+                <NumberLookup />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="permissions"
+            element={
+              <AdminRoute>
+                <PermissionManager />
               </AdminRoute>
             }
           />
