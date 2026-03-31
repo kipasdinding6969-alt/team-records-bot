@@ -47,6 +47,9 @@ export default function App() {
   const [toast, setToast] = useState('')
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Check if running inside Telegram
+  const isTelegram = !!(window.Telegram?.WebApp?.initData)
+
   // Initialize Telegram Mini App
   useEffect(() => {
     const tg = window.Telegram?.WebApp
@@ -95,6 +98,25 @@ export default function App() {
           <div className="loading-container">
             <div className="spinner" />
             <span>{t('loading', LANG)}</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isTelegram && error) {
+    return (
+      <div className="app">
+        <div className="app-content">
+          <div className="loading-container" style={{ textAlign: 'center', padding: '2rem' }}>
+            <span style={{ fontSize: '3rem', display: 'block', marginBottom: '1rem' }}>📱</span>
+            <span style={{ fontSize: '1.1rem', fontWeight: 600 }}>请在 Telegram 中打开</span>
+            <span style={{ color: '#888', marginTop: '0.5rem', display: 'block' }}>
+              此应用需要通过 Telegram Bot 菜单打开
+            </span>
+            <span style={{ color: '#666', marginTop: '1rem', display: 'block', fontSize: '0.85rem' }}>
+              Please open this app via the Telegram Bot menu
+            </span>
           </div>
         </div>
       </div>

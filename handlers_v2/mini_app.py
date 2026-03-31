@@ -11,7 +11,7 @@ from i18n import t
 
 logger = logging.getLogger(__name__)
 
-MINI_APP_URL = os.getenv('MINI_APP_URL', 'https://sem-rush.com/app/')
+MINI_APP_URL = os.getenv('MINI_APP_URL', 'https://app.sem-rush.com')
 
 
 async def handle_app(task_data: Dict[str, Any]):
