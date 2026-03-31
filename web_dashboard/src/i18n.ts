@@ -76,7 +76,20 @@ const translations: Record<string, Record<Lang, string>> = {
   'clients.next': { zh: '下一页', en: 'Next' },
 
   // Client Detail
-  'detail.notes': { zh: '备注', en: 'Notes' },
+  'detail.info': { zh: '客户信息', en: 'Client Info' },
+  'detail.phone': { zh: '电话', en: 'Phone' },
+  'detail.source': { zh: '来源', en: 'Source' },
+  'detail.frontdesk': { zh: '负责人', en: 'Frontdesk' },
+  'detail.team': { zh: '团队', en: 'Team' },
+  'detail.total_deposit': { zh: '总存款', en: 'Total Deposits' },
+  'detail.created': { zh: '创建时间', en: 'Created' },
+  'detail.milestones': { zh: '里程碑', en: 'Milestones' },
+  'detail.contacted_at': { zh: '联系时间', en: 'Contacted' },
+  'detail.replied_at': { zh: '回复时间', en: 'Replied' },
+  'detail.registered_at': { zh: '注册时间', en: 'Registered' },
+  'detail.training_at': { zh: '培训时间', en: 'Training' },
+  'detail.first_order_at': { zh: '首次下单', en: 'First Order' },
+  'detail.notes': { zh: '互动记录', en: 'Activity Log' },
   'detail.deposits': { zh: '充值记录', en: 'Deposits' },
   'detail.links': { zh: '关联客户', en: 'Linked Clients' },
   'detail.no_notes': { zh: '暂无备注', en: 'No notes' },
@@ -84,6 +97,18 @@ const translations: Record<string, Record<Lang, string>> = {
   'detail.no_links': { zh: '暂无关联', en: 'No links' },
   'detail.add_link': { zh: '添加关联', en: 'Add Link' },
   'detail.back': { zh: '返回', en: 'Back' },
+  'detail.link_type': { zh: '关联类型', en: 'Link Type' },
+  'detail.link_note': { zh: '备注', en: 'Note' },
+  'detail.target_client_id': { zh: '目标客户ID', en: 'Target Client ID' },
+  'detail.remove_link': { zh: '移除', en: 'Remove' },
+  'detail.system': { zh: '系统', en: 'System' },
+  'detail.amount': { zh: '金额', en: 'Amount' },
+  'detail.platform': { zh: '平台', en: 'Platform' },
+  'detail.date': { zh: '日期', en: 'Date' },
+  'link_type.related': { zh: '相关', en: 'Related' },
+  'link_type.same_person': { zh: '同一人', en: 'Same Person' },
+  'link_type.referral': { zh: '推荐', en: 'Referral' },
+  'link_type.family': { zh: '家属', en: 'Family' },
 
   // Reports
   'reports.title': { zh: '报告分析', en: 'Reports' },
@@ -124,6 +149,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'perm.add_override': { zh: '添加覆盖', en: 'Add Override' },
   'perm.no_overrides': { zh: '无覆盖权限', en: 'No overrides' },
   'perm.loading': { zh: '加载中...', en: 'Loading...' },
+  'perm.default_matrix': { zh: '默认权限矩阵', en: 'Default Permission Matrix' },
+  'perm.all_commands': { zh: '所有命令', en: 'All Commands' },
+  'perm.select_command': { zh: '选择命令...', en: 'Select command...' },
+  'perm.frontdesk': { zh: '前台', en: 'Frontdesk' },
+  'perm.leader': { zh: '组长', en: 'Leader' },
+  'perm.admin': { zh: '管理员', en: 'Admin' },
 
   // Status labels
   'status.new': { zh: '新客户', en: 'New' },
@@ -156,6 +187,40 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.delete': { zh: '删除', en: 'Delete' },
   'common.confirm': { zh: '确认', en: 'Confirm' },
   'common.search': { zh: '搜索', en: 'Search' },
+
+  // Nav - Performance
+  'nav.performance': { zh: '绩效看板', en: 'Performance' },
+
+  // Performance Dashboard
+  'perf.title': { zh: '绩效看板', en: 'Performance Dashboard' },
+  'perf.no_data': { zh: '暂无数据', en: 'No data' },
+  'perf.new_powder': { zh: '新粉丝', en: 'New Leads' },
+  'perf.reply_rate': { zh: '回复率', en: 'Reply Rate' },
+  'perf.register': { zh: '注册', en: 'Registered' },
+  'perf.training': { zh: '培训', en: 'Training' },
+  'perf.withdraw': { zh: '提款', en: 'Withdrew' },
+  'perf.new_order': { zh: '新单', en: 'New Orders' },
+  'perf.conversion': { zh: '转换率', en: 'Conversion' },
+  'perf.deposit': { zh: '充值', en: 'Deposits' },
+  'perf.dead': { zh: '死客', en: 'Dead' },
+  'perf.team_total': { zh: '团队汇总', en: 'Team Totals' },
+
+  // Client Detail enhancements
+  'detail.add_note': { zh: '添加备注', en: 'Add Note' },
+  'detail.note_placeholder': { zh: '写下备注内容...', en: 'Write a note...' },
+  'detail.timeline': { zh: '时间线', en: 'Timeline' },
+  'note_type.comment': { zh: '评论', en: 'Comment' },
+  'note_type.flag': { zh: '标记', en: 'Flag' },
+  'note_type.link_note': { zh: '关联备注', en: 'Link Note' },
+
+  // Permission sections
+  'perm.view_clients': { zh: '查看客户', en: 'View Clients' },
+  'perm.edit_clients': { zh: '编辑客户', en: 'Edit Clients' },
+  'perm.add_clients': { zh: '添加客户', en: 'Add Clients' },
+  'perm.view_performance': { zh: '查看绩效', en: 'View Performance' },
+  'perm.export_data': { zh: '导出数据', en: 'Export Data' },
+  'perm.manage_team': { zh: '管理团队', en: 'Manage Team' },
+  'perm.section_permissions': { zh: '功能权限', en: 'Section Permissions' },
 }
 
 export function t(key: string, lang?: Lang): string {
