@@ -536,15 +536,17 @@ async def health():
 # ─── Static files (serve built React app) ─────────────────────────────────────
 
 if os.path.isdir(MINI_APP_DIST):
-    app.mount('/', StaticFiles(directory=MINI_APP_DIST, html=True), name='mini_app')
-
-    @app.get('/app/{path:path}')
-    async def serve_spa(path: str):
-        """Fallback: serve index.html for SPA routing."""
+    # Serve index.html at root for direct access (app.sem-rush.com)
+    @app.get('/')
+    async def serve_root():
+        """Serve Mini App index.html at root."""
         index = os.path.join(MINI_APP_DIST, 'index.html')
         if os.path.exists(index):
             return FileResponse(index)
         raise HTTPException(status_code=404)
+
+    # Mount static at /app to match Vite base: '/app/' config
+    app.mount('/app', StaticFiles(directory=MINI_APP_DIST, html=True), name='mini_app')
 
 
 if __name__ == '__main__':
