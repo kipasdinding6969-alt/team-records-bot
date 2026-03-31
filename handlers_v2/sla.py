@@ -37,12 +37,18 @@ async def handle_sla(task_data: Dict[str, Any]):
     # /sla <staff_name> — individual report
     if parts:
         target_name = ' '.join(parts)
-        target_staff = None
         all_staff = await database_v2.get_all_staff()
-        for s in all_staff:
-            if target_name.lower() in s.display_name.lower():
-                target_staff = s
-                break
+        # Exact match first
+        target_staff = next((s for s in all_staff if target_name.lower() == s.display_name.lower()), None)
+        if not target_staff:
+            # Fuzzy fallback
+            fuzzy = [s for s in all_staff if target_name.lower() in s.display_name.lower()]
+            if len(fuzzy) > 1:
+                names = ', '.join(s.display_name for s in fuzzy[:5])
+                await telegram_handler.send_message(
+                    chat_id, f'⚠️ 找到多个匹配: {names}\n请使用更精确的名字')
+                return
+            target_staff = fuzzy[0] if fuzzy else None
         if not target_staff:
             await telegram_handler.send_message(chat_id, f'❌ 找不到员工: {target_name}')
             return

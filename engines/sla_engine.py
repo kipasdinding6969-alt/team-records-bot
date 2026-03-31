@@ -1,15 +1,19 @@
 """Phase 9C: SLA Engine — Ralph Loop integration for SLA breach detection and XP awards."""
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Set
 
 from database_v2 import database_v2
+from i18n import t
 
 logger = logging.getLogger(__name__)
 
 # XP awards for SLA compliance
 XP_SLA_MET = 5      # +5 XP per SLA response met
 XP_PERFECT_DAY = 20  # +20 bonus XP for perfect SLA day
+
+# Track (event_id, level) pairs notified this check cycle to avoid duplicate messages
+_notified_events: Set[tuple] = set()
 
 
 async def check_sla_breaches(telegram_handler=None, team_leader_chat_id: Optional[int] = None):
@@ -28,6 +32,7 @@ async def check_sla_breaches(telegram_handler=None, team_leader_chat_id: Optiona
     now = datetime.utcnow()
 
     for ev in open_events:
+        ev_id = ev.get('id')
         ev_type = ev.get('event_type', '')
         cfg = configs.get(ev_type, {})
         if not cfg:
@@ -51,14 +56,14 @@ async def check_sla_breaches(telegram_handler=None, team_leader_chat_id: Optiona
             continue
 
         if elapsed_minutes >= crit:
+            crit_key = (ev_id, 'crit')
+            if crit_key in _notified_events:
+                continue
+            _notified_events.add(crit_key)
             # Critical — escalate to team leader
-            msg = (
-                f'🚨 SLA危急!\n'
-                f'员工: {staff_name}\n'
-                f'客户: {client_phone}\n'
-                f'类型: {ev_type}\n'
-                f'已超时: {elapsed_minutes}分钟 (危急阈值: {crit}分钟)'
-            )
+            msg = t('sla_critical_msg', 'zh',
+                    staff=staff_name, client=client_phone,
+                    ev_type=ev_type, elapsed=elapsed_minutes, threshold=crit)
             if team_leader_chat_id:
                 try:
                     await telegram_handler.send_message(team_leader_chat_id, msg)
@@ -69,19 +74,25 @@ async def check_sla_breaches(telegram_handler=None, team_leader_chat_id: Optiona
                 try:
                     await telegram_handler.send_message(
                         staff_chat,
-                        f'🚨 SLA已严重超时! 客户 {client_phone} 的{ev_type}已超 {elapsed_minutes} 分钟！')
+                        t('sla_critical_staff', 'zh',
+                          client=client_phone, ev_type=ev_type, elapsed=elapsed_minutes))
                 except Exception as e:
                     logger.warning(f'SLA staff critical notify failed: {e}')
 
         elif elapsed_minutes >= warn:
+            warn_key = (ev_id, 'warn')
+            if warn_key in _notified_events:
+                continue
+            _notified_events.add(warn_key)
             # Warning — notify staff
             if staff_chat:
                 remaining = target - elapsed_minutes
                 try:
                     await telegram_handler.send_message(
                         staff_chat,
-                        f'⚠️ SLA预警: 客户 {client_phone} 的{ev_type}\n'
-                        f'已用 {elapsed_minutes} 分钟，还剩约 {remaining} 分钟达标。')
+                        t('sla_warning_msg', 'zh',
+                          client=client_phone, ev_type=ev_type,
+                          elapsed=elapsed_minutes, remaining=remaining))
                 except Exception as e:
                     logger.warning(f'SLA warning notify failed: {e}')
 
@@ -109,13 +120,22 @@ async def check_perfect_sla_day(staff_id: int):
                    AND completed_at IS NOT NULL""",
                 (staff_id,))
             row = await cur.fetchone()
-        if not row:
-            return
-        total = row['total'] or 0
-        met_count = row['met_count'] or 0
-        if total >= 3 and met_count == total:
-            await database_v2.award_xp(staff_id, 'perfect_sla_day', XP_PERFECT_DAY)
-            logger.info(f'Perfect SLA day bonus awarded: staff={staff_id}')
+            if not row:
+                return
+            total = row['total'] or 0
+            met_count = row['met_count'] or 0
+            if total >= 3 and met_count == total:
+                # Dedup: skip if already awarded today
+                cur2 = await db.execute(
+                    """SELECT COUNT(*) FROM xp_events
+                       WHERE staff_id=? AND action='perfect_sla_day'
+                       AND DATE(created_at)=DATE('now')""",
+                    (staff_id,))
+                already = await cur2.fetchone()
+                if already and already[0] > 0:
+                    return
+                await database_v2.award_xp(staff_id, 'perfect_sla_day', XP_PERFECT_DAY)
+                logger.info(f'Perfect SLA day bonus awarded: staff={staff_id}')
     except Exception as e:
         logger.warning(f'perfect_sla_day check failed: {e}')
 

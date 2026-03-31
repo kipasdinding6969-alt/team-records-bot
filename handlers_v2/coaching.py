@@ -1,5 +1,6 @@
 """Phase 9D: Performance Coaching — /coaching command with Ollama AI."""
 import logging
+import re
 from typing import Any, Dict, Optional
 
 try:
@@ -18,11 +19,17 @@ _OLLAMA_MODEL = 'goonsai/josiefied-qwen2.5-7b-abliterated-v2'
 _OLLAMA_URL = 'http://localhost:11434/api/generate'
 
 
+def _sanitize_name(name: str) -> str:
+    """Strip chars that could inject into LLM prompts. Max 50 chars."""
+    name = re.sub(r'[^\w\s\u4e00-\u9fff\-]', '', name)
+    return name[:50].strip()
+
+
 async def _call_ollama(prompt: str) -> str:
     """Call Ollama generate API. Returns text or fallback message."""
     try:
         if aiohttp is None:
-            return '（AI建议暂不可用，请稍后重试）'
+            return t('ai_unavailable', 'zh')
         payload = {
             'model': _OLLAMA_MODEL,
             'prompt': prompt,
@@ -36,7 +43,7 @@ async def _call_ollama(prompt: str) -> str:
                     return data.get('response', '').strip()
     except Exception as e:
         logger.warning(f'Ollama coaching call failed: {e}')
-    return '（AI建议暂不可用，请稍后重试）'
+    return t('ai_unavailable', 'zh')
 
 
 async def _gather_staff_metrics(staff_id: int, team: Optional[str] = None) -> Dict:
@@ -56,7 +63,7 @@ async def _gather_staff_metrics(staff_id: int, team: Optional[str] = None) -> Di
     xp_week = await database_v2.get_staff_xp(staff_id, 'week')
     xp_prev = await database_v2.get_staff_xp(staff_id, 'all') - xp_week
 
-    # Pipeline stats — from daily_stats
+    # Pipeline stats — from daily_stats; also compute prior-history day count for XP trend
     async with database_v2.get_connection() as db:
         cur = await db.execute(
             """SELECT SUM(replied) as total_replied,
@@ -67,6 +74,12 @@ async def _gather_staff_metrics(staff_id: int, team: Optional[str] = None) -> Di
                WHERE staff_id=? AND stat_date >= DATE('now', '-7 days')""",
             (staff_id,))
         row = await cur.fetchone()
+        cur2 = await db.execute(
+            """SELECT CAST(julianday(DATE('now','-7 days')) - julianday(MIN(DATE(created_at))) AS INTEGER) as prev_days
+               FROM xp_events WHERE staff_id=?""",
+            (staff_id,))
+        row_pd = await cur2.fetchone()
+    prev_days = max((row_pd['prev_days'] or 0) if row_pd else 0, 1)
 
     total_replied = (row['total_replied'] or 0) if row else 0
     total_contacted = (row['total_contacted'] or 0) if row else 0
@@ -95,7 +108,7 @@ async def _gather_staff_metrics(staff_id: int, team: Optional[str] = None) -> Di
         'conv_rate': conv_rate,
         'avg_response_min': avg_response,
         'xp_week': xp_week,
-        'xp_trend': '+' if xp_week >= (xp_prev / max(1, 1)) else '-',
+        'xp_trend': '+' if xp_week >= (xp_prev / max(prev_days, 1) * 7) else '-',
         'streak': current_streak,
         'total_leads': total_leads,
     }
@@ -176,8 +189,9 @@ async def _handle_individual_coaching(chat_id: int, staff_id: int, display_name:
     await telegram_handler.send_message(chat_id, f'⏳ 正在生成 {display_name} 的教练报告...')
     metrics = await _gather_staff_metrics(staff_id)
 
+    safe_name = _sanitize_name(display_name)
     prompt = (
-        f'Based on these CRM metrics for {display_name}:\n'
+        f'Based on these CRM metrics for {safe_name}:\n'
         f'- SLA compliance: {metrics["sla_pct"]}%\n'
         f'- Reply rate: {metrics["reply_rate"]}%\n'
         f'- Conversion rate: {metrics["conv_rate"]}%\n'

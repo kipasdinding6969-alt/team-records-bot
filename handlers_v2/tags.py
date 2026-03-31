@@ -34,10 +34,11 @@ async def _resolve_client(staff_id: int, query: str, is_manager: bool = False):
     # search_clients with id=0 won't match; re-run without scoping for managers
     if not matches and is_manager:
         async with database_v2.get_connection() as db:
-            q = f'%{query}%'
+            escaped = query.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            q = f'%{escaped}%'
             cur = await db.execute(
                 """SELECT * FROM clients
-                   WHERE nickname LIKE ? OR phone LIKE ? OR account_id LIKE ?
+                   WHERE nickname LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\' OR account_id LIKE ? ESCAPE '\\'
                    ORDER BY updated_at DESC LIMIT 1""",
                 (q, q, q))
             row = await cur.fetchone()

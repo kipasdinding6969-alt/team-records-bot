@@ -2264,6 +2264,7 @@ class DatabaseV2:
 
     async def add_tag(self, client_id: int, tag: str, tagged_by: int) -> bool:
         """Add a tag to a client. Returns True if inserted, False if already existed."""
+        import sqlite3
         async with self.get_connection() as db:
             try:
                 await db.execute(
@@ -2271,7 +2272,7 @@ class DatabaseV2:
                     (client_id, tag.lower().strip(), tagged_by))
                 await db.commit()
                 return True
-            except Exception:
+            except sqlite3.IntegrityError:
                 return False
 
     async def remove_tag(self, client_id: int, tag: str) -> bool:

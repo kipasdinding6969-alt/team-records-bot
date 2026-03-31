@@ -319,6 +319,22 @@ STRINGS = {
         'zh': '❌ 请先使用 /start 注册。',
         'en': '❌ Please register using /start first.',
     },
+    'ai_unavailable': {
+        'zh': '（AI建议暂不可用，请稍后重试）',
+        'en': '(AI suggestions unavailable, please try again later)',
+    },
+    'sla_critical_msg': {
+        'zh': '🚨 SLA危急!\n员工: {staff}\n客户: {client}\n类型: {ev_type}\n已超时: {elapsed}分钟 (危急阈值: {threshold}分钟)',
+        'en': '🚨 SLA Critical!\nStaff: {staff}\nClient: {client}\nType: {ev_type}\nOverdue: {elapsed}min (threshold: {threshold}min)',
+    },
+    'sla_critical_staff': {
+        'zh': '🚨 SLA已严重超时! 客户 {client} 的{ev_type}已超 {elapsed} 分钟！',
+        'en': '🚨 SLA critically overdue! {ev_type} for client {client} exceeded {elapsed} minutes!',
+    },
+    'sla_warning_msg': {
+        'zh': '⚠️ SLA预警: 客户 {client} 的{ev_type}\n已用 {elapsed} 分钟，还剩约 {remaining} 分钟达标。',
+        'en': '⚠️ SLA Warning: {ev_type} for client {client}\n{elapsed} min elapsed, ~{remaining} min remaining.',
+    },
     'err_manager_only': {
         'zh': '❌ 此功能仅限管理员和经理使用。',
         'en': '❌ This feature is only for managers and admins.',
