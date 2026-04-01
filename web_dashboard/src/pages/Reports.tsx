@@ -61,7 +61,7 @@ export default function Reports() {
         <PageHeader title="报告分析" />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {(['daily', 'weekly', 'monthly'] as Period[]).map(p => (
-            <button
+            <button className="glass-btn"
               key={p}
               onClick={() => setPeriod(p)}
               style={{
@@ -77,7 +77,7 @@ export default function Reports() {
               {p === 'daily' ? '日报' : p === 'weekly' ? '周报' : '月报'}
             </button>
           ))}
-          <button
+          <button className="glass-btn"
             onClick={() => api.exportReport(period).catch(console.error)}
             style={{
               padding: '6px 14px',

@@ -1,10 +1,12 @@
 import type { AuthState } from '../types'
+import { useTheme } from '../ThemeContext'
 
 interface Props {
   auth: AuthState | null
 }
 
 export default function ScopeBanner({ auth }: Props) {
+  const { theme } = useTheme()
   if (!auth || auth.role === 'owner') return null
 
   const message =
@@ -15,7 +17,7 @@ export default function ScopeBanner({ auth }: Props) {
   return (
     <div
       style={{
-        background: '#0f3460',
+        background: theme.activeNav,
         borderLeft: '3px solid #00b894',
         padding: '8px 14px',
         marginBottom: 20,

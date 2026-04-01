@@ -83,13 +83,13 @@ export default function Clients() {
 
   return (
     <div>
-      <PageHeader title="客户列表" />
+      <PageHeader title="客户列表 (Clients)" sub="Manage and view all your clients." />
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap', alignItems: 'center' }}>
         <input
           type="text"
-          placeholder="搜索电话/来源..."
+          placeholder="Search phone or source..."
           value={search}
           onChange={e => setParam('search', e.target.value)}
           style={getInputStyle(theme)}
@@ -97,19 +97,19 @@ export default function Clients() {
         <select
           value={status}
           onChange={e => setParam('status', e.target.value)}
-          style={{ ...getInputStyle(theme), width: 160 }}
+          style={{ ...getInputStyle(theme), width: 180 }}
         >
           {STATUSES.map(s => (
             <option key={s} value={s}>
-              {s ? STATUS_LABELS[s] || s : '全部状态'}
+              {s ? STATUS_LABELS[s] || s : 'All Statuses'}
             </option>
           ))}
         </select>
-        <button
+        <button className="glass-btn"
           onClick={() => api.exportClients(status || undefined, undefined).catch(console.error)}
           style={getBtnStyle(theme)}
         >
-          导出 CSV
+          📥 Export CSV
         </button>
         <button
           onClick={() => { setShowAdd(true); setAddError(''); setAddSuccess(''); setPhoneStatus(null) }}
@@ -118,8 +118,8 @@ export default function Clients() {
           ➕ 新增客户
         </button>
         {data && (
-          <span style={{ fontSize: 12, color: theme.textSecondary, marginLeft: 'auto' }}>
-            共 {data.total} 条记录
+          <span style={{ fontSize: 14, fontWeight: 600, color: theme.textSecondary, marginLeft: 'auto' }}>
+            Total: {data.total.toLocaleString()} records
           </span>
         )}
       </div>
@@ -128,93 +128,145 @@ export default function Clients() {
       {loading ? (
         <Spinner />
       ) : (
-        <div style={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 8 }}>
+        <div style={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 12, boxShadow: theme.shadow, overflow: 'hidden' }}>
           {!data || data.clients.length === 0 ? (
-            <div style={{ padding: 20 }}>
-              <Empty />
-            </div>
+            <Empty />
           ) : (
             <>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: `1px solid ${theme.cardBorder}` }}>
-                    {['电话', '状态', '来源', '负责人', '团队', '存款', '下次跟进', '创建时间'].map(h => (
-                      <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: theme.textSecondary, fontWeight: 600 }}>
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.clients.map((c: Client) => (
-                    <tr
-                      key={c.id}
-                      onClick={() => nav(`/clients/${c.id}`)}
-                      style={{ borderBottom: `1px solid ${theme.cardBorder}25`, cursor: 'pointer', transition: 'background 0.1s' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '${theme.cardBorder}30')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <td style={{ padding: '10px 14px', color: '#74b9ff', fontFamily: 'monospace', fontSize: 12 }}>
-                        {c.phone}
-                      </td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <span
-                          style={{
-                            padding: '2px 8px',
-                            borderRadius: 3,
-                            fontSize: 11,
-                            background: `${STATUS_COLORS[c.status] || '#7f848e'}30`,
-                            color: STATUS_COLORS[c.status] || '${theme.textSecondary}',
-                            fontWeight: 600,
-                          }}
-                        >
-                          {STATUS_LABELS[c.status] || c.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px 14px', color: '#aaa' }}>{c.source || '-'}</td>
-                      <td style={{ padding: '10px 14px' }}>{c.frontdesk_name || '-'}</td>
-                      <td style={{ padding: '10px 14px', color: theme.textSecondary }}>{c.team || '-'}</td>
-                      <td style={{ padding: '10px 14px', color: c.total_deposited > 0 ? '${theme.accent}' : theme.textSecondary }}>
-                        {c.total_deposited > 0 ? `$${c.total_deposited.toFixed(0)}` : '-'}
-                      </td>
-                      <td style={{ padding: '10px 14px', color: c.next_followup ? '${theme.chartLine}' : theme.textSecondary, fontSize: 12 }}>
-                        {c.next_followup ? new Date(c.next_followup).toLocaleDateString('zh') : '-'}
-                      </td>
-                      <td style={{ padding: '10px 14px', color: theme.textSecondary, fontSize: 12 }}>
-                        {c.created_at ? new Date(c.created_at).toLocaleDateString('zh') : '-'}
-                      </td>
+              <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
+                <style>{`
+                  .data-grid-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 13px;
+                  }
+                  .data-grid-table th {
+                    padding: 10px 12px;
+                    text-align: left;
+                    color: ${theme.textSecondary};
+                    font-weight: 700;
+                    font-size: 12px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    white-space: nowrap;
+                    border-bottom: 1px solid ${theme.cardBorder};
+                    border-right: 1px solid ${theme.cardBorder};
+                    background: ${theme.bg}E6;
+                    backdrop-filter: blur(12px);
+                    position: sticky;
+                    top: 0;
+                    z-index: 1;
+                    box-shadow: 0 1px 2px ${theme.cardBorder};
+                  }
+                  .data-grid-table th:last-child {
+                    border-right: none;
+                  }
+                  .data-grid-table td {
+                    padding: 8px 12px;
+                    border-bottom: 1px solid ${theme.cardBorder};
+                    border-right: 1px solid ${theme.cardBorder};
+                    color: ${theme.textPrimary};
+                    transition: background 0.15s ease;
+                  }
+                  .data-grid-table td:last-child {
+                    border-right: none;
+                  }
+                  .data-grid-row {
+                    background: ${theme.cardBg};
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+                  }
+                  .data-grid-row:hover {
+                    background: ${theme.accentLight};
+                  }
+                  .data-grid-row:hover td {
+                    background: ${theme.accentLight};
+                  }
+                  .data-grid-row td:hover {
+                    background: ${theme.accent}20; /* Cell specific highlight */
+                  }
+                `}</style>
+                <table className="data-grid-table">
+                  <thead>
+                    <tr>
+                      {['Phone', 'Status', 'Source', 'Owner', 'Team', 'Deposit', 'Next Followup', 'Created At'].map(h => (
+                        <th key={h}>{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {data.clients.map((c: Client, i: number) => (
+                      <tr className="data-grid-row"
+                        key={c.id}
+                        onClick={() => nav(`/clients/${c.id}`)}
+                      >
+                        <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                          {c.phone}
+                        </td>
+                        <td>
+                          <span
+                            style={{
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              fontSize: 11,
+                              background: `${STATUS_COLORS[c.status] || theme.textSecondary}15`,
+                              color: STATUS_COLORS[c.status] || theme.textSecondary,
+                              fontWeight: 700,
+                              whiteSpace: 'nowrap',
+                              display: 'inline-block',
+                              border: `1px solid ${STATUS_COLORS[c.status] || theme.textSecondary}30`
+                            }}
+                          >
+                            {STATUS_LABELS[c.status] || c.status}
+                          </span>
+                        </td>
+                        <td style={{ color: theme.textSecondary, fontWeight: 500 }}>{c.source || '—'}</td>
+                        <td style={{ fontWeight: 500 }}>{c.frontdesk_name || '—'}</td>
+                        <td style={{ color: theme.textSecondary, fontWeight: 500 }}>{c.team || '—'}</td>
+                        <td style={{ fontFamily: 'monospace', color: c.total_deposited > 0 ? theme.success : theme.textSecondary, fontWeight: c.total_deposited > 0 ? 700 : 500 }}>
+                          {c.total_deposited > 0 ? `$${c.total_deposited.toLocaleString()}` : '—'}
+                        </td>
+                        <td style={{ fontFamily: 'monospace', color: c.next_followup ? theme.warning : theme.textSecondary, fontSize: 12, fontWeight: 500 }}>
+                          {c.next_followup ? new Date(c.next_followup).toLocaleDateString() : '—'}
+                        </td>
+                        <td style={{ fontFamily: 'monospace', color: theme.textSecondary, fontSize: 12, fontWeight: 500 }}>
+                          {c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
               {/* Pagination */}
               {totalPages > 1 && (
                 <div
                   style={{
                     display: 'flex',
-                    gap: 8,
-                    padding: '14px 16px',
+                    gap: 12,
+                    padding: '16px 24px',
                     borderTop: `1px solid ${theme.cardBorder}`,
                     alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    background: theme.bg,
                   }}
                 >
-                  <button
+                  <button className="glass-btn"
                     onClick={() => setParam('page', String(page - 1))}
                     disabled={page <= 1}
                     style={{ ...getBtnStyle(theme), opacity: page <= 1 ? 0.4 : 1 }}
                   >
-                    上一页
+                    Previous
                   </button>
-                  <span style={{ fontSize: 12, color: theme.textSecondary }}>
-                    第 {page} / {totalPages} 页
+                  <span style={{ fontSize: 14, fontWeight: 600, color: theme.textSecondary }}>
+                    Page {page} of {totalPages}
                   </span>
-                  <button
+                  <button className="glass-btn"
                     onClick={() => setParam('page', String(page + 1))}
                     disabled={page >= totalPages}
                     style={{ ...getBtnStyle(theme), opacity: page >= totalPages ? 0.4 : 1 }}
                   >
-                    下一页
+                    Next
                   </button>
                 </div>
               )}
@@ -325,22 +377,27 @@ const modalInputStyle = (theme: any): React.CSSProperties => ({
 })
 
 const getInputStyle = (theme: any): React.CSSProperties => ({
-  padding: '8px 12px',
-  background: theme.cardBg,
-  border: `1px solid ${theme.cardBorder}`,
-  borderRadius: 4,
+  padding: '10px 16px',
+  background: theme.inputBg,
+  border: `1px solid ${theme.inputBorder}`,
+  borderRadius: 8,
   color: theme.textPrimary,
-  fontSize: 13,
+  fontSize: 14,
   outline: 'none',
-  minWidth: 200,
+  minWidth: 240,
+  boxShadow: theme.shadow,
+  transition: 'all 0.2s',
 })
 
 const getBtnStyle = (theme: any): React.CSSProperties => ({
-  padding: '8px 16px',
-  background: theme.cardBorder,
+  padding: '10px 20px',
+  background: theme.cardBg,
   border: `1px solid ${theme.cardBorder}`,
-  borderRadius: 4,
+  borderRadius: 8,
   color: theme.textPrimary,
-  fontSize: 12,
+  fontSize: 14,
+  fontWeight: 600,
   cursor: 'pointer',
+  boxShadow: theme.shadow,
+  transition: 'all 0.2s',
 })

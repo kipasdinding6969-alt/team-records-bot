@@ -1288,9 +1288,8 @@ async def phone_registry_override(
 
 # ─── Phase 16: Client Links API ─────────────────────────────────────────────
 
-class CreateLinkRequest(BaseModel):
-    client_id_a: int
-    client_id_b: int
+class ClientLinkRequest(BaseModel):
+    linked_client_id: int
     link_type: str = 'related'
     note: Optional[str] = None
 
@@ -1317,19 +1316,19 @@ async def get_client_links(client_id: int, user: dict = Depends(get_current_user
             return [row_to_dict(r) for r in await cur.fetchall()]
 
 
-@app.post('/api/client-links')
-async def create_client_link(body: CreateLinkRequest, user: dict = Depends(get_current_user)):
+@app.post('/api/clients/{client_id}/links')
+async def create_client_link(client_id: int, body: ClientLinkRequest, user: dict = Depends(get_current_user)):
     """Create a link between two clients."""
     valid_types = ('related', 'same_person', 'referral', 'family')
     if body.link_type not in valid_types:
         raise HTTPException(status_code=400, detail=f'Invalid link_type. Valid: {valid_types}')
 
-    a, b = min(body.client_id_a, body.client_id_b), max(body.client_id_a, body.client_id_b)
+    a, b = min(client_id, body.linked_client_id), max(client_id, body.linked_client_id)
     async with _connect_db() as db:
         try:
             await db.execute(
                 'INSERT INTO client_links (client_id_a, client_id_b, link_type, note, created_by) VALUES (?, ?, ?, ?, ?)',
-                (a, b, body.link_type, body.note, user.get('staff_id'))
+                (a, b, body.link_type, body.note, user.get('user_id'))
             )
             await db.commit()
         except aiosqlite.IntegrityError:
@@ -1337,11 +1336,12 @@ async def create_client_link(body: CreateLinkRequest, user: dict = Depends(get_c
     return {'ok': True}
 
 
-@app.delete('/api/client-links/{link_id}')
-async def delete_client_link(link_id: int, user: dict = Depends(get_current_user)):
+@app.delete('/api/clients/{client_id}/links/{linked_client_id}')
+async def delete_client_link(client_id: int, linked_client_id: int, user: dict = Depends(get_current_user)):
     """Delete a client link."""
+    a, b = min(client_id, linked_client_id), max(client_id, linked_client_id)
     async with _connect_db() as db:
-        cur = await db.execute('DELETE FROM client_links WHERE id = ?', (link_id,))
+        cur = await db.execute('DELETE FROM client_links WHERE client_id_a = ? AND client_id_b = ?', (a, b))
         await db.commit()
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail='Link not found')

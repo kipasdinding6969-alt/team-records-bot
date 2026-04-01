@@ -56,7 +56,7 @@ export default function Team() {
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ borderBottom: `1px solid ${theme.cardBorder}` }}>
+              <tr className="glass-table-row" style={{ borderBottom: `1px solid ${theme.cardBorder}` }}>
                 {['排名', '姓名', '团队', '职位', 'XP', '连击', '总客户', '总订单', '今日新增', '今日下单'].map(h => (
                   <th
                     key={h}
@@ -69,7 +69,7 @@ export default function Team() {
             </thead>
             <tbody>
               {staff.map((s, i) => (
-                <tr
+                <tr className="glass-table-row"
                   key={s.id}
                   style={{ borderBottom: `1px solid ${theme.cardBorder}30` }}
                 >

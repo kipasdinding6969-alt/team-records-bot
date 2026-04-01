@@ -61,116 +61,264 @@ export default function Layout() {
       display: 'flex',
       minHeight: '100vh',
       background: theme.bg,
+      backgroundImage: theme.glowAmbient,
+      backgroundAttachment: 'fixed',
       color: theme.textPrimary,
+      fontFamily: theme.fontFamily,
     }}>
-      <aside style={{
-        width: 220,
-        background: theme.sidebarBg,
+      <style>{`
+        /* Hyper-Creative Global CSS */
+        ::selection {
+          background: ${theme.accentLight};
+          color: ${theme.accent};
+        }
+        ::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+          background: ${theme.cardBorder};
+          border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+          background: ${theme.textMuted};
+        }
+
+        .glass-panel {
+          background: ${theme.glassBg} !important;
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          border: 1px solid ${theme.glassBorder} !important;
+        }
+
+        .glass-card {
+          background: ${theme.glassBg} !important;
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border: 1px solid ${theme.glassBorder} !important;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glass-card:hover {
+          transform: translateY(-2px);
+          box-shadow: ${theme.shadowHover} !important;
+          border-color: ${theme.accentLight} !important;
+        }
+
+        .glass-btn {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+          position: relative;
+          overflow: hidden;
+        }
+        .glass-btn:hover {
+          transform: translateY(-1px);
+          box-shadow: ${theme.shadowHover} !important;
+          filter: brightness(1.1);
+        }
+        .glass-btn:active {
+          transform: translateY(1px);
+        }
+
+        .glass-table-row {
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glass-table-row:hover {
+          background: ${theme.navHoverBg} !important;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+
+        .pill-badge {
+          border-radius: 9999px !important;
+          padding: 4px 10px !important;
+          font-weight: 600 !important;
+          letter-spacing: 0.02em;
+        }
+
+        .empty-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 64px 24px;
+          text-align: center;
+          color: ${theme.textSecondary};
+          background: ${theme.glassBg};
+          border-radius: 16px;
+          border: 1px dashed ${theme.cardBorder};
+          backdrop-filter: blur(12px);
+        }
+
+        .nav-inactive {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .nav-inactive:hover {
+          background: ${theme.navHoverBg} !important;
+          color: ${theme.textPrimary} !important;
+          transform: translateX(4px);
+        }
+
+        .nav-active {
+          position: relative;
+          color: ${theme.activeNavText} !important;
+          background: ${theme.activeNav} !important;
+          font-weight: 600 !important;
+          box-shadow: inset 3px 0 0 ${theme.accent};
+        }
+      `}</style>
+
+      <aside className="glass-panel" style={{
+        width: 260,
         display: 'flex',
         flexDirection: 'column',
-        borderRight: `1px solid ${theme.sidebarBorder}`,
         flexShrink: 0,
+        zIndex: 20,
+        borderRight: `1px solid ${theme.glassBorder}`,
       }}>
-        <div style={{ padding: '20px 20px 14px', borderBottom: `1px solid ${theme.sidebarBorder}` }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: theme.textPrimary, letterSpacing: 0.5 }}>
-            {t('nav.brand', lang as any)}
+        <div style={{ padding: '24px 24px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 10, background: theme.accent, 
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#fff', fontWeight: 'bold', fontSize: 18,
+            boxShadow: `0 4px 16px ${theme.accentLight}`
+          }}>
+            T
           </div>
-          <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 3 }}>
-            {t('nav.brand_sub', lang as any)}
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: theme.textPrimary, letterSpacing: '-0.02em' }}>
+              {t('nav.brand', lang as any)}
+            </div>
+            <div style={{ fontSize: 12, color: theme.textSecondary, marginTop: 2, fontWeight: 500 }}>
+              {t('nav.brand_sub', lang as any)}
+            </div>
           </div>
         </div>
 
         {auth && (
-          <div style={{ padding: '10px 20px 14px', borderBottom: `1px solid ${theme.sidebarBorder}` }}>
-            <div style={{ fontSize: 13, color: theme.textPrimary, fontWeight: 600 }}>{auth.display_name}</div>
-            <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: ROLE_COLORS[auth.role] || '#7f848e',
-                background: `${ROLE_COLORS[auth.role] || '#7f848e'}22`,
-                border: `1px solid ${ROLE_COLORS[auth.role] || '#7f848e'}`,
-                borderRadius: 3,
-                padding: '1px 6px',
-                letterSpacing: 0.5,
-                textTransform: 'uppercase',
-              }}>
-                {roleLabel}
-              </span>
-              {auth.team_scope && (
-                <span style={{ fontSize: 11, color: theme.textSecondary }}>{auth.team_scope}</span>
-              )}
+          <div style={{ padding: '0 24px 20px', borderBottom: `1px solid ${theme.glassBorder}` }}>
+            <div className="glass-card" style={{ borderRadius: 12, padding: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: theme.accentLight, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.accent, fontWeight: 600 }}>
+                {auth.display_name.charAt(0).toUpperCase()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, color: theme.textPrimary, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {auth.display_name}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                  <span className="pill-badge" style={{
+                    fontSize: 10,
+                    color: ROLE_COLORS[auth.role] || theme.textSecondary,
+                    background: `${ROLE_COLORS[auth.role] || theme.textMuted}1a`,
+                    textTransform: 'uppercase',
+                  }}>
+                    {roleLabel}
+                  </span>
+                  {auth.team_scope && (
+                    <span style={{ fontSize: 11, color: theme.textSecondary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500 }}>
+                      {auth.team_scope}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Theme + Lang toggles */}
+        <nav style={{ flex: 1, padding: '24px 0', display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto' }}>
+          {navItems.map(item => (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              end={item.end}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                margin: '0 16px',
+                padding: '10px 16px',
+                borderRadius: 12,
+                color: theme.textSecondary,
+                textDecoration: 'none',
+                fontSize: 14,
+              }}
+              className={({ isActive }) => isActive ? 'nav-active' : 'nav-inactive'}
+            >
+              <span style={{ fontSize: 16, minWidth: 20, textAlign: 'center', opacity: 0.9 }}>{item.icon}</span>
+              <span>{t(item.labelKey, lang as any)}</span>
+            </NavLink>
+          ))}
+        </nav>
+        
         <div style={{
-          display: 'flex', gap: 6, padding: '8px 20px',
-          borderBottom: `1px solid ${theme.sidebarBorder}`,
+          display: 'flex', gap: 8, padding: '16px',
+          borderTop: `1px solid ${theme.glassBorder}`,
         }}>
           <button
+            className="glass-btn"
             onClick={toggleTheme}
             style={{
-              flex: 1, padding: '4px 8px', fontSize: 11, cursor: 'pointer',
-              background: theme.inputBg, border: `1px solid ${theme.inputBorder}`,
-              color: theme.textSecondary, borderRadius: 4,
+              flex: 1, padding: '10px', fontSize: 13, cursor: 'pointer',
+              background: theme.glassBg, border: `1px solid ${theme.glassBorder}`,
+              color: theme.textSecondary, borderRadius: 10, fontWeight: 600,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             }}
           >
-            {themeMode === 'dark' ? '☀️' : '🌙'} {t(themeMode === 'dark' ? 'theme.light' : 'theme.dark', lang as any)}
+            {themeMode === 'dark' ? '☀️' : '🌙'}
           </button>
           <button
+            className="glass-btn"
             onClick={toggleLang}
             style={{
-              flex: 1, padding: '4px 8px', fontSize: 11, cursor: 'pointer',
-              background: theme.inputBg, border: `1px solid ${theme.inputBorder}`,
-              color: theme.textSecondary, borderRadius: 4,
+              flex: 1, padding: '10px', fontSize: 13, cursor: 'pointer',
+              background: theme.glassBg, border: `1px solid ${theme.glassBorder}`,
+              color: theme.textSecondary, borderRadius: 10, fontWeight: 600,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             }}
           >
             🌐 {lang === 'zh' ? 'EN' : '中文'}
           </button>
         </div>
 
-        <nav style={{ flex: 1, padding: '12px 0' }}>
-          {navItems.map(item => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.end}
-              style={({ isActive }) => ({
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '11px 20px',
-                color: isActive ? theme.textPrimary : theme.textSecondary,
-                background: isActive ? theme.activeNav : 'transparent',
-                textDecoration: 'none',
-                borderLeft: `3px solid ${isActive ? theme.activeNavBorder : 'transparent'}`,
-                fontSize: 13,
-                transition: 'all 0.15s',
-              })}
-            >
-              <span style={{ fontSize: 14, minWidth: 18, textAlign: 'center' }}>{item.icon}</span>
-              <span>{t(item.labelKey, lang as any)}</span>
-            </NavLink>
-          ))}
-        </nav>
-        <div style={{ padding: '16px 20px', borderTop: `1px solid ${theme.sidebarBorder}` }}>
+        <div style={{ padding: '0 16px 16px' }}>
           <button
+            className="glass-btn"
             onClick={logout}
             style={{
-              width: '100%', padding: '8px', background: 'transparent',
-              border: `1px solid ${theme.textSecondary}`, color: theme.textSecondary,
-              borderRadius: 4, cursor: 'pointer', fontSize: 12, letterSpacing: 0.5,
+              width: '100%', padding: '10px', background: theme.dangerBg,
+              border: `1px solid transparent`, color: theme.danger,
+              borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600,
             }}
           >
             {t('nav.logout', lang as any)}
           </button>
         </div>
       </aside>
-      <main style={{ flex: 1, overflow: 'auto', padding: 24, minWidth: 0 }}>
-        <ScopeBanner auth={auth} />
-        <Outlet />
+      
+      <main style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <header className="glass-panel" style={{
+          height: 64,
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 32px',
+          flexShrink: 0,
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          borderBottom: `1px solid ${theme.glassBorder}`,
+        }}>
+          <div style={{ flex: 1 }}></div>
+          <div className="glass-btn" style={{ cursor: 'default', padding: '6px 12px', borderRadius: 9999, background: theme.successBg, border: `1px solid ${theme.success}33`, color: theme.success, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: theme.success, display: 'inline-block', boxShadow: `0 0 8px ${theme.success}` }}></span>
+            System Operational
+          </div>
+        </header>
+        
+        <div style={{ padding: '32px', flex: 1, minWidth: 0, maxWidth: 1400, margin: '0 auto', width: '100%' }}>
+          <ScopeBanner auth={auth} />
+          <Outlet />
+        </div>
       </main>
     </div>
   )

@@ -122,7 +122,7 @@ export default function Setup() {
             </div>
           )}
 
-          <button
+          <button className="glass-btn"
             type="submit"
             disabled={loading}
             style={{

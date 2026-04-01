@@ -202,7 +202,7 @@ export default function UserManagement() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: theme.textPrimary }}>用户管理</h2>
-        <button
+        <button className="glass-btn"
           onClick={openAdd}
           style={{
             padding: '8px 16px',
@@ -231,7 +231,7 @@ export default function UserManagement() {
         <div style={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 6, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr>
+              <tr className="glass-table-row">
                 {['显示名称', '用户名', '角色', '团队', '状态', '最后登录', '操作'].map(h => (
                   <th key={h} style={th}>{h}</th>
                 ))}
@@ -239,7 +239,7 @@ export default function UserManagement() {
             </thead>
             <tbody>
               {users.map(u => (
-                <tr key={u.id} style={{ opacity: u.is_active ? 1 : 0.5 }}>
+                <tr className="glass-table-row" key={u.id} style={{ opacity: u.is_active ? 1 : 0.5 }}>
                   <td style={td}>{u.display_name}</td>
                   <td style={{ ...td, color: theme.textSecondary }}>{u.username}</td>
                   <td style={td}>
@@ -267,22 +267,22 @@ export default function UserManagement() {
                     <div style={{ display: 'flex', gap: 6 }}>
                       {canEdit(u) && (
                         <>
-                          <button onClick={() => openEdit(u)} style={actionBtn('${theme.cardBorder}', '${theme.textSecondary}')}>编辑</button>
-                          <button onClick={() => openReset(u)} style={actionBtn('${theme.cardBorder}', '${theme.chartLine}')}>重置密码</button>
+                          <button className="glass-btn" onClick={() => openEdit(u)} style={actionBtn('${theme.cardBorder}', '${theme.textSecondary}')}>编辑</button>
+                          <button className="glass-btn" onClick={() => openReset(u)} style={actionBtn('${theme.cardBorder}', '${theme.chartLine}')}>重置密码</button>
                         </>
                       )}
                       {canEdit(u) && u.is_active && auth?.user_id !== u.id && (
                         confirmDeactivate === u.id ? (
                           <>
-                            <button onClick={() => deactivate(u.id)} style={actionBtn('${theme.badgeRed}', '${theme.badgeRed}')}>确认停用</button>
-                            <button onClick={() => setConfirmDeactivate(null)} style={actionBtn('${theme.cardBorder}', '${theme.textSecondary}')}>取消</button>
+                            <button className="glass-btn" onClick={() => deactivate(u.id)} style={actionBtn('${theme.badgeRed}', '${theme.badgeRed}')}>确认停用</button>
+                            <button className="glass-btn" onClick={() => setConfirmDeactivate(null)} style={actionBtn('${theme.cardBorder}', '${theme.textSecondary}')}>取消</button>
                           </>
                         ) : (
-                          <button onClick={() => setConfirmDeactivate(u.id)} style={actionBtn('${theme.cardBorder}', '${theme.badgeRed}')}>停用</button>
+                          <button className="glass-btn" onClick={() => setConfirmDeactivate(u.id)} style={actionBtn('${theme.cardBorder}', '${theme.badgeRed}')}>停用</button>
                         )
                       )}
                       {canEdit(u) && !u.is_active && isOwner && (
-                        <button onClick={() => reactivate(u)} style={actionBtn('${theme.cardBorder}', '${theme.accent}')}>启用</button>
+                        <button className="glass-btn" onClick={() => reactivate(u)} style={actionBtn('${theme.cardBorder}', '${theme.accent}')}>启用</button>
                       )}
                     </div>
                   </td>
@@ -382,8 +382,8 @@ export default function UserManagement() {
             )}
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={closeModal} style={actionBtn('${theme.cardBorder}', '${theme.textSecondary}')}>取消</button>
-              <button
+              <button className="glass-btn" onClick={closeModal} style={actionBtn('${theme.cardBorder}', '${theme.textSecondary}')}>取消</button>
+              <button className="glass-btn"
                 onClick={saveUser}
                 disabled={saving}
                 style={{

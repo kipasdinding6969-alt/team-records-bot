@@ -137,7 +137,7 @@ export default function Login() {
               {error}
             </div>
           )}
-          <button
+          <button className="glass-btn"
             type="submit"
             disabled={loading}
             style={{
