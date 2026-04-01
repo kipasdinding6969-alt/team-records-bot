@@ -241,9 +241,9 @@ export const api = {
   clientLinks: (clientId: number) => req<any[]>(`/api/clients/${clientId}/links`),
 
   createClientLink: (data: { client_id_a: number; client_id_b: number; link_type?: string; note?: string }) =>
-    req<{ ok: boolean }>('/api/client-links', {
+    req<{ ok: boolean }>(`/api/clients/${data.client_id_a}/links`, {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify({ linked_client_id: data.client_id_b, link_type: data.link_type || 'related', note: data.note }),
     }),
 
   deleteClientLink: (linkId: number) =>

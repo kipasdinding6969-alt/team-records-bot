@@ -1374,6 +1374,17 @@ async def delete_client_link(client_id: int, linked_client_id: int, user: dict =
     return {'ok': True}
 
 
+@app.delete('/api/client-links/{link_id}')
+async def delete_client_link_by_id(link_id: int, user: dict = Depends(get_current_user)):
+    """Delete a client link by link row ID."""
+    async with _connect_db() as db:
+        cur = await db.execute('DELETE FROM client_links WHERE id = ?', (link_id,))
+        await db.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail='Link not found')
+    return {'ok': True}
+
+
 # ─── Phase 16: Permission Overrides API ─────────────────────────────────────
 
 class PermissionOverrideRequest(BaseModel):
@@ -2087,7 +2098,15 @@ async def create_client_via_dashboard(
     """Create a client via dashboard with phone_registry duplicate guard."""
     staff_id = user.get('staff_id')
     if not staff_id:
-        raise HTTPException(status_code=403, detail='No linked staff account')
+        # Owner without linked staff — try to find any admin staff
+        if user['role'] == 'owner':
+            async with _connect_db() as db:
+                async with db.execute("SELECT id FROM staff WHERE role = 'admin' LIMIT 1") as cur:
+                    row = await cur.fetchone()
+                    if row:
+                        staff_id = row['id']
+        if not staff_id:
+            raise HTTPException(status_code=403, detail='No linked staff account. Link your account to a staff member in User Management.')
 
     import re
     phone_normalized = re.sub(r'[^\d]', '', body.phone)
