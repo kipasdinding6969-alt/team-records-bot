@@ -5,6 +5,7 @@ import type { Client, ClientList } from '../types'
 import { STATUS_COLORS, STATUS_LABELS } from '../types'
 import { Empty, PageHeader, Spinner } from './Dashboard'
 import { useTheme } from '../ThemeContext'
+import { t, getLang } from '../i18n'
 
 const STATUSES = ['', 'new', 'contacted', 'replied', 'registered', 'training', 'ordered', 'withdrew', 'ghosted', 'dead']
 const PER_PAGE = 50
@@ -287,81 +288,144 @@ export default function Clients() {
       {/* Add Client Modal */}
       {showAdd && (
         <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          animation: 'modalFadeIn 0.2s ease-out',
         }} onClick={e => { if (e.target === e.currentTarget) setShowAdd(false) }}>
+          <style>{`
+            @keyframes modalFadeIn {
+              from { opacity: 0; transform: scale(0.95) translateY(10px); }
+              to { opacity: 1; transform: scale(1) translateY(0); }
+            }
+            @keyframes pulse {
+              0% { box-shadow: 0 0 0 0 rgba(var(--pulse-color), 0.7); }
+              70% { box-shadow: 0 0 0 6px rgba(var(--pulse-color), 0); }
+              100% { box-shadow: 0 0 0 0 rgba(var(--pulse-color), 0); }
+            }
+          `}</style>
           <div style={{
-            background: theme.cardBg, borderRadius: 12, padding: 24, width: 420,
-            maxWidth: '90vw', boxShadow: theme.shadow,
+            background: theme.cardBg, borderRadius: 16, padding: 32, width: 520,
+            maxWidth: '90vw', boxShadow: theme.shadowHover, border: `1px solid ${theme.cardBorder}`,
           }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700 }}>➕ 新增客户 / Add Client</h3>
+            <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700 }}>➕ 新增客户 / Add Client</h3>
 
             {/* Phone input with live check */}
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>电话 / Phone</label>
-              <input
-                value={addPhone}
-                onChange={e => { setAddPhone(e.target.value); checkPhone(e.target.value) }}
-                placeholder="e.g. +60123456789"
-                style={{ ...modalInputStyle(theme), width: '100%' }}
-              />
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 6 }}>电话 / Phone</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <span style={{ position: 'absolute', left: 12, top: 12, fontSize: 16, color: theme.textSecondary }}>📞</span>
+                  <input
+                    value={addPhone}
+                    onChange={e => { setAddPhone(e.target.value); checkPhone(e.target.value) }}
+                    placeholder="e.g. +60123456789"
+                    style={{ ...modalInputStyle(theme), width: '100%', paddingLeft: 40, fontSize: 16, fontWeight: 600, padding: '12px 12px 12px 36px' }}
+                  />
+                </div>
+                <button className="glass-btn" onClick={() => checkPhone(addPhone)} style={{ ...getBtnStyle(theme), padding: '0 16px' }}>
+                  {t('clients.check_again', getLang()) || 'Check Again'}
+                </button>
+              </div>
               {phoneStatus && (
-                <div style={{ marginTop: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ marginTop: 8, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8,
+                  padding: phoneStatus.status === 'taken' ? '10px 12px' : 0,
+                  background: phoneStatus.status === 'taken' ? '#fee2e2' : 'transparent',
+                  borderRadius: 6, border: phoneStatus.status === 'taken' ? '1px solid #f87171' : 'none'
+                 }}>
                   {phoneStatus.status === 'available' && (
-                    <span style={{ color: '#22c55e', fontWeight: 600 }}>✓ 可用 / Available</span>
+                    <>
+                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e', '--pulse-color': '34, 197, 94' } as any} className="pulse-dot"></div>
+                      <span className="pill-badge" style={{ color: '#15803d', background: '#dcfce7', fontWeight: 600, padding: '2px 8px', borderRadius: 12 }}>
+                        {t('clients.phone_available', getLang()) || 'Available'}
+                      </span>
+                    </>
                   )}
                   {phoneStatus.status === 'own' && (
-                    <span style={{ color: '#f59e0b', fontWeight: 600 }}>⚡ 你的号码 / Your Number — editable</span>
+                    <>
+                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#f59e0b', '--pulse-color': '245, 158, 11' } as any} className="pulse-dot"></div>
+                      <span className="pill-badge" style={{ color: '#b45309', background: '#fef3c7', fontWeight: 600, padding: '2px 8px', borderRadius: 12 }}>
+                        {t('clients.phone_own', getLang()) || 'Your number (editable)'}
+                      </span>
+                    </>
                   )}
                   {phoneStatus.status === 'taken' && (
-                    <span style={{ color: '#ef4444', fontWeight: 600 }}>
-                      ✗ 已被占用 / Taken by {phoneStatus.owner} ({phoneStatus.submitted_at?.split('T')[0]})
-                    </span>
+                    <>
+                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ef4444', '--pulse-color': '239, 68, 68' } as any} className="pulse-dot"></div>
+                      <span style={{ color: '#b91c1c', fontWeight: 600 }}>
+                        {t('clients.phone_taken', getLang())?.replace('{owner}', phoneStatus.owner) || `Taken by ${phoneStatus.owner}`} ({phoneStatus.submitted_at?.split('T')[0]})
+                      </span>
+                    </>
                   )}
                 </div>
               )}
+              <style>{`.pulse-dot { animation: pulse 2s infinite; }`}</style>
             </div>
 
-            {/* Source */}
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>来源 / Source</label>
-              <select
-                value={addSource}
-                onChange={e => setAddSource(e.target.value)}
-                style={{ ...modalInputStyle(theme), width: '100%' }}
-              >
-                {['web', 'telegram', 'whatsapp', 'referral', 'facebook', 'instagram', 'tiktok', 'other'].map(s => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </div>
+            {/* 2-column grid layout */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              {/* Source */}
+              <div>
+                <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>来源 / Source</label>
+                <select
+                  value={addSource}
+                  onChange={e => setAddSource(e.target.value)}
+                  style={{ ...modalInputStyle(theme), width: '100%' }}
+                >
+                  {['web', 'telegram', 'whatsapp', 'referral', 'facebook', 'instagram', 'tiktok', 'other'].map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
 
-            {/* Row: Nickname + Account ID */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+              {/* Platform */}
+              <div>
+                <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>平台 / Platform</label>
+                <select value={addPlatform} onChange={e => setAddPlatform(e.target.value)}
+                  style={{ ...modalInputStyle(theme), width: '100%' }}>
+                  <option value="">-- Select --</option>
+                  {['MT5', 'MT4', 'cTrader', 'Other'].map(p => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Nickname */}
               <div>
                 <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>昵称 / Nickname</label>
                 <input value={addNickname} onChange={e => setAddNickname(e.target.value)}
                   placeholder="Optional" style={{ ...modalInputStyle(theme), width: '100%' }} />
               </div>
+
+              {/* Account ID */}
               <div>
                 <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>编号 / Account ID</label>
                 <input value={addAccountId} onChange={e => setAddAccountId(e.target.value)}
                   placeholder="Optional" style={{ ...modalInputStyle(theme), width: '100%' }} />
               </div>
-            </div>
 
-            {/* Row: Category + Recruiter */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+              {/* Category */}
               <div>
                 <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>类别 / Category</label>
-                <select value={addCategory} onChange={e => setAddCategory(e.target.value)}
-                  style={{ ...modalInputStyle(theme), width: '100%' }}>
-                  <option value="">-- Select --</option>
-                  {['UK表单粉', 'CA表单粉', 'AU表单粉', 'EU表单粉', 'US表单粉', 'SEA表单粉', 'Other'].map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
+                <div style={{ position: 'relative' }}>
+                  <select value={addCategory} onChange={e => setAddCategory(e.target.value)}
+                    style={{ ...modalInputStyle(theme), width: '100%', appearance: 'none' }}>
+                    <option value="">-- Select --</option>
+                    {['UK表单粉', 'CA表单粉', 'AU表单粉', 'EU表单粉', 'US表单粉', 'SEA表单粉', 'Other'].map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  {addCategory && (
+                    <span className="pill-badge" style={{
+                      position: 'absolute', right: 30, top: '50%', transform: 'translateY(-50%)',
+                      background: theme.accentLight, color: theme.accent, fontSize: 10, padding: '2px 6px', borderRadius: 4, pointerEvents: 'none'
+                    }}>
+                      {addCategory}
+                    </span>
+                  )}
+                </div>
               </div>
+
+              {/* Recruiter */}
               <div>
                 <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>招聘人员 / Recruiter</label>
                 <input value={addRecruiter} onChange={e => setAddRecruiter(e.target.value)}
@@ -369,33 +433,22 @@ export default function Clients() {
               </div>
             </div>
 
-            {/* Platform */}
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>平台 / Platform</label>
-              <select value={addPlatform} onChange={e => setAddPlatform(e.target.value)}
-                style={{ ...modalInputStyle(theme), width: '100%' }}>
-                <option value="">-- Select --</option>
-                {['MT5', 'MT4', 'cTrader', 'Other'].map(p => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-            </div>
+            {addError && <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 16, background: '#fee2e2', padding: 8, borderRadius: 6 }}>{addError}</div>}
+            {addSuccess && <div style={{ color: '#22c55e', fontSize: 13, marginBottom: 16, background: '#dcfce7', padding: 8, borderRadius: 6 }}>{addSuccess}</div>}
 
-            {addError && <div style={{ color: '#ef4444', fontSize: 12, marginBottom: 10 }}>{addError}</div>}
-            {addSuccess && <div style={{ color: '#22c55e', fontSize: 12, marginBottom: 10 }}>{addSuccess}</div>}
-
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowAdd(false)} style={{ ...getBtnStyle(theme), padding: '8px 20px' }}>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
+              <button className="glass-btn" onClick={() => setShowAdd(false)} style={{ ...getBtnStyle(theme), padding: '10px 24px', background: theme.bg }}>
                 取消 / Cancel
               </button>
               <button
+                className="glass-btn"
                 onClick={submitNewClient}
                 disabled={addSubmitting || phoneStatus?.status === 'taken'}
                 style={{
-                  ...getBtnStyle(theme), padding: '8px 20px',
-                  background: phoneStatus?.status === 'taken' ? '#94a3b8' : '#22c55e',
+                  ...getBtnStyle(theme), padding: '10px 24px',
+                  background: phoneStatus?.status === 'taken' ? theme.cardBorder : theme.accent,
                   color: '#fff', border: 'none', fontWeight: 600,
-                  opacity: addSubmitting ? 0.6 : 1,
+                  opacity: addSubmitting || phoneStatus?.status === 'taken' ? 0.6 : 1,
                 }}
               >
                 {addSubmitting ? '...' : '提交 / Submit'}
@@ -409,14 +462,15 @@ export default function Clients() {
 }
 
 const modalInputStyle = (theme: any): React.CSSProperties => ({
-  padding: '8px 12px',
+  padding: '10px 12px',
   background: theme.inputBg,
   border: `1px solid ${theme.inputBorder}`,
-  borderRadius: 6,
+  borderRadius: 8,
   color: theme.textPrimary,
-  fontSize: 13,
+  fontSize: 14,
   outline: 'none',
   boxSizing: 'border-box' as const,
+  transition: 'border-color 0.2s',
 })
 
 const getInputStyle = (theme: any): React.CSSProperties => ({

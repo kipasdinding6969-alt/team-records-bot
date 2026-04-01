@@ -258,6 +258,21 @@ const translations: Record<string, Record<Lang, string>> = {
   'perf.monthly': { zh: '月报', en: 'Monthly' },
   'perf.date_from': { zh: '开始日期', en: 'From' },
   'perf.date_to': { zh: '结束日期', en: 'To' },
+
+  // Phase 18 New Keys
+  'org.edit_staff': { zh: '编辑员工', en: 'Edit Staff' },
+  'org.assign_team': { zh: '分配团队', en: 'Assign Team' },
+  'org.change_role': { zh: '更改角色', en: 'Change Role' },
+  'org.daily_target': { zh: '日目标', en: 'Daily Target' },
+  'org.save_changes': { zh: '保存更改', en: 'Save Changes' },
+  'org.staff_detail': { zh: '员工详情', en: 'Staff Detail' },
+  'org.view_clients': { zh: '查看客户', en: 'View Clients' },
+  'clients.check_again': { zh: '再次检查', en: 'Check Again' },
+  'clients.phone_available': { zh: '号码可用', en: 'Number available' },
+  'clients.phone_taken': { zh: '号码已被 {owner} 占用', en: 'Number taken by {owner}' },
+  'clients.phone_own': { zh: '你的号码 (可编辑)', en: 'Your number (editable)' },
+  'perf.recalculating': { zh: '重新计算中...', en: 'Recalculating...' },
+  'perf.recalculated': { zh: '已更新 {count} 位员工统计', en: 'Stats updated for {count} staff' },
 }
 
 export function t(key: string, lang?: Lang): string {
