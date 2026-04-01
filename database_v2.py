@@ -3451,7 +3451,7 @@ class DatabaseV2:
                 (client_id, limit))
             return [dict(r) for r in await cur.fetchall()]
 
-    async def get_client_timeline(self, client_id: int, limit: int = 100) -> List[Dict]:
+    async def get_client_unified_timeline(self, client_id: int, limit: int = 100) -> List[Dict]:
         """Unified timeline: notes + status changes + links + events."""
         items: List[Dict] = []
         async with self.get_connection() as db:

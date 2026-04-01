@@ -99,7 +99,7 @@ class TestClientTimeline:
     async def test_timeline_includes_notes(self, seeded_db):
         db, staff_id, _, client_id, _ = seeded_db
         await db.add_client_comment(client_id, staff_id, 'TestFD', 'Timeline note')
-        items = await db.get_client_timeline(client_id)
+        items = await db.get_client_unified_timeline(client_id)
         assert len(items) >= 1
         note_items = [i for i in items if i.get('timeline_type') == 'note']
         assert len(note_items) >= 1
@@ -108,7 +108,7 @@ class TestClientTimeline:
     async def test_timeline_includes_links(self, seeded_db):
         db, staff_id, _, client_id, client2_id = seeded_db
         await db.create_client_link(client_id, client2_id, 'related', 'test', staff_id)
-        items = await db.get_client_timeline(client_id)
+        items = await db.get_client_unified_timeline(client_id)
         link_items = [i for i in items if i.get('timeline_type') == 'link']
         assert len(link_items) >= 1
 
