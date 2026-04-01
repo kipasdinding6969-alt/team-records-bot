@@ -136,9 +136,9 @@ async def handle_add_client(task_data: Dict[str, Any]):
     # Phase 16: Register phone in registry if not already there
     if not registry_entry:
         try:
-            from datetime import datetime as _dt
+            from datetime import datetime as _dt, timezone as _tz
             await database_v2.phone_registry_insert(
-                phone, staff.display_name, _dt.utcnow().isoformat(),
+                phone, staff.display_name, _dt.now(_tz.utc).isoformat(),
                 source='bot', submitter_staff_id=staff.id)
             await database_v2.phone_registry_log_action(
                 phone, 'submit', staff.display_name, staff.id)

@@ -696,14 +696,22 @@ class DatabaseV2:
             return cur.lastrowid
 
     async def get_client_by_phone(self, phone: str, frontdesk_id: Optional[int] = None) -> Optional[Client]:
+        """Look up client by phone — tries exact match first, then normalized."""
+        normalized = self.normalize_phone(phone)
         async with self.get_connection() as db:
             if frontdesk_id:
                 cur = await db.execute(
-                    'SELECT * FROM clients WHERE phone=? AND frontdesk_id=? ORDER BY created_at DESC LIMIT 1',
-                    (phone, frontdesk_id))
+                    """SELECT * FROM clients
+                       WHERE (phone = ? OR REPLACE(REPLACE(REPLACE(phone, '+', ''), '-', ''), ' ', '') = ?)
+                         AND frontdesk_id = ?
+                       ORDER BY created_at DESC LIMIT 1""",
+                    (phone, normalized, frontdesk_id))
             else:
                 cur = await db.execute(
-                    'SELECT * FROM clients WHERE phone=? ORDER BY created_at DESC LIMIT 1', (phone,))
+                    """SELECT * FROM clients
+                       WHERE phone = ? OR REPLACE(REPLACE(REPLACE(phone, '+', ''), '-', ''), ' ', '') = ?
+                       ORDER BY created_at DESC LIMIT 1""",
+                    (phone, normalized))
             row = await cur.fetchone()
             return self._row_to_client(row) if row else None
 

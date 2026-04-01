@@ -82,7 +82,14 @@ async function req<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(err.detail || 'Request failed')
+    const detail = err.detail
+    // Preserve structured error objects (e.g. 409 duplicate response with type/owner/message)
+    if (typeof detail === 'object' && detail !== null) {
+      const e = new Error(detail.message || JSON.stringify(detail))
+      ;(e as any).detail = detail
+      throw e
+    }
+    throw new Error(detail || 'Request failed')
   }
   return res.json() as Promise<T>
 }

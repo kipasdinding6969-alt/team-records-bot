@@ -110,9 +110,15 @@ async def _lifespan(app):
 
 app = FastAPI(title='Team Records Dashboard API', version='2.0.0', lifespan=_lifespan)
 
+_ALLOWED_ORIGINS = [
+    'https://dash.sem-rush.com',
+    'http://127.0.0.1:8501',
+    'http://localhost:8501',
+    'http://127.0.0.1:5173',  # vite dev
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['*'],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
@@ -223,6 +229,25 @@ def _scope_clients(user: dict) -> tuple[list[str], list]:
     if sid:
         return ['c.frontdesk_id = ?'], [sid]
     return ['1 = 0'], []
+
+
+async def _check_client_access(client_id: int, user: dict, db):
+    """Verify user can access this client. Raises 403 if denied."""
+    if user['role'] == 'owner':
+        return
+    async with db.execute(
+        'SELECT c.frontdesk_id, s.team FROM clients c LEFT JOIN staff s ON c.frontdesk_id = s.id WHERE c.id = ?',
+        (client_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    if not row:
+        return  # client not found — let the endpoint handle 404
+    if user['role'] == 'admin':
+        if row['team'] != user.get('team_scope'):
+            raise HTTPException(status_code=403, detail='Access denied — client outside your team')
+    elif user['role'] == 'member':
+        if row['frontdesk_id'] != user.get('staff_id'):
+            raise HTTPException(status_code=403, detail='Access denied — not your client')
 
 
 def _scope_staff(user: dict) -> tuple[list[str], list]:
@@ -1298,6 +1323,7 @@ class ClientLinkRequest(BaseModel):
 async def get_client_links(client_id: int, user: dict = Depends(get_current_user)):
     """Get all links for a client."""
     async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
         async with db.execute(
             """SELECT cl.id, cl.client_id_a, cl.client_id_b, cl.link_type,
                       cl.note, cl.created_at,
@@ -1505,6 +1531,7 @@ async def add_client_note(
 ):
     """Add a comment/note to a client record."""
     async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
         async with db.execute('SELECT id FROM clients WHERE id = ?', (client_id,)) as cur:
             if not await cur.fetchone():
                 raise HTTPException(status_code=404, detail='Client not found')
@@ -1528,6 +1555,7 @@ async def add_client_note(
 async def get_client_notes(client_id: int, user: dict = Depends(get_current_user)):
     """Get all notes for a client."""
     async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
         async with db.execute(
             """SELECT cn.id, cn.note_type, cn.old_status, cn.new_status,
                       cn.content, cn.author_name, cn.phone_normalized,
@@ -1546,6 +1574,7 @@ async def get_client_timeline(client_id: int, user: dict = Depends(get_current_u
     """Unified timeline: notes + status changes + links + events."""
     items = []
     async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
         # Notes and status changes
         async with db.execute(
             """SELECT cn.id, 'note' AS timeline_type, cn.note_type,
@@ -1964,6 +1993,7 @@ async def get_linked_timeline(
     Shows notes, status changes, deposits from linked records for full picture."""
     items = []
     async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
         # Get all linked client IDs (including self)
         async with db.execute(
             """SELECT client_id_b AS linked_id FROM client_links WHERE client_id_a = ?
