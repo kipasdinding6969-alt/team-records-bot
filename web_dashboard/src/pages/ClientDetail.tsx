@@ -4,6 +4,7 @@ import { api } from '../api'
 import type { ClientDetail as TClientDetail } from '../types'
 import { STATUS_COLORS, STATUS_LABELS } from '../types'
 import { getLang, t } from '../i18n'
+import { useTheme } from '../ThemeContext'
 
 const CARD: React.CSSProperties = {
   background: '#ffffff',
@@ -15,9 +16,10 @@ const CARD: React.CSSProperties = {
 }
 
 function Field({ label, value, accent }: { label: string; value: string | number | null | undefined; accent?: string }) {
+  const { theme } = useTheme()
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 11, color: '#7f848e', marginBottom: 3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+      <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
         {label}
       </div>
       <div style={{ fontSize: 14, color: accent || '#2d2a26' }}>{value || '-'}</div>
@@ -26,6 +28,7 @@ function Field({ label, value, accent }: { label: string; value: string | number
 }
 
 export default function ClientDetail() {
+  const { theme } = useTheme()
   const { id } = useParams<{ id: string }>()
   const lang = getLang()
   const [client, setClient] = useState<TClientDetail | null>(null)
@@ -104,8 +107,8 @@ export default function ClientDetail() {
     await loadAll()
   }
 
-  if (loading) return <div style={{ color: '#7f848e', padding: 20 }}>{t('common.loading', lang)}</div>
-  if (error) return <div style={{ color: '#ff7675', padding: 20 }}>{error}</div>
+  if (loading) return <div style={{ color: theme.textSecondary, padding: 20 }}>{t('common.loading', lang)}</div>
+  if (error) return <div style={{ color: theme.badgeRed, padding: 20 }}>{error}</div>
   if (!client) return null
 
   const statusColor = STATUS_COLORS[client.status] || '#7f848e'
@@ -117,7 +120,7 @@ export default function ClientDetail() {
         <button
           onClick={() => nav(-1)}
           style={{
-            background: '#ffffff', border: '1px solid #e2e8f0', color: '#7f848e',
+            background: '#ffffff', border: '1px solid #e2e8f0', color: theme.textSecondary,
             padding: '6px 12px', borderRadius: 4, cursor: 'pointer', fontSize: 13,
           }}
         >
@@ -136,7 +139,7 @@ export default function ClientDetail() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
         {/* Client info */}
         <div style={CARD}>
-          <div style={{ fontSize: 12, color: '#7f848e', marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 }}>
             {t('detail.info', lang)}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -149,7 +152,7 @@ export default function ClientDetail() {
           </div>
 
           <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 12, color: '#7f848e', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
               {t('detail.milestones', lang)}
             </div>
             {[
@@ -160,7 +163,7 @@ export default function ClientDetail() {
               { label: t('detail.first_order_at', lang), val: client.first_order_at },
             ].map(m => m.val && (
               <div key={m.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #e2e8f025', fontSize: 13 }}>
-                <span style={{ color: '#7f848e' }}>{m.label}</span>
+                <span style={{ color: theme.textSecondary }}>{m.label}</span>
                 <span style={{ color: '#2d2a26' }}>{new Date(m.val).toLocaleString()}</span>
               </div>
             ))}
@@ -169,17 +172,17 @@ export default function ClientDetail() {
 
         {/* Deposits */}
         <div style={CARD}>
-          <div style={{ fontSize: 12, color: '#7f848e', marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 }}>
             {t('detail.deposits', lang)} ({client.deposits.length})
           </div>
           {client.deposits.length === 0 ? (
-            <div style={{ color: '#7f848e', fontSize: 13 }}>{t('detail.no_deposits', lang)}</div>
+            <div style={{ color: theme.textSecondary, fontSize: 13 }}>{t('detail.no_deposits', lang)}</div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
                   {[t('detail.amount', lang), t('detail.platform', lang), t('detail.date', lang)].map(h => (
-                    <th key={h} style={{ padding: '6px 10px', textAlign: 'left', color: '#7f848e', fontWeight: 600 }}>{h}</th>
+                    <th key={h} style={{ padding: '6px 10px', textAlign: 'left', color: theme.textSecondary, fontWeight: 600 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -187,8 +190,8 @@ export default function ClientDetail() {
                 {client.deposits.map(d => (
                   <tr key={d.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '8px 10px', color: '#22c55e', fontWeight: 600 }}>${d.amount.toFixed(2)} {d.currency}</td>
-                    <td style={{ padding: '8px 10px', color: '#7f848e' }}>{d.platform || '-'}</td>
-                    <td style={{ padding: '8px 10px', color: '#7f848e', fontSize: 12 }}>{d.deposit_date ? new Date(d.deposit_date).toLocaleDateString() : '-'}</td>
+                    <td style={{ padding: '8px 10px', color: theme.textSecondary }}>{d.platform || '-'}</td>
+                    <td style={{ padding: '8px 10px', color: theme.textSecondary, fontSize: 12 }}>{d.deposit_date ? new Date(d.deposit_date).toLocaleDateString() : '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -200,7 +203,7 @@ export default function ClientDetail() {
       {/* Linked clients */}
       <div style={CARD}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <div style={{ fontSize: 12, color: '#7f848e', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <div style={{ fontSize: 12, color: theme.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
             {t('detail.links', lang)} ({links.length})
           </div>
           <button
@@ -249,7 +252,7 @@ export default function ClientDetail() {
         )}
 
         {links.length === 0 ? (
-          <div style={{ color: '#7f848e', fontSize: 13 }}>{t('detail.no_links', lang)}</div>
+          <div style={{ color: theme.textSecondary, fontSize: 13 }}>{t('detail.no_links', lang)}</div>
         ) : (
           links.map(lnk => {
             const otherId = lnk.client_id_a === clientId ? lnk.client_id_b : lnk.client_id_a
@@ -268,7 +271,7 @@ export default function ClientDetail() {
                 }}>
                   {t(`link_type.${lnk.link_type}`, lang)}
                 </span>
-                {lnk.note && <span style={{ color: '#7f848e', flex: 1 }}>{lnk.note}</span>}
+                {lnk.note && <span style={{ color: theme.textSecondary, flex: 1 }}>{lnk.note}</span>}
                 <button
                   onClick={() => handleRemoveLink(lnk.id)}
                   style={{ background: 'transparent', border: '1px solid #f8717166', color: '#f87171', borderRadius: 4, padding: '2px 8px', fontSize: 11, cursor: 'pointer' }}
@@ -283,7 +286,7 @@ export default function ClientDetail() {
 
       {/* Add note form */}
       <div style={CARD}>
-        <div style={{ fontSize: 12, color: '#7f848e', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>
           {t('detail.add_note', lang)}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
@@ -321,11 +324,11 @@ export default function ClientDetail() {
 
       {/* Timeline */}
       <div style={CARD}>
-        <div style={{ fontSize: 12, color: '#7f848e', marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 }}>
           {t('detail.timeline', lang)} ({timeline.length})
         </div>
         {timeline.length === 0 ? (
-          <div style={{ color: '#7f848e', fontSize: 13 }}>{t('detail.no_notes', lang)}</div>
+          <div style={{ color: theme.textSecondary, fontSize: 13 }}>{t('detail.no_notes', lang)}</div>
         ) : (
           <div>
             {timeline.map((n, i) => (
@@ -353,7 +356,7 @@ export default function ClientDetail() {
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <span style={{ fontSize: 12, color: '#7f848e' }}>
+                    <span style={{ fontSize: 12, color: theme.textSecondary }}>
                       {n.staff_name || n.author_name || t('detail.system', lang)}
                       {n.timeline_type === 'link' && (
                         <span style={{ marginLeft: 6, fontSize: 10, background: '#3b82f620', color: '#3b82f6', padding: '1px 6px', borderRadius: 3, fontWeight: 600 }}>
@@ -365,14 +368,14 @@ export default function ClientDetail() {
                           <span style={{ color: STATUS_COLORS[n.old_status] || '#7f848e' }}>
                             {STATUS_LABELS[n.old_status] || n.old_status}
                           </span>
-                          <span style={{ color: '#7f848e' }}> → </span>
+                          <span style={{ color: theme.textSecondary }}> → </span>
                           <span style={{ color: STATUS_COLORS[n.new_status] || '#2d2a26' }}>
                             {STATUS_LABELS[n.new_status] || n.new_status}
                           </span>
                         </span>
                       )}
                     </span>
-                    <span style={{ fontSize: 11, color: '#7f848e' }}>
+                    <span style={{ fontSize: 11, color: theme.textSecondary }}>
                       {n.created_at ? new Date(n.created_at).toLocaleString() : ''}
                     </span>
                   </div>

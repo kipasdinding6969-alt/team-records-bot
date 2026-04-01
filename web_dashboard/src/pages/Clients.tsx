@@ -4,11 +4,13 @@ import { api } from '../api'
 import type { Client, ClientList } from '../types'
 import { STATUS_COLORS, STATUS_LABELS } from '../types'
 import { Empty, PageHeader, Spinner } from './Dashboard'
+import { useTheme } from '../ThemeContext'
 
 const STATUSES = ['', 'new', 'contacted', 'replied', 'registered', 'training', 'ordered', 'withdrew', 'ghosted', 'dead']
 const PER_PAGE = 50
 
 export default function Clients() {
+  const { theme } = useTheme()
   const [params, setParams] = useSearchParams()
   const [data, setData] = useState<ClientList | null>(null)
   const [loading, setLoading] = useState(true)
@@ -47,12 +49,12 @@ export default function Clients() {
           placeholder="搜索电话/来源..."
           value={search}
           onChange={e => setParam('search', e.target.value)}
-          style={inputStyle}
+          style={getInputStyle(theme)}
         />
         <select
           value={status}
           onChange={e => setParam('status', e.target.value)}
-          style={{ ...inputStyle, width: 160 }}
+          style={{ ...getInputStyle(theme), width: 160 }}
         >
           {STATUSES.map(s => (
             <option key={s} value={s}>
@@ -62,12 +64,12 @@ export default function Clients() {
         </select>
         <button
           onClick={() => api.exportClients(status || undefined, undefined).catch(console.error)}
-          style={btnStyle}
+          style={getBtnStyle(theme)}
         >
           导出 CSV
         </button>
         {data && (
-          <span style={{ fontSize: 12, color: '#7f848e', marginLeft: 'auto' }}>
+          <span style={{ fontSize: 12, color: theme.textSecondary, marginLeft: 'auto' }}>
             共 {data.total} 条记录
           </span>
         )}
@@ -77,7 +79,7 @@ export default function Clients() {
       {loading ? (
         <Spinner />
       ) : (
-        <div style={{ background: '#16213e', border: '1px solid #0f3460', borderRadius: 8 }}>
+        <div style={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 8 }}>
           {!data || data.clients.length === 0 ? (
             <div style={{ padding: 20 }}>
               <Empty />
@@ -86,9 +88,9 @@ export default function Clients() {
             <>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #0f3460' }}>
+                  <tr style={{ borderBottom: `1px solid ${theme.cardBorder}` }}>
                     {['电话', '状态', '来源', '负责人', '团队', '存款', '下次跟进', '创建时间'].map(h => (
-                      <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#7f848e', fontWeight: 600 }}>
+                      <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: theme.textSecondary, fontWeight: 600 }}>
                         {h}
                       </th>
                     ))}
@@ -99,8 +101,8 @@ export default function Clients() {
                     <tr
                       key={c.id}
                       onClick={() => nav(`/clients/${c.id}`)}
-                      style={{ borderBottom: '1px solid #0f346025', cursor: 'pointer', transition: 'background 0.1s' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#0f346030')}
+                      style={{ borderBottom: `1px solid ${theme.cardBorder}25`, cursor: 'pointer', transition: 'background 0.1s' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '${theme.cardBorder}30')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                     >
                       <td style={{ padding: '10px 14px', color: '#74b9ff', fontFamily: 'monospace', fontSize: 12 }}>
@@ -113,7 +115,7 @@ export default function Clients() {
                             borderRadius: 3,
                             fontSize: 11,
                             background: `${STATUS_COLORS[c.status] || '#7f848e'}30`,
-                            color: STATUS_COLORS[c.status] || '#7f848e',
+                            color: STATUS_COLORS[c.status] || '${theme.textSecondary}',
                             fontWeight: 600,
                           }}
                         >
@@ -122,14 +124,14 @@ export default function Clients() {
                       </td>
                       <td style={{ padding: '10px 14px', color: '#aaa' }}>{c.source || '-'}</td>
                       <td style={{ padding: '10px 14px' }}>{c.frontdesk_name || '-'}</td>
-                      <td style={{ padding: '10px 14px', color: '#7f848e' }}>{c.team || '-'}</td>
-                      <td style={{ padding: '10px 14px', color: c.total_deposited > 0 ? '#00b894' : '#7f848e' }}>
+                      <td style={{ padding: '10px 14px', color: theme.textSecondary }}>{c.team || '-'}</td>
+                      <td style={{ padding: '10px 14px', color: c.total_deposited > 0 ? '${theme.accent}' : theme.textSecondary }}>
                         {c.total_deposited > 0 ? `$${c.total_deposited.toFixed(0)}` : '-'}
                       </td>
-                      <td style={{ padding: '10px 14px', color: c.next_followup ? '#fdcb6e' : '#7f848e', fontSize: 12 }}>
+                      <td style={{ padding: '10px 14px', color: c.next_followup ? '${theme.chartLine}' : theme.textSecondary, fontSize: 12 }}>
                         {c.next_followup ? new Date(c.next_followup).toLocaleDateString('zh') : '-'}
                       </td>
-                      <td style={{ padding: '10px 14px', color: '#7f848e', fontSize: 12 }}>
+                      <td style={{ padding: '10px 14px', color: theme.textSecondary, fontSize: 12 }}>
                         {c.created_at ? new Date(c.created_at).toLocaleDateString('zh') : '-'}
                       </td>
                     </tr>
@@ -144,24 +146,24 @@ export default function Clients() {
                     display: 'flex',
                     gap: 8,
                     padding: '14px 16px',
-                    borderTop: '1px solid #0f3460',
+                    borderTop: `1px solid ${theme.cardBorder}`,
                     alignItems: 'center',
                   }}
                 >
                   <button
                     onClick={() => setParam('page', String(page - 1))}
                     disabled={page <= 1}
-                    style={{ ...btnStyle, opacity: page <= 1 ? 0.4 : 1 }}
+                    style={{ ...getBtnStyle(theme), opacity: page <= 1 ? 0.4 : 1 }}
                   >
                     上一页
                   </button>
-                  <span style={{ fontSize: 12, color: '#7f848e' }}>
+                  <span style={{ fontSize: 12, color: theme.textSecondary }}>
                     第 {page} / {totalPages} 页
                   </span>
                   <button
                     onClick={() => setParam('page', String(page + 1))}
                     disabled={page >= totalPages}
-                    style={{ ...btnStyle, opacity: page >= totalPages ? 0.4 : 1 }}
+                    style={{ ...getBtnStyle(theme), opacity: page >= totalPages ? 0.4 : 1 }}
                   >
                     下一页
                   </button>
@@ -175,23 +177,23 @@ export default function Clients() {
   )
 }
 
-const inputStyle: React.CSSProperties = {
+const getInputStyle = (theme: any): React.CSSProperties => ({
   padding: '8px 12px',
-  background: '#16213e',
-  border: '1px solid #0f3460',
+  background: theme.cardBg,
+  border: `1px solid ${theme.cardBorder}`,
   borderRadius: 4,
-  color: '#e0e0e0',
+  color: theme.textPrimary,
   fontSize: 13,
   outline: 'none',
   minWidth: 200,
-}
+})
 
-const btnStyle: React.CSSProperties = {
+const getBtnStyle = (theme: any): React.CSSProperties => ({
   padding: '8px 16px',
-  background: '#0f3460',
-  border: '1px solid #0f3460',
+  background: theme.cardBorder,
+  border: `1px solid ${theme.cardBorder}`,
   borderRadius: 4,
-  color: '#e0e0e0',
+  color: theme.textPrimary,
   fontSize: 12,
   cursor: 'pointer',
-}
+})

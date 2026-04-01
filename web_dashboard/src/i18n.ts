@@ -1,4 +1,4 @@
-type Lang = 'zh' | 'en'
+export type Lang = 'zh' | 'en'
 
 const LANG_KEY = 'dashboard_lang'
 

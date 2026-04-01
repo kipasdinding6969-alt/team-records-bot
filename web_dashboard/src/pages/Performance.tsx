@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, getAuthState } from '../api'
 import { getLang, t } from '../i18n'
+import { useTheme } from '../ThemeContext'
 
 const TEAMS = [
   { key: 'all', zh: '全线', en: 'All Teams' },
@@ -28,7 +29,7 @@ interface StaffPerf {
   conversion_rate: number
 }
 
-const S = {
+const getStyles = (theme: any) => ({
   page: { padding: 0, color: '#2d2a26', minHeight: '100%' } as React.CSSProperties,
   title: { fontSize: 22, fontWeight: 700, color: '#2d2a26', margin: '0 0 20px' } as React.CSSProperties,
   controls: { display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' as const, alignItems: 'center' } as React.CSSProperties,
@@ -40,7 +41,7 @@ const S = {
     padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
     border: active ? '1px solid #3b82f6' : '1px solid #e2e8f0',
     background: active ? '#3b82f6' : '#ffffff',
-    color: active ? '#ffffff' : '#7f848e',
+    color: active ? '#ffffff' : theme.textSecondary,
     transition: 'all 0.15s',
   }),
   card: {
@@ -48,7 +49,7 @@ const S = {
     padding: 18, marginBottom: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
   } as React.CSSProperties,
   cardName: { fontSize: 15, fontWeight: 700, color: '#2d2a26', marginBottom: 2 },
-  cardTeam: { fontSize: 12, color: '#7f848e', marginBottom: 12 },
+  cardTeam: { fontSize: 12, color: theme.textSecondary, marginBottom: 12 },
   metricsGrid: {
     display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 10,
   } as React.CSSProperties,
@@ -58,16 +59,18 @@ const S = {
   metricValue: (color: string) => ({
     fontSize: 20, fontWeight: 700, color, lineHeight: 1.2,
   }),
-  metricLabel: { fontSize: 10, color: '#7f848e', marginTop: 2, letterSpacing: 0.3 },
+  metricLabel: { fontSize: 10, color: theme.textSecondary, marginTop: 2, letterSpacing: 0.3 },
   summaryCard: {
     background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10,
     padding: 20, marginTop: 8,
   } as React.CSSProperties,
   summaryTitle: { fontSize: 13, fontWeight: 700, color: '#3b82f6', marginBottom: 14 },
-  empty: { color: '#7f848e', fontSize: 14, padding: 20, textAlign: 'center' as const } as React.CSSProperties,
-}
+  empty: { color: theme.textSecondary, fontSize: 14, padding: 20, textAlign: 'center' as const } as React.CSSProperties,
+})
 
 export default function Performance() {
+  const { theme } = useTheme()
+  const S = getStyles(theme)
   const lang = getLang()
   const auth = getAuthState()
 
@@ -134,7 +137,7 @@ export default function Performance() {
                 {metric(t('perf.new_order', lang), s.new_orders, '#22c55e')}
                 {metric(t('perf.conversion', lang), `${s.conversion_rate}%`, '#3b82f6')}
                 {metric(t('perf.deposit', lang), `$${(s.total_deposit || 0).toFixed(0)}`, '#22c55e')}
-                {metric(t('perf.dead', lang), s.dead, '#7f848e')}
+                {metric(t('perf.dead', lang), s.dead, '${theme.textSecondary}')}
               </div>
             </div>
           ))}

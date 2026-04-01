@@ -18,10 +18,12 @@ import { api } from '../api'
 import type { DashboardStats, Trends } from '../types'
 import { STATUS_COLORS, STATUS_LABELS } from '../types'
 import { Empty, PageHeader, SectionTitle, Spinner } from './Dashboard'
+import { useTheme } from '../ThemeContext'
 
 type Period = 'daily' | 'weekly' | 'monthly'
 
 export default function Reports() {
+  const { theme } = useTheme()
   const [period, setPeriod] = useState<Period>('daily')
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [trends, setTrends] = useState<Trends | null>(null)
@@ -46,8 +48,8 @@ export default function Reports() {
     : []
 
   const CARD: React.CSSProperties = {
-    background: '#16213e',
-    border: '1px solid #0f3460',
+    background: theme.cardBg,
+    border: `1px solid ${theme.cardBorder}`,
     borderRadius: 8,
     padding: 20,
     marginBottom: 24,
@@ -64,10 +66,10 @@ export default function Reports() {
               onClick={() => setPeriod(p)}
               style={{
                 padding: '6px 14px',
-                background: period === p ? '#0f3460' : 'transparent',
-                border: '1px solid #0f3460',
+                background: period === p ? '${theme.cardBorder}' : 'transparent',
+                border: `1px solid ${theme.cardBorder}`,
                 borderRadius: 4,
-                color: period === p ? '#e0e0e0' : '#7f848e',
+                color: period === p ? '${theme.textPrimary}' : theme.textSecondary,
                 cursor: 'pointer',
                 fontSize: 12,
               }}
@@ -79,10 +81,10 @@ export default function Reports() {
             onClick={() => api.exportReport(period).catch(console.error)}
             style={{
               padding: '6px 14px',
-              background: '#00b89420',
-              border: '1px solid #00b894',
+              background: `${theme.accent}20`,
+              border: `1px solid ${theme.accent}`,
               borderRadius: 4,
-              color: '#00b894',
+              color: theme.accent,
               cursor: 'pointer',
               fontSize: 12,
               marginLeft: 8,
@@ -102,18 +104,18 @@ export default function Reports() {
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={trends.daily_new} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#0f3460" />
+                <CartesianGrid strokeDasharray="3 3" stroke="${theme.cardBorder}" />
                 <XAxis
                   dataKey="day"
-                  tick={{ fill: '#7f848e', fontSize: 10 }}
+                  tick={{ fill: theme.textSecondary, fontSize: 10 }}
                   tickFormatter={(v: string) => v.slice(5)}
                   interval="preserveStartEnd"
                 />
-                <YAxis tick={{ fill: '#7f848e', fontSize: 11 }} />
+                <YAxis tick={{ fill: theme.textSecondary, fontSize: 11 }} />
                 <Tooltip
-                  contentStyle={{ background: '#16213e', border: '1px solid #0f3460', borderRadius: 4 }}
+                  contentStyle={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 4 }}
                 />
-                <Line type="monotone" dataKey="new_clients" stroke="#00b894" dot={false} strokeWidth={2} name="新客户" />
+                <Line type="monotone" dataKey="new_clients" stroke="${theme.accent}" dot={false} strokeWidth={2} name="新客户" />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -126,18 +128,18 @@ export default function Reports() {
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={trends.daily_orders} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#0f3460" />
+                <CartesianGrid strokeDasharray="3 3" stroke="${theme.cardBorder}" />
                 <XAxis
                   dataKey="day"
-                  tick={{ fill: '#7f848e', fontSize: 10 }}
+                  tick={{ fill: theme.textSecondary, fontSize: 10 }}
                   tickFormatter={(v: string) => v.slice(5)}
                   interval="preserveStartEnd"
                 />
-                <YAxis tick={{ fill: '#7f848e', fontSize: 11 }} />
+                <YAxis tick={{ fill: theme.textSecondary, fontSize: 11 }} />
                 <Tooltip
-                  contentStyle={{ background: '#16213e', border: '1px solid #0f3460', borderRadius: 4 }}
+                  contentStyle={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 4 }}
                 />
-                <Line type="monotone" dataKey="orders" stroke="#fdcb6e" dot={false} strokeWidth={2} name="下单" />
+                <Line type="monotone" dataKey="orders" stroke="${theme.chartLine}" dot={false} strokeWidth={2} name="下单" />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -153,19 +155,19 @@ export default function Reports() {
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={trends.daily_deposits} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#0f3460" />
+                <CartesianGrid strokeDasharray="3 3" stroke="${theme.cardBorder}" />
                 <XAxis
                   dataKey="day"
-                  tick={{ fill: '#7f848e', fontSize: 10 }}
+                  tick={{ fill: theme.textSecondary, fontSize: 10 }}
                   tickFormatter={(v: string) => v.slice(5)}
                   interval="preserveStartEnd"
                 />
-                <YAxis tick={{ fill: '#7f848e', fontSize: 11 }} tickFormatter={(v: number) => `$${v}`} />
+                <YAxis tick={{ fill: theme.textSecondary, fontSize: 11 }} tickFormatter={(v: number) => `$${v}`} />
                 <Tooltip
-                  contentStyle={{ background: '#16213e', border: '1px solid #0f3460', borderRadius: 4 }}
+                  contentStyle={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 4 }}
                   formatter={(v: number) => [`$${v.toFixed(0)}`, '存款']}
                 />
-                <Bar dataKey="total" fill="#00cec9" radius={[3, 3, 0, 0]} name="存款" />
+                <Bar dataKey="total" fill="${theme.accent}" radius={[3, 3, 0, 0]} name="存款" />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -189,14 +191,14 @@ export default function Reports() {
                   dataKey="value"
                 >
                   {donutData.map((entry, index) => (
-                    <Cell key={index} fill={STATUS_COLORS[entry.status] || '#7f848e'} />
+                    <Cell key={index} fill={STATUS_COLORS[entry.status] || '${theme.textSecondary}'} />
                   ))}
                 </Pie>
                 <Tooltip
-                  contentStyle={{ background: '#16213e', border: '1px solid #0f3460', borderRadius: 4 }}
+                  contentStyle={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 4 }}
                 />
                 <Legend
-                  wrapperStyle={{ fontSize: 11, color: '#7f848e' }}
+                  wrapperStyle={{ fontSize: 11, color: theme.textSecondary }}
                   iconSize={8}
                 />
               </PieChart>
@@ -209,21 +211,21 @@ export default function Reports() {
       {stats && (
         <div style={{ ...CARD, display: 'flex', gap: 40, alignItems: 'center' }}>
           <div>
-            <div style={{ fontSize: 12, color: '#7f848e', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: theme.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
               整体转化率
             </div>
-            <div style={{ fontSize: 40, fontWeight: 700, color: '#00b894' }}>
+            <div style={{ fontSize: 40, fontWeight: 700, color: theme.accent }}>
               {stats.conversion_rate}%
             </div>
-            <div style={{ fontSize: 12, color: '#7f848e', marginTop: 4 }}>
+            <div style={{ fontSize: 12, color: theme.textSecondary, marginTop: 4 }}>
               {stats.by_status['ordered'] || 0} 下单 / {stats.total_clients} 总客户
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 12, color: '#7f848e', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: theme.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
               总存款
             </div>
-            <div style={{ fontSize: 40, fontWeight: 700, color: '#00cec9' }}>
+            <div style={{ fontSize: 40, fontWeight: 700, color: theme.accent }}>
               ${stats.total_deposits.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </div>
           </div>

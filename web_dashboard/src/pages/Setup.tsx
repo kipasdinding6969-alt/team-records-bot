@@ -1,20 +1,25 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
+import { useTheme } from '../ThemeContext'
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '10px 12px',
-  background: '#1a1a2e',
-  border: '1px solid #0f3460',
-  borderRadius: 4,
-  color: '#e0e0e0',
-  fontSize: 14,
-  outline: 'none',
-  boxSizing: 'border-box',
-}
+
 
 export default function Setup() {
+  const { theme } = useTheme()
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '10px 12px',
+    background: theme.bg,
+    border: `1px solid ${theme.cardBorder}`,
+    borderRadius: 4,
+    color: theme.textPrimary,
+    fontSize: 14,
+    outline: 'none',
+    boxSizing: 'border-box',
+  }
+
   const nav = useNavigate()
   const [form, setForm] = useState({
     display_name: '',
@@ -55,7 +60,7 @@ export default function Setup() {
     <div
       style={{
         minHeight: '100vh',
-        background: '#1a1a2e',
+        background: theme.bg,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -63,16 +68,16 @@ export default function Setup() {
     >
       <div
         style={{
-          background: '#16213e',
-          border: '1px solid #0f3460',
+          background: theme.cardBg,
+          border: `1px solid ${theme.cardBorder}`,
           borderRadius: 8,
           padding: 40,
           width: 400,
         }}
       >
         <div style={{ marginBottom: 28, textAlign: 'center' }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: '#e0e0e0' }}>首次设置</div>
-          <div style={{ fontSize: 13, color: '#7f848e', marginTop: 6 }}>
+          <div style={{ fontSize: 22, fontWeight: 700, color: theme.textPrimary }}>首次设置</div>
+          <div style={{ fontSize: 13, color: theme.textSecondary, marginTop: 6 }}>
             创建初始管理员账户
           </div>
         </div>
@@ -80,7 +85,7 @@ export default function Setup() {
         <form onSubmit={submit}>
           {['display_name', 'username', 'password', 'confirm_password'].map(field => (
             <label key={field} style={{ display: 'block', marginBottom: 16 }}>
-              <span style={{ fontSize: 12, color: '#7f848e', display: 'block', marginBottom: 6 }}>
+              <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 6 }}>
                 {
                   {
                     display_name: '显示名称',
@@ -104,9 +109,9 @@ export default function Setup() {
           {error && (
             <div
               style={{
-                background: '#2d1515',
-                border: '1px solid #ff7675',
-                color: '#ff7675',
+                background: theme.badgeRed,
+                border: `1px solid ${theme.badgeRed}`,
+                color: theme.badgeRed,
                 padding: '8px 12px',
                 borderRadius: 4,
                 fontSize: 13,
@@ -123,7 +128,7 @@ export default function Setup() {
             style={{
               width: '100%',
               padding: '11px',
-              background: loading ? '#0f3460' : '#00b894',
+              background: loading ? '#0f3460' : theme.accent,
               border: 'none',
               borderRadius: 4,
               color: '#fff',

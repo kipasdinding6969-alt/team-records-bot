@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, getAuthState } from '../api'
 import { getLang, t } from '../i18n'
+import { useTheme } from '../ThemeContext'
 
 interface LookupResult {
   found: boolean
@@ -29,10 +30,12 @@ interface PhoneStats {
   duplicates_blocked: number
 }
 
-const S = {
+
+
+const getStyles = (theme: any) => ({
   page: {
     padding: 0,
-    color: '#e0e0e0',
+    color: theme.textPrimary,
     minHeight: '100%',
   } as React.CSSProperties,
   header: {
@@ -41,7 +44,7 @@ const S = {
   title: {
     fontSize: 22,
     fontWeight: 700,
-    color: '#e0e0e0',
+    color: theme.textPrimary,
     margin: 0,
   } as React.CSSProperties,
   searchRow: {
@@ -52,16 +55,16 @@ const S = {
   input: {
     flex: 1,
     padding: '10px 14px',
-    background: '#0f3460',
-    border: '1px solid #16213e',
-    color: '#e0e0e0',
+    background: theme.cardBorder,
+    border: `1px solid ${theme.cardBg}`,
+    color: theme.textPrimary,
     borderRadius: 6,
     fontSize: 14,
     outline: 'none',
   } as React.CSSProperties,
   btn: {
     padding: '10px 22px',
-    background: '#00b894',
+    background: theme.accent,
     border: 'none',
     color: '#fff',
     borderRadius: 6,
@@ -72,16 +75,16 @@ const S = {
   btnSecondary: {
     padding: '8px 18px',
     background: 'transparent',
-    border: '1px solid #fdcb6e',
-    color: '#fdcb6e',
+    border: `1px solid ${theme.chartLine}`,
+    color: theme.chartLine,
     borderRadius: 6,
     fontSize: 13,
     fontWeight: 600,
     cursor: 'pointer',
   } as React.CSSProperties,
   card: {
-    background: '#16213e',
-    border: '1px solid #0f3460',
+    background: theme.cardBg,
+    border: `1px solid ${theme.cardBorder}`,
     borderRadius: 8,
     padding: 20,
     marginBottom: 16,
@@ -89,7 +92,7 @@ const S = {
   cardTitle: {
     fontSize: 13,
     fontWeight: 700,
-    color: '#7f848e',
+    color: theme.textSecondary,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
     marginBottom: 14,
@@ -107,18 +110,18 @@ const S = {
   } as React.CSSProperties,
   label: {
     fontSize: 11,
-    color: '#7f848e',
+    color: theme.textSecondary,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
   },
   value: {
     fontSize: 14,
-    color: '#e0e0e0',
+    color: theme.textPrimary,
     fontWeight: 600,
   },
   notFound: {
-    background: '#16213e',
-    border: '1px solid #d6303133',
+    background: theme.cardBg,
+    border: `1px solid ${theme.badgeRed}`,
     borderRadius: 8,
     padding: 20,
     color: '#e88',
@@ -129,7 +132,7 @@ const S = {
     display: 'flex',
     gap: 12,
     padding: '8px 0',
-    borderBottom: '1px solid #0f3460',
+    borderBottom: `1px solid ${theme.cardBorder}`,
     fontSize: 13,
     alignItems: 'flex-start',
   } as React.CSSProperties,
@@ -140,15 +143,15 @@ const S = {
     borderRadius: 3,
     letterSpacing: 0.5,
     textTransform: 'uppercase' as const,
-    background: '#00b89433',
-    color: '#00b894',
+    background: theme.badgeGreen,
+    color: theme.accent,
     flexShrink: 0,
   },
   clientRow: {
     display: 'flex',
     gap: 16,
     padding: '8px 0',
-    borderBottom: '1px solid #0f3460',
+    borderBottom: `1px solid ${theme.cardBorder}`,
     fontSize: 13,
     alignItems: 'center',
   } as React.CSSProperties,
@@ -158,23 +161,25 @@ const S = {
     gap: 16,
   } as React.CSSProperties,
   statCard: {
-    background: '#0f3460',
+    background: theme.cardBorder,
     borderRadius: 6,
     padding: '14px 18px',
   } as React.CSSProperties,
   statValue: {
     fontSize: 28,
     fontWeight: 700,
-    color: '#00b894',
+    color: theme.accent,
   },
   statLabel: {
     fontSize: 12,
-    color: '#7f848e',
+    color: theme.textSecondary,
     marginTop: 2,
   },
-}
+})
 
-function NoteForm({ clientId, lang }: { clientId: number; lang: string }) {
+function NoteForm({ clientId, lang }: { clientId: number; lang: any }) {
+  const { theme } = useTheme()
+  const S = getStyles(theme)
   const [content, setContent] = useState('')
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
@@ -194,7 +199,7 @@ function NoteForm({ clientId, lang }: { clientId: number; lang: string }) {
   }
 
   return (
-    <div style={{ ...S.card, background: '#0f3460' }}>
+    <div style={{ ...S.card, background: theme.cardBorder }}>
       <div style={S.cardTitle}>{t('detail.add_note', lang)}</div>
       <div style={{ display: 'flex', gap: 8 }}>
         <input
@@ -208,7 +213,7 @@ function NoteForm({ clientId, lang }: { clientId: number; lang: string }) {
           {saving ? '...' : t('common.save', lang)}
         </button>
       </div>
-      {msg && <div style={{ fontSize: 12, marginTop: 6, color: msg === 'Failed' ? '#e88' : '#00b894' }}>{msg}</div>}
+      {msg && <div style={{ fontSize: 12, marginTop: 6, color: msg === 'Failed' ? '#e88' : theme.accent }}>{msg}</div>}
     </div>
   )
 }
@@ -218,6 +223,8 @@ function addClientNote(clientId: number, data: { content: string; note_type: str
 }
 
 export default function NumberLookup() {
+  const { theme } = useTheme()
+  const S = getStyles(theme)
   const lang = getLang()
   const auth = getAuthState()
   const isAdmin = auth?.role === 'owner' || auth?.role === 'admin'
@@ -357,7 +364,7 @@ export default function NumberLookup() {
                       {overrideLoading ? '...' : t('common.save', lang)}
                     </button>
                     <button
-                      style={{ ...S.btnSecondary, border: '1px solid #7f848e', color: '#7f848e' }}
+                      style={{ ...S.btnSecondary, border: `1px solid ${theme.textSecondary}`, color: theme.textSecondary }}
                       onClick={() => { setOverrideMode(false); setOverrideMsg('') }}
                     >
                       {t('common.cancel', lang)}
@@ -365,7 +372,7 @@ export default function NumberLookup() {
                   </>
                 )}
                 {overrideMsg && (
-                  <span style={{ fontSize: 13, color: overrideMsg.includes('failed') ? '#e88' : '#00b894' }}>
+                  <span style={{ fontSize: 13, color: overrideMsg.includes('failed') ? '#e88' : theme.accent }}>
                     {overrideMsg}
                   </span>
                 )}
@@ -384,10 +391,10 @@ export default function NumberLookup() {
               {result.log.map((entry, i) => (
                 <div key={i} style={S.logRow}>
                   <span style={S.badge}>{entry.action}</span>
-                  <span style={{ color: '#e0e0e0', flex: 1 }}>{entry.actor_name}</span>
-                  <span style={{ color: '#7f848e', fontSize: 12 }}>{formatDate(entry.created_at)}</span>
+                  <span style={{ color: theme.textPrimary, flex: 1 }}>{entry.actor_name}</span>
+                  <span style={{ color: theme.textSecondary, fontSize: 12 }}>{formatDate(entry.created_at)}</span>
                   {entry.details && (
-                    <span style={{ color: '#7f848e', fontSize: 12 }}>{entry.details}</span>
+                    <span style={{ color: theme.textSecondary, fontSize: 12 }}>{entry.details}</span>
                   )}
                 </div>
               ))}
@@ -400,7 +407,7 @@ export default function NumberLookup() {
                 {t('phone.linked_clients', lang)} ({result.linked_clients.length})
               </div>
               {result.linked_clients.length === 0 ? (
-                <div style={{ color: '#7f848e', fontSize: 13 }}>—</div>
+                <div style={{ color: theme.textSecondary, fontSize: 13 }}>—</div>
               ) : (
                 result.linked_clients.map((c: any, i: number) => (
                   <div key={i} style={S.clientRow}>
@@ -411,15 +418,15 @@ export default function NumberLookup() {
                       #{c.id}
                     </a>
                     <span style={{
-                      background: '#00b89422', color: '#00b894', padding: '2px 8px',
+                      background: `${theme.accent}22`, color: theme.accent, padding: '2px 8px',
                       borderRadius: 4, fontSize: 11, fontWeight: 600,
                     }}>
                       {c.phone}
                     </span>
-                    <span style={{ color: '#7f848e' }}>{c.status}</span>
+                    <span style={{ color: theme.textSecondary }}>{c.status}</span>
                     {c.frontdesk_name && (
                       <span style={{
-                        background: '#fdcb6e22', color: '#fdcb6e', padding: '2px 8px',
+                        background: `${theme.chartLine}22`, color: theme.chartLine, padding: '2px 8px',
                         borderRadius: 4, fontSize: 11, fontWeight: 600,
                       }}>
                         {c.frontdesk_name}

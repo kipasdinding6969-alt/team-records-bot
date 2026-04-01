@@ -5,7 +5,7 @@ import ScopeBanner from './ScopeBanner'
 import type { AuthState } from '../types'
 import { ROLE_COLORS } from '../types'
 import { t, getLang, setLang } from '../i18n'
-import { getTheme, setTheme, resolveTheme, type ThemeMode } from '../theme'
+import { useTheme } from '../ThemeContext'
 
 interface NavItem {
   path: string
@@ -38,15 +38,8 @@ function buildNav(auth: AuthState | null) {
 export default function Layout() {
   const nav = useNavigate()
   const auth = getAuthState()
-  const [themeMode, setThemeMode] = useState<ThemeMode>(getTheme())
+  const { theme, mode: themeMode, toggleTheme } = useTheme()
   const [lang, setLangState] = useState(getLang())
-  const theme = resolveTheme(themeMode)
-
-  function toggleTheme() {
-    const next: ThemeMode = themeMode === 'dark' ? 'light' : 'dark'
-    setTheme(next)
-    setThemeMode(next)
-  }
 
   function toggleLang() {
     const next = lang === 'zh' ? 'en' : 'zh'

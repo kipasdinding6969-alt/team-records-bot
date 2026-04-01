@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, getAuthState } from '../api'
 import type { DashboardUser } from '../types'
 import { ROLE_COLORS, ROLE_LABELS } from '../types'
+import { useTheme } from '../ThemeContext'
 
 type ModalMode = 'add' | 'edit' | 'reset' | null
 
@@ -23,24 +24,28 @@ const defaultForm: FormState = {
   staff_id: '',
 }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '9px 11px',
-  background: '#1a1a2e',
-  border: '1px solid #0f3460',
-  borderRadius: 4,
-  color: '#e0e0e0',
-  fontSize: 13,
-  outline: 'none',
-  boxSizing: 'border-box',
-}
 
-const selectStyle: React.CSSProperties = {
-  ...inputStyle,
-  cursor: 'pointer',
-}
 
 export default function UserManagement() {
+  const { theme } = useTheme()
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '9px 11px',
+    background: theme.bg,
+    border: `1px solid ${theme.cardBorder}`,
+    borderRadius: 4,
+    color: theme.textPrimary,
+    fontSize: 13,
+    outline: 'none',
+    boxSizing: 'border-box',
+  }
+
+  const selectStyle: React.CSSProperties = {
+    ...inputStyle,
+    cursor: 'pointer',
+  }
+
   const auth = getAuthState()
   const isOwner = auth?.role === 'owner'
 
@@ -179,29 +184,29 @@ export default function UserManagement() {
     padding: '10px 12px',
     textAlign: 'left',
     fontSize: 11,
-    color: '#7f848e',
+    color: theme.textSecondary,
     fontWeight: 600,
     letterSpacing: 0.5,
-    borderBottom: '1px solid #0f3460',
+    borderBottom: `1px solid ${theme.cardBorder}`,
   }
 
   const td: React.CSSProperties = {
     padding: '10px 12px',
     fontSize: 13,
-    color: '#e0e0e0',
-    borderBottom: '1px solid #0f3460',
+    color: theme.textPrimary,
+    borderBottom: `1px solid ${theme.cardBorder}`,
     verticalAlign: 'middle',
   }
 
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#e0e0e0' }}>用户管理</h2>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: theme.textPrimary }}>用户管理</h2>
         <button
           onClick={openAdd}
           style={{
             padding: '8px 16px',
-            background: '#00b894',
+            background: theme.accent,
             border: 'none',
             borderRadius: 4,
             color: '#fff',
@@ -215,15 +220,15 @@ export default function UserManagement() {
       </div>
 
       {error && (
-        <div style={{ background: '#2d1515', border: '1px solid #ff7675', color: '#ff7675', padding: '8px 12px', borderRadius: 4, marginBottom: 16, fontSize: 13 }}>
+        <div style={{ background: theme.badgeRed, border: `1px solid ${theme.badgeRed}`, color: theme.badgeRed, padding: '8px 12px', borderRadius: 4, marginBottom: 16, fontSize: 13 }}>
           {error}
         </div>
       )}
 
       {loading ? (
-        <div style={{ color: '#7f848e', padding: 20, textAlign: 'center' }}>加载中...</div>
+        <div style={{ color: theme.textSecondary, padding: 20, textAlign: 'center' }}>加载中...</div>
       ) : (
-        <div style={{ background: '#16213e', border: '1px solid #0f3460', borderRadius: 6, overflow: 'hidden' }}>
+        <div style={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 6, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
@@ -236,7 +241,7 @@ export default function UserManagement() {
               {users.map(u => (
                 <tr key={u.id} style={{ opacity: u.is_active ? 1 : 0.5 }}>
                   <td style={td}>{u.display_name}</td>
-                  <td style={{ ...td, color: '#7f848e' }}>{u.username}</td>
+                  <td style={{ ...td, color: theme.textSecondary }}>{u.username}</td>
                   <td style={td}>
                     <span style={{
                       fontSize: 10, fontWeight: 700,
@@ -249,35 +254,35 @@ export default function UserManagement() {
                       {ROLE_LABELS[u.role] || u.role}
                     </span>
                   </td>
-                  <td style={{ ...td, color: '#7f848e' }}>{u.team_scope ?? '全部'}</td>
+                  <td style={{ ...td, color: theme.textSecondary }}>{u.team_scope ?? '全部'}</td>
                   <td style={td}>
-                    <span style={{ color: u.is_active ? '#00b894' : '#ff7675', fontSize: 12 }}>
+                    <span style={{ color: u.is_active ? '${theme.accent}' : theme.badgeRed, fontSize: 12 }}>
                       {u.is_active ? '活跃' : '已停用'}
                     </span>
                   </td>
-                  <td style={{ ...td, color: '#7f848e', fontSize: 12 }}>
+                  <td style={{ ...td, color: theme.textSecondary, fontSize: 12 }}>
                     {u.last_login ? new Date(u.last_login).toLocaleDateString('zh-CN') : '—'}
                   </td>
                   <td style={td}>
                     <div style={{ display: 'flex', gap: 6 }}>
                       {canEdit(u) && (
                         <>
-                          <button onClick={() => openEdit(u)} style={actionBtn('#0f3460', '#7f848e')}>编辑</button>
-                          <button onClick={() => openReset(u)} style={actionBtn('#0f3460', '#fdcb6e')}>重置密码</button>
+                          <button onClick={() => openEdit(u)} style={actionBtn('${theme.cardBorder}', '${theme.textSecondary}')}>编辑</button>
+                          <button onClick={() => openReset(u)} style={actionBtn('${theme.cardBorder}', '${theme.chartLine}')}>重置密码</button>
                         </>
                       )}
                       {canEdit(u) && u.is_active && auth?.user_id !== u.id && (
                         confirmDeactivate === u.id ? (
                           <>
-                            <button onClick={() => deactivate(u.id)} style={actionBtn('#2d1515', '#ff7675')}>确认停用</button>
-                            <button onClick={() => setConfirmDeactivate(null)} style={actionBtn('#0f3460', '#7f848e')}>取消</button>
+                            <button onClick={() => deactivate(u.id)} style={actionBtn('${theme.badgeRed}', '${theme.badgeRed}')}>确认停用</button>
+                            <button onClick={() => setConfirmDeactivate(null)} style={actionBtn('${theme.cardBorder}', '${theme.textSecondary}')}>取消</button>
                           </>
                         ) : (
-                          <button onClick={() => setConfirmDeactivate(u.id)} style={actionBtn('#0f3460', '#ff7675')}>停用</button>
+                          <button onClick={() => setConfirmDeactivate(u.id)} style={actionBtn('${theme.cardBorder}', '${theme.badgeRed}')}>停用</button>
                         )
                       )}
                       {canEdit(u) && !u.is_active && isOwner && (
-                        <button onClick={() => reactivate(u)} style={actionBtn('#0f3460', '#00b894')}>启用</button>
+                        <button onClick={() => reactivate(u)} style={actionBtn('${theme.cardBorder}', '${theme.accent}')}>启用</button>
                       )}
                     </div>
                   </td>
@@ -295,45 +300,45 @@ export default function UserManagement() {
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
         }}>
           <div style={{
-            background: '#16213e', border: '1px solid #0f3460', borderRadius: 8,
+            background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 8,
             padding: 32, width: 400, maxWidth: '90vw',
           }}>
-            <h3 style={{ margin: '0 0 20px', fontSize: 16, color: '#e0e0e0' }}>
+            <h3 style={{ margin: '0 0 20px', fontSize: 16, color: theme.textPrimary }}>
               {modal === 'add' ? '添加用户' : modal === 'edit' ? '编辑用户' : '重置密码'}
             </h3>
 
             {modal === 'reset' ? (
               <>
-                <p style={{ color: '#7f848e', fontSize: 13, marginTop: 0 }}>
-                  为 <strong style={{ color: '#e0e0e0' }}>{editTarget?.display_name}</strong> 设置新密码
+                <p style={{ color: theme.textSecondary, fontSize: 13, marginTop: 0 }}>
+                  为 <strong style={{ color: theme.textPrimary }}>{editTarget?.display_name}</strong> 设置新密码
                 </p>
                 <label style={{ display: 'block', marginBottom: 16 }}>
-                  <span style={{ fontSize: 12, color: '#7f848e', display: 'block', marginBottom: 6 }}>新密码</span>
+                  <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 6 }}>新密码</span>
                   <input type="password" value={resetPwd} onChange={e => setResetPwd(e.target.value)} style={inputStyle} autoFocus />
                 </label>
               </>
             ) : (
               <>
                 <label style={{ display: 'block', marginBottom: 14 }}>
-                  <span style={{ fontSize: 12, color: '#7f848e', display: 'block', marginBottom: 5 }}>显示名称 *</span>
+                  <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 5 }}>显示名称 *</span>
                   <input value={form.display_name} onChange={e => setF('display_name', e.target.value)} style={inputStyle} autoFocus={modal === 'add'} />
                 </label>
 
                 {modal === 'add' && (
                   <>
                     <label style={{ display: 'block', marginBottom: 14 }}>
-                      <span style={{ fontSize: 12, color: '#7f848e', display: 'block', marginBottom: 5 }}>用户名 *</span>
+                      <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 5 }}>用户名 *</span>
                       <input value={form.username} onChange={e => setF('username', e.target.value)} style={inputStyle} />
                     </label>
                     <label style={{ display: 'block', marginBottom: 14 }}>
-                      <span style={{ fontSize: 12, color: '#7f848e', display: 'block', marginBottom: 5 }}>密码 *</span>
+                      <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 5 }}>密码 *</span>
                       <input type="password" value={form.password} onChange={e => setF('password', e.target.value)} style={inputStyle} />
                     </label>
                   </>
                 )}
 
                 <label style={{ display: 'block', marginBottom: 14 }}>
-                  <span style={{ fontSize: 12, color: '#7f848e', display: 'block', marginBottom: 5 }}>角色</span>
+                  <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 5 }}>角色</span>
                   <select
                     value={form.role}
                     onChange={e => setF('role', e.target.value)}
@@ -347,7 +352,7 @@ export default function UserManagement() {
                 </label>
 
                 <label style={{ display: 'block', marginBottom: 14 }}>
-                  <span style={{ fontSize: 12, color: '#7f848e', display: 'block', marginBottom: 5 }}>团队</span>
+                  <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 5 }}>团队</span>
                   <input
                     value={form.team_scope}
                     onChange={e => setF('team_scope', e.target.value)}
@@ -358,7 +363,7 @@ export default function UserManagement() {
                 </label>
 
                 <label style={{ display: 'block', marginBottom: 14 }}>
-                  <span style={{ fontSize: 12, color: '#7f848e', display: 'block', marginBottom: 5 }}>关联员工 ID</span>
+                  <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 5 }}>关联员工 ID</span>
                   <input
                     type="number"
                     value={form.staff_id}
@@ -371,18 +376,18 @@ export default function UserManagement() {
             )}
 
             {formError && (
-              <div style={{ color: '#ff7675', fontSize: 12, marginBottom: 14, background: '#2d1515', padding: '6px 10px', borderRadius: 4 }}>
+              <div style={{ color: theme.badgeRed, fontSize: 12, marginBottom: 14, background: theme.badgeRed, padding: '6px 10px', borderRadius: 4 }}>
                 {formError}
               </div>
             )}
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={closeModal} style={actionBtn('#0f3460', '#7f848e')}>取消</button>
+              <button onClick={closeModal} style={actionBtn('${theme.cardBorder}', '${theme.textSecondary}')}>取消</button>
               <button
                 onClick={saveUser}
                 disabled={saving}
                 style={{
-                  padding: '8px 16px', background: saving ? '#0f3460' : '#00b894',
+                  padding: '8px 16px', background: saving ? '${theme.cardBorder}' : theme.accent,
                   border: 'none', borderRadius: 4, color: '#fff', fontSize: 13,
                   fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer',
                 }}

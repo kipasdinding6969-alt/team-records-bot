@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { getLang, t } from '../i18n'
+import { useTheme } from '../ThemeContext'
 
 interface PermOverride {
   command: string
@@ -16,15 +17,21 @@ interface StaffPerms {
   overrides: PermOverride[]
 }
 
-const S = {
+
+
+export default function PermissionManager() {
+  const { theme } = useTheme()
+  const lang = getLang()
+
+  const S = {
   page: {
-    color: '#e0e0e0',
+    color: theme.textPrimary,
     minHeight: '100%',
   } as React.CSSProperties,
   title: {
     fontSize: 22,
     fontWeight: 700,
-    color: '#e0e0e0',
+    color: theme.textPrimary,
     margin: '0 0 24px',
   } as React.CSSProperties,
   layout: {
@@ -35,46 +42,46 @@ const S = {
   leftPanel: {
     width: 240,
     flexShrink: 0,
-    background: '#16213e',
-    border: '1px solid #0f3460',
+    background: theme.cardBg,
+    border: `1px solid ${theme.cardBorder}`,
     borderRadius: 8,
     overflow: 'hidden',
     alignSelf: 'flex-start',
   } as React.CSSProperties,
   leftHeader: {
     padding: '12px 16px',
-    borderBottom: '1px solid #0f3460',
+    borderBottom: `1px solid ${theme.cardBorder}`,
     fontSize: 12,
     fontWeight: 700,
-    color: '#7f848e',
+    color: theme.textSecondary,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
   },
   staffItem: (selected: boolean): React.CSSProperties => ({
     padding: '11px 16px',
     cursor: 'pointer',
-    background: selected ? '#0f3460' : 'transparent',
+    background: selected ? '${theme.cardBorder}' : 'transparent',
     borderLeft: `3px solid ${selected ? '#00b894' : 'transparent'}`,
-    borderBottom: '1px solid #0f3460',
+    borderBottom: `1px solid ${theme.cardBorder}`,
     transition: 'all 0.12s',
   }),
   staffName: {
     fontSize: 13,
     fontWeight: 600,
-    color: '#e0e0e0',
+    color: theme.textPrimary,
   },
   staffMeta: {
     fontSize: 11,
-    color: '#7f848e',
+    color: theme.textSecondary,
     marginTop: 2,
   },
   roleBadge: (role: string): React.CSSProperties => {
     const colors: Record<string, string> = {
-      owner: '#fdcb6e',
+      owner: theme.chartLine,
       admin: '#74b9ff',
-      member: '#7f848e',
+      member: theme.textSecondary,
     }
-    const c = colors[role] || '#7f848e'
+    const c = colors[role] || '${theme.textSecondary}'
     return {
       display: 'inline-block',
       fontSize: 9,
@@ -91,15 +98,15 @@ const S = {
   },
   rightPanel: {
     flex: 1,
-    background: '#16213e',
-    border: '1px solid #0f3460',
+    background: theme.cardBg,
+    border: `1px solid ${theme.cardBorder}`,
     borderRadius: 8,
     padding: 20,
   } as React.CSSProperties,
   sectionTitle: {
     fontSize: 12,
     fontWeight: 700,
-    color: '#7f848e',
+    color: theme.textSecondary,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
     marginBottom: 12,
@@ -109,7 +116,7 @@ const S = {
     alignItems: 'center',
     gap: 10,
     padding: '9px 0',
-    borderBottom: '1px solid #0f3460',
+    borderBottom: `1px solid ${theme.cardBorder}`,
     fontSize: 13,
   } as React.CSSProperties,
   allowedBadge: {
@@ -123,12 +130,12 @@ const S = {
   },
   cmdText: {
     fontFamily: 'monospace',
-    color: '#e0e0e0',
+    color: theme.textPrimary,
     flex: 1,
     minWidth: 80,
   },
   reasonText: {
-    color: '#7f848e',
+    color: theme.textSecondary,
     fontSize: 12,
     flex: 2,
   },
@@ -144,14 +151,14 @@ const S = {
   } as React.CSSProperties,
   addForm: {
     marginTop: 20,
-    background: '#0f3460',
+    background: theme.cardBorder,
     borderRadius: 6,
     padding: 16,
   } as React.CSSProperties,
   addTitle: {
     fontSize: 12,
     fontWeight: 700,
-    color: '#7f848e',
+    color: theme.textSecondary,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
     marginBottom: 12,
@@ -164,18 +171,18 @@ const S = {
   } as React.CSSProperties,
   input: {
     padding: '8px 12px',
-    background: '#16213e',
-    border: '1px solid #0f3460',
-    color: '#e0e0e0',
+    background: theme.cardBg,
+    border: `1px solid ${theme.cardBorder}`,
+    color: theme.textPrimary,
     borderRadius: 5,
     fontSize: 13,
     outline: 'none',
   } as React.CSSProperties,
   toggleBtn: (allowed: boolean): React.CSSProperties => ({
     padding: '8px 14px',
-    background: allowed ? '#00b89433' : '#d6303133',
+    background: allowed ? '${theme.accent}33' : theme.badgeRed,
     border: `1px solid ${allowed ? '#00b894' : '#d63031'}`,
-    color: allowed ? '#00b894' : '#d63031',
+    color: allowed ? '${theme.accent}' : '#d63031',
     borderRadius: 5,
     fontSize: 12,
     fontWeight: 700,
@@ -184,7 +191,7 @@ const S = {
   }),
   saveBtn: {
     padding: '8px 18px',
-    background: '#00b894',
+    background: theme.accent,
     border: 'none',
     color: '#fff',
     borderRadius: 5,
@@ -194,7 +201,7 @@ const S = {
     flexShrink: 0,
   } as React.CSSProperties,
   emptyMsg: {
-    color: '#7f848e',
+    color: theme.textSecondary,
     fontSize: 13,
     padding: '12px 0',
   },
@@ -211,19 +218,16 @@ const S = {
   } as React.CSSProperties,
   infoLabel: {
     fontSize: 11,
-    color: '#7f848e',
+    color: theme.textSecondary,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
-  },
+  } as React.CSSProperties,
   infoValue: {
     fontSize: 14,
-    color: '#e0e0e0',
+    color: theme.textPrimary,
     fontWeight: 600,
   },
-}
-
-export default function PermissionManager() {
-  const lang = getLang()
+  }
 
   const [staffList, setStaffList] = useState<StaffPerms[]>([])
   const [loading, setLoading] = useState(true)
@@ -291,7 +295,7 @@ export default function PermissionManager() {
       <h1 style={S.title}>{t('perm.title', lang)}</h1>
 
       {loading ? (
-        <div style={{ color: '#7f848e', fontSize: 14 }}>{t('perm.loading', lang)}</div>
+        <div style={{ color: theme.textSecondary, fontSize: 14 }}>{t('perm.loading', lang)}</div>
       ) : (
         <div style={S.layout}>
           <div style={S.leftPanel}>
@@ -331,7 +335,7 @@ export default function PermissionManager() {
                     <span style={S.infoValue}>
                       {selected.role}
                       {selected.team && (
-                        <span style={{ color: '#7f848e', fontWeight: 400, marginLeft: 8 }}>
+                        <span style={{ color: theme.textSecondary, fontWeight: 400, marginLeft: 8 }}>
                           {selected.team}
                         </span>
                       )}
@@ -368,14 +372,14 @@ export default function PermissionManager() {
                         style={{
                           display: 'flex', alignItems: 'center', gap: 8,
                           padding: '10px 12px', borderRadius: 6, cursor: 'pointer',
-                          background: isAllowed ? '#00b89415' : '#d6303115',
+                          background: isAllowed ? '${theme.accent}15' : '#d6303115',
                           border: `1px solid ${isAllowed ? '#00b89444' : '#d6303144'}`,
                           transition: 'all 0.15s',
                         }}
                       >
                         <div style={{
                           width: 36, height: 20, borderRadius: 10,
-                          background: isAllowed ? '#00b894' : '#636e72',
+                          background: isAllowed ? '${theme.accent}' : '#636e72',
                           position: 'relative', transition: 'background 0.15s',
                         }}>
                           <div style={{
@@ -385,7 +389,7 @@ export default function PermissionManager() {
                             transition: 'left 0.15s',
                           }} />
                         </div>
-                        <span style={{ fontSize: 12, color: '#e0e0e0', fontWeight: 500 }}>
+                        <span style={{ fontSize: 12, color: theme.textPrimary, fontWeight: 500 }}>
                           {t(`perm.${section}`, lang)}
                         </span>
                       </div>
@@ -405,8 +409,8 @@ export default function PermissionManager() {
                       <span style={S.cmdText}>/{ov.command}</span>
                       <span style={{
                         ...S.allowedBadge,
-                        background: ov.allowed ? '#00b89433' : '#d6303133',
-                        color: ov.allowed ? '#00b894' : '#d63031',
+                        background: ov.allowed ? '${theme.accent}33' : theme.badgeRed,
+                        color: ov.allowed ? '${theme.accent}' : '#d63031',
                         border: `1px solid ${ov.allowed ? '#00b894' : '#d63031'}`,
                       }}>
                         {ov.allowed ? t('perm.allowed', lang) : t('perm.denied', lang)}
@@ -452,7 +456,7 @@ export default function PermissionManager() {
                     <div style={{
                       marginTop: 8,
                       fontSize: 12,
-                      color: saveMsg.includes('fail') || saveMsg.includes('error') ? '#e88' : '#00b894',
+                      color: saveMsg.includes('fail') || saveMsg.includes('error') ? '#e88' : theme.accent,
                     }}>
                       {saveMsg}
                     </div>

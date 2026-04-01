@@ -1,8 +1,23 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, isAuthenticated, setAuthState } from '../api'
+import { useTheme } from '../ThemeContext'
 
 export default function Login() {
+  const { theme } = useTheme()
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '10px 12px',
+    background: theme.bg,
+    border: `1px solid ${theme.cardBorder}`,
+    borderRadius: 4,
+    color: theme.textPrimary,
+    fontSize: 14,
+    outline: 'none',
+    boxSizing: 'border-box',
+  }
+
   const nav = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -45,7 +60,7 @@ export default function Login() {
     <div
       style={{
         minHeight: '100vh',
-        background: '#1a1a2e',
+        background: theme.bg,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -53,20 +68,20 @@ export default function Login() {
     >
       <div
         style={{
-          background: '#16213e',
-          border: '1px solid #0f3460',
+          background: theme.cardBg,
+          border: `1px solid ${theme.cardBorder}`,
           borderRadius: 8,
           padding: 40,
           width: 360,
         }}
       >
         <div style={{ marginBottom: 32, textAlign: 'center' }}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: '#e0e0e0' }}>团队记录</div>
-          <div style={{ fontSize: 13, color: '#7f848e', marginTop: 6 }}>Manager Dashboard</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: theme.textPrimary }}>团队记录</div>
+          <div style={{ fontSize: 13, color: theme.textSecondary, marginTop: 6 }}>Manager Dashboard</div>
         </div>
         <form onSubmit={submit}>
           <label style={{ display: 'block', marginBottom: 16 }}>
-            <span style={{ fontSize: 12, color: '#7f848e', display: 'block', marginBottom: 6 }}>
+            <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 6 }}>
               用户名
             </span>
             <input
@@ -79,7 +94,7 @@ export default function Login() {
             />
           </label>
           <label style={{ display: 'block', marginBottom: 16 }}>
-            <span style={{ fontSize: 12, color: '#7f848e', display: 'block', marginBottom: 6 }}>
+            <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 6 }}>
               密码
             </span>
             <input
@@ -103,16 +118,16 @@ export default function Login() {
               type="checkbox"
               checked={rememberMe}
               onChange={e => setRememberMe(e.target.checked)}
-              style={{ accentColor: '#00b894', width: 14, height: 14 }}
+              style={{ accentColor: theme.accent, width: 14, height: 14 }}
             />
-            <span style={{ fontSize: 12, color: '#7f848e' }}>记住我 (30 天)</span>
+            <span style={{ fontSize: 12, color: theme.textSecondary }}>记住我 (30 天)</span>
           </label>
           {error && (
             <div
               style={{
-                background: '#2d1515',
-                border: '1px solid #ff7675',
-                color: '#ff7675',
+                background: theme.badgeRed,
+                border: `1px solid ${theme.badgeRed}`,
+                color: theme.badgeRed,
                 padding: '8px 12px',
                 borderRadius: 4,
                 fontSize: 13,
@@ -128,7 +143,7 @@ export default function Login() {
             style={{
               width: '100%',
               padding: '11px',
-              background: loading ? '#0f3460' : '#00b894',
+              background: loading ? '${theme.cardBorder}' : theme.accent,
               border: 'none',
               borderRadius: 4,
               color: '#fff',
@@ -146,14 +161,4 @@ export default function Login() {
   )
 }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '10px 12px',
-  background: '#1a1a2e',
-  border: '1px solid #0f3460',
-  borderRadius: 4,
-  color: '#e0e0e0',
-  fontSize: 14,
-  outline: 'none',
-  boxSizing: 'border-box',
-}
+

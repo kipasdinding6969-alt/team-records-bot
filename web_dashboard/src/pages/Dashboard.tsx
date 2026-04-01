@@ -13,10 +13,10 @@ import {
 import { api } from '../api'
 import type { Activity, DashboardStats, FunnelStage, Trends } from '../types'
 import { getLang, t } from '../i18n'
-import { getTheme, resolveTheme } from '../theme'
+import { useTheme } from '../ThemeContext'
 
 function useThemeLang() {
-  const theme = resolveTheme(getTheme())
+  const { theme } = useTheme()
   const lang = getLang()
   return { theme, lang }
 }
@@ -124,11 +124,11 @@ export default function Dashboard() {
         }}>
           <StatCard label={t('dash.total_clients', lang)} value={stats.total_clients} {...cardProps} />
           <StatCard label={t('dash.active_clients', lang)} value={stats.total_active} accent={theme.accent} {...cardProps} />
-          <StatCard label={t('dash.today_new', lang)} value={stats.today_new} accent="#fdcb6e" {...cardProps} />
+          <StatCard label={t('dash.today_new', lang)} value={stats.today_new} accent="${theme.chartLine}" {...cardProps} />
           <StatCard label={t('dash.today_orders', lang)} value={stats.today_orders} accent={theme.accent} {...cardProps} />
-          <StatCard label={t('dash.today_deposits', lang)} value={`$${stats.today_deposits.toFixed(0)}`} accent="#00cec9" {...cardProps} />
+          <StatCard label={t('dash.today_deposits', lang)} value={`$${stats.today_deposits.toFixed(0)}`} accent="${theme.accent}" {...cardProps} />
           <StatCard label={t('dash.conversion', lang)} value={`${stats.conversion_rate}%`} {...cardProps} />
-          <StatCard label={t('dash.overdue', lang)} value={stats.overdue_followups} accent={stats.overdue_followups > 0 ? '#ff7675' : theme.textSecondary} {...cardProps} />
+          <StatCard label={t('dash.overdue', lang)} value={stats.overdue_followups} accent={stats.overdue_followups > 0 ? '${theme.badgeRed}' : theme.textSecondary} {...cardProps} />
           <StatCard label={t('dash.total_staff', lang)} value={stats.total_staff} {...cardProps} />
         </div>
       )}
@@ -202,8 +202,9 @@ export default function Dashboard() {
   )
 }
 
-export function PageHeader({ title, sub, theme }: { title: string; sub?: string; theme?: any }) {
-  const th = theme || resolveTheme(getTheme())
+export function PageHeader({ title, sub, theme: themeProp }: { title: string; sub?: string; theme?: any }) {
+  const { theme: ctxTheme } = useTheme()
+  const th = themeProp || ctxTheme
   return (
     <div style={{ marginBottom: 24 }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, color: th.textPrimary }}>{title}</h1>
@@ -212,8 +213,9 @@ export function PageHeader({ title, sub, theme }: { title: string; sub?: string;
   )
 }
 
-export function SectionTitle({ children, theme }: { children: React.ReactNode; theme?: any }) {
-  const th = theme || resolveTheme(getTheme())
+export function SectionTitle({ children, theme: themeProp }: { children: React.ReactNode; theme?: any }) {
+  const { theme: ctxTheme } = useTheme()
+  const th = themeProp || ctxTheme
   return (
     <div style={{ fontSize: 13, fontWeight: 600, color: th.textSecondary, marginBottom: 16, letterSpacing: 0.5, textTransform: 'uppercase' }}>
       {children}
