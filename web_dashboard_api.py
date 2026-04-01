@@ -1724,6 +1724,176 @@ async def get_performance_summary(
     return {'from': date_from, 'to': date_to, 'team': team, 'staff': rows}
 
 
+# ─── Phase 17: Auto-Recalculate Daily Stats ──────────────────────────────────
+
+@app.post('/api/performance/recalculate')
+async def recalculate_daily_stats(
+    user: dict = Depends(_require_owner_or_admin),
+):
+    """Recalculate daily_stats from client data for all active staff (today)."""
+    from datetime import date as date_type
+    today = date_type.today().isoformat()
+    updated = 0
+    async with _connect_db() as db:
+        async with db.execute(
+            "SELECT id, display_name, team FROM staff WHERE is_active = 1"
+        ) as cur:
+            staff_list = [row_to_dict(r) for r in await cur.fetchall()]
+
+        for s in staff_list:
+            sid = s['id']
+            # Count clients by status created/updated today
+            counts = {}
+            for status_name in ['new', 'contacted', 'replied', 'registered', 'training',
+                                'withdrew', 'ordered', 'ghosted', 'blocked', 'dead']:
+                col_map = {
+                    'new': 'created_at', 'contacted': 'contacted_at', 'replied': 'replied_at',
+                    'registered': 'registered_at', 'training': 'training_at',
+                    'withdrew': 'withdrew_at', 'ordered': 'first_order_at',
+                }
+                if status_name in ('ghosted', 'blocked', 'dead'):
+                    async with db.execute(
+                        f"SELECT COUNT(*) FROM clients WHERE frontdesk_id = ? AND status = ?",
+                        (sid, status_name)
+                    ) as c:
+                        counts[status_name] = (await c.fetchone())[0]
+                else:
+                    date_col = col_map.get(status_name, 'created_at')
+                    async with db.execute(
+                        f"SELECT COUNT(*) FROM clients WHERE frontdesk_id = ? AND DATE({date_col}) = ?",
+                        (sid, today)
+                    ) as c:
+                        counts[status_name] = (await c.fetchone())[0]
+
+            # Get total deposit for today
+            async with db.execute(
+                "SELECT COALESCE(SUM(amount), 0) FROM deposits WHERE frontdesk_id = ? AND DATE(deposit_date) = ?",
+                (sid, today)
+            ) as c:
+                total_dep = (await c.fetchone())[0]
+
+            nl = counts.get('new', 0)
+            rp = counts.get('replied', 0)
+            reg = counts.get('registered', 0)
+            no = counts.get('ordered', 0)
+            reply_rate = round(rp / max(nl, 1) * 100, 2)
+            conv_rate = round(no / max(reg, 1) * 100, 2)
+
+            await db.execute(
+                """INSERT INTO daily_stats
+                   (staff_id, stat_date, new_leads, contacted, replied, registered,
+                    training, withdrew, new_orders, ghosted, blocked, dead,
+                    reply_rate, conversion_rate, total_deposit)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(staff_id, stat_date)
+                   DO UPDATE SET new_leads=excluded.new_leads, contacted=excluded.contacted,
+                     replied=excluded.replied, registered=excluded.registered,
+                     training=excluded.training, withdrew=excluded.withdrew,
+                     new_orders=excluded.new_orders, ghosted=excluded.ghosted,
+                     blocked=excluded.blocked, dead=excluded.dead,
+                     reply_rate=excluded.reply_rate, conversion_rate=excluded.conversion_rate,
+                     total_deposit=excluded.total_deposit""",
+                (sid, today, nl, counts.get('contacted', 0), rp, reg,
+                 counts.get('training', 0), counts.get('withdrew', 0), no,
+                 counts.get('ghosted', 0), counts.get('blocked', 0), counts.get('dead', 0),
+                 reply_rate, conv_rate, total_dep)
+            )
+            updated += 1
+        await db.commit()
+    return {'ok': True, 'date': today, 'staff_updated': updated}
+
+
+# ─── Phase 17: Staff Management API ──────────────────────────────────────────
+
+class UpdateStaffRequest(BaseModel):
+    team: Optional[str] = None
+    role: Optional[str] = None
+    display_name: Optional[str] = None
+    daily_target: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+@app.put('/api/staff/{staff_id}')
+async def update_staff(
+    staff_id: int,
+    body: UpdateStaffRequest,
+    user: dict = Depends(_require_owner_or_admin),
+):
+    """Update staff member (team, role, name, target, active status). Owner/Admin only."""
+    valid_roles = ('frontdesk', 'maintenance', 'manager', 'admin', 'leader',
+                   'customer_service', 'newbie', 'viewer')
+
+    async with _connect_db() as db:
+        async with db.execute('SELECT id, team, role FROM staff WHERE id = ?', (staff_id,)) as cur:
+            staff = await cur.fetchone()
+        if not staff:
+            raise HTTPException(status_code=404, detail='Staff not found')
+
+        # Admin can only modify staff in their team
+        if user['role'] == 'admin':
+            if staff['team'] and staff['team'] != user['team_scope']:
+                raise HTTPException(status_code=403, detail='Cannot modify staff outside your team')
+            if staff['role'] in ('admin', 'leader', 'manager', 'maintenance'):
+                raise HTTPException(status_code=403, detail='Cannot modify staff at or above your level')
+
+        updates = []
+        params = []
+        if body.team is not None:
+            updates.append('team = ?')
+            params.append(body.team)
+        if body.role is not None:
+            if body.role not in valid_roles:
+                raise HTTPException(status_code=400, detail=f'Invalid role. Valid: {valid_roles}')
+            # Only owner can set admin/leader/manager roles
+            if body.role in ('admin', 'leader', 'manager') and user['role'] != 'owner':
+                raise HTTPException(status_code=403, detail='Only owner can assign admin/leader roles')
+            updates.append('role = ?')
+            params.append(body.role)
+        if body.display_name is not None:
+            updates.append('display_name = ?')
+            params.append(body.display_name)
+        if body.daily_target is not None:
+            updates.append('daily_target = ?')
+            params.append(body.daily_target)
+        if body.is_active is not None:
+            updates.append('is_active = ?')
+            params.append(int(body.is_active))
+
+        if not updates:
+            raise HTTPException(status_code=400, detail='No fields to update')
+
+        params.append(staff_id)
+        await db.execute(f"UPDATE staff SET {', '.join(updates)} WHERE id = ?", params)
+        await db.commit()
+
+    return {'ok': True}
+
+
+@app.get('/api/staff/all')
+async def list_all_staff(user: dict = Depends(get_current_user)):
+    """List all staff with team/role info. Scoped by role."""
+    async with _connect_db() as db:
+        where = 'WHERE s.is_active = 1'
+        params: list = []
+        if user['role'] == 'admin':
+            # Admin sees their team + unassigned
+            where += ' AND (s.team = ? OR s.team IS NULL)'
+            params.append(user['team_scope'])
+        elif user['role'] == 'member':
+            where += ' AND s.team = ?'
+            params.append(user.get('team_scope', ''))
+
+        async with db.execute(
+            f"""SELECT s.id, s.display_name, s.role, s.team, s.tg_username,
+                       s.daily_target, s.is_active, s.phone, s.language,
+                       (SELECT COUNT(*) FROM clients c WHERE c.frontdesk_id = s.id) AS client_count
+                FROM staff s {where}
+                ORDER BY s.team NULLS LAST, s.display_name""",
+            params
+        ) as cur:
+            return [row_to_dict(r) for r in await cur.fetchall()]
+
+
 # ─── Phase 17: Org Chart / Team Hierarchy API ────────────────────────────────
 
 @app.get('/api/org-chart')
@@ -1874,6 +2044,9 @@ class CreateClientRequest(BaseModel):
     account_id: Optional[str] = None
     nickname: Optional[str] = None
     platform: Optional[str] = None
+    phone_remark: Optional[str] = None
+    recruiter: Optional[str] = None
+    category: Optional[str] = None  # UK表单粉, CA表单粉, etc.
 
 
 @app.post('/api/clients')
@@ -1932,10 +2105,10 @@ async def create_client_via_dashboard(
         # Create the client
         cur = await db.execute(
             """INSERT INTO clients
-               (frontdesk_id, phone, source, account_id, nickname, platform, status)
-               VALUES (?, ?, ?, ?, ?, ?, 'new')""",
+               (frontdesk_id, phone, source, account_id, nickname, platform, phone_remark, recruiter, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new')""",
             (staff_id, body.phone, body.source, body.account_id,
-             body.nickname, body.platform)
+             body.nickname, body.platform, body.phone_remark, body.recruiter)
         )
         client_id = cur.lastrowid
 

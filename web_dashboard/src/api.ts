@@ -288,9 +288,25 @@ export const api = {
   linkedTimeline: (clientId: number) => req<any>(`/api/clients/${clientId}/linked-timeline`),
 
   // Phase 17: Create client via dashboard
-  createClient: (data: { phone: string; source: string; account_id?: string; nickname?: string; platform?: string }) =>
+  createClient: (data: {
+    phone: string; source: string; account_id?: string; nickname?: string;
+    platform?: string; phone_remark?: string; recruiter?: string; category?: string;
+  }) =>
     req<{ ok: boolean; client_id: number }>('/api/clients', {
       method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Phase 17: Recalculate daily stats
+  recalculateStats: () =>
+    req<{ ok: boolean; date: string; staff_updated: number }>('/api/performance/recalculate', { method: 'POST' }),
+
+  // Phase 17: Staff management
+  allStaff: () => req<any[]>('/api/staff/all'),
+
+  updateStaff: (staffId: number, data: { team?: string; role?: string; display_name?: string; daily_target?: number; is_active?: boolean }) =>
+    req<{ ok: boolean }>(`/api/staff/${staffId}`, {
+      method: 'PUT',
       body: JSON.stringify(data),
     }),
 

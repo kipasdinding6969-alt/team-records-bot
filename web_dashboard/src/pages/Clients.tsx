@@ -19,6 +19,10 @@ export default function Clients() {
   const [addPhone, setAddPhone] = useState('')
   const [addSource, setAddSource] = useState('web')
   const [addNickname, setAddNickname] = useState('')
+  const [addAccountId, setAddAccountId] = useState('')
+  const [addCategory, setAddCategory] = useState('')
+  const [addRecruiter, setAddRecruiter] = useState('')
+  const [addPlatform, setAddPlatform] = useState('')
   const [addError, setAddError] = useState('')
   const [addSuccess, setAddSuccess] = useState('')
   const [phoneStatus, setPhoneStatus] = useState<any>(null)
@@ -64,7 +68,12 @@ export default function Clients() {
     setAddError('')
     setAddSuccess('')
     try {
-      const res = await api.createClient({ phone: addPhone.trim(), source: addSource, nickname: addNickname || undefined })
+      const res = await api.createClient({
+        phone: addPhone.trim(), source: addSource,
+        nickname: addNickname || undefined, account_id: addAccountId || undefined,
+        category: addCategory || undefined, recruiter: addRecruiter || undefined,
+        platform: addPlatform || undefined,
+      })
       setAddSuccess(`Client #${res.client_id} created`)
       setAddPhone('')
       setAddNickname('')
@@ -327,15 +336,49 @@ export default function Clients() {
               </select>
             </div>
 
-            {/* Nickname */}
+            {/* Row: Nickname + Account ID */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>昵称 / Nickname</label>
+                <input value={addNickname} onChange={e => setAddNickname(e.target.value)}
+                  placeholder="Optional" style={{ ...modalInputStyle(theme), width: '100%' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>编号 / Account ID</label>
+                <input value={addAccountId} onChange={e => setAddAccountId(e.target.value)}
+                  placeholder="Optional" style={{ ...modalInputStyle(theme), width: '100%' }} />
+              </div>
+            </div>
+
+            {/* Row: Category + Recruiter */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>类别 / Category</label>
+                <select value={addCategory} onChange={e => setAddCategory(e.target.value)}
+                  style={{ ...modalInputStyle(theme), width: '100%' }}>
+                  <option value="">-- Select --</option>
+                  {['UK表单粉', 'CA表单粉', 'AU表单粉', 'EU表单粉', 'US表单粉', 'SEA表单粉', 'Other'].map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>招聘人员 / Recruiter</label>
+                <input value={addRecruiter} onChange={e => setAddRecruiter(e.target.value)}
+                  placeholder="Optional" style={{ ...modalInputStyle(theme), width: '100%' }} />
+              </div>
+            </div>
+
+            {/* Platform */}
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>昵称 / Nickname (optional)</label>
-              <input
-                value={addNickname}
-                onChange={e => setAddNickname(e.target.value)}
-                placeholder="Optional"
-                style={{ ...modalInputStyle(theme), width: '100%' }}
-              />
+              <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>平台 / Platform</label>
+              <select value={addPlatform} onChange={e => setAddPlatform(e.target.value)}
+                style={{ ...modalInputStyle(theme), width: '100%' }}>
+                <option value="">-- Select --</option>
+                {['MT5', 'MT4', 'cTrader', 'Other'].map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
             </div>
 
             {addError && <div style={{ color: '#ef4444', fontSize: 12, marginBottom: 10 }}>{addError}</div>}

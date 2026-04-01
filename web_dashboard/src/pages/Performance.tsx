@@ -133,6 +133,16 @@ export default function Performance() {
             {lang === 'zh' ? tm.zh : tm.en}
           </button>
         ))}
+        <button className="glass-btn"
+          style={{ ...S.teamTab(false), marginLeft: 'auto', background: theme.accent, color: '#fff', border: 'none' }}
+          onClick={() => {
+            api.recalculateStats()
+              .then(r => { alert(`Stats recalculated for ${r.staff_updated} staff`); setLoading(true); api.performanceDaily(selectedDate, team).then(setData).finally(() => setLoading(false)) })
+              .catch(e => alert(e.message))
+          }}
+        >
+          🔄 {lang === 'zh' ? '重新计算' : 'Recalculate'}
+        </button>
       </div>
 
       {loading ? (
