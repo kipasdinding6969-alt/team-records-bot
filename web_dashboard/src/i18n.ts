@@ -221,6 +221,43 @@ const translations: Record<string, Record<Lang, string>> = {
   'perm.export_data': { zh: '导出数据', en: 'Export Data' },
   'perm.manage_team': { zh: '管理团队', en: 'Manage Team' },
   'perm.section_permissions': { zh: '功能权限', en: 'Section Permissions' },
+  'perm.apply_all': { zh: '全部应用', en: 'Apply All' },
+  'perm.granted': { zh: '已授权', en: 'Granted' },
+  'perm.revoked': { zh: '已拒绝', en: 'Denied' },
+
+  // Org Chart
+  'nav.org_chart': { zh: '组织架构', en: 'Org Chart' },
+  'org.title': { zh: '组织架构', en: 'Organization Chart' },
+  'org.total_teams': { zh: '团队总数', en: 'Total Teams' },
+  'org.total_staff': { zh: '员工总数', en: 'Total Staff' },
+  'org.active_clients': { zh: '活跃客户', en: 'Active Clients' },
+  'org.unassigned': { zh: '未分组', en: 'Unassigned' },
+  'org.leader': { zh: '组长', en: 'Leader' },
+  'org.members': { zh: '组员', en: 'Members' },
+  'org.overrides': { zh: '权限覆盖', en: 'Overrides' },
+
+  // Client creation
+  'clients.add': { zh: '新增客户', en: 'New Client' },
+  'clients.add_title': { zh: '新增客户', en: 'Add New Client' },
+  'clients.phone_input': { zh: '输入电话号码', en: 'Enter phone number' },
+  'clients.source_select': { zh: '选择来源', en: 'Select source' },
+  'clients.submit': { zh: '提交', en: 'Submit' },
+  'clients.duplicate_warn': { zh: '该号码已由 {owner} 提交', en: 'This number is owned by {owner}' },
+  'clients.available': { zh: '可用', en: 'Available' },
+  'clients.taken': { zh: '已被占用', en: 'Taken' },
+  'clients.own': { zh: '你的号码', en: 'Your Number' },
+
+  // Linked timeline
+  'detail.linked_timeline': { zh: '关联时间线', en: 'Linked Timeline' },
+  'detail.linked_clients': { zh: '关联客户', en: 'Linked Clients' },
+  'detail.from_client': { zh: '来自客户', en: 'From client' },
+
+  // Performance summary
+  'perf.summary': { zh: '汇总报告', en: 'Summary Report' },
+  'perf.weekly': { zh: '周报', en: 'Weekly' },
+  'perf.monthly': { zh: '月报', en: 'Monthly' },
+  'perf.date_from': { zh: '开始日期', en: 'From' },
+  'perf.date_to': { zh: '结束日期', en: 'To' },
 }
 
 export function t(key: string, lang?: Lang): string {

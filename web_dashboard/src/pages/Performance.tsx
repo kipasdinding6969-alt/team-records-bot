@@ -79,6 +79,15 @@ export default function Performance() {
   const [data, setData] = useState<{ staff: StaffPerf[]; totals: Record<string, number> } | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // Summary range
+  const [showSummary, setShowSummary] = useState(false)
+  const [summaryFrom, setSummaryFrom] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]
+  })
+  const [summaryTo, setSummaryTo] = useState(() => new Date().toISOString().split('T')[0])
+  const [summaryData, setSummaryData] = useState<any>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+
   useEffect(() => {
     setLoading(true)
     api.performanceDaily(selectedDate, team)
@@ -157,6 +166,71 @@ export default function Performance() {
           </div>
         </>
       )}
+
+      {/* Summary Report Section */}
+      <div style={{ marginTop: 28, borderTop: '1px solid #e2e8f0', paddingTop: 20 }}>
+        <div
+          style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: showSummary ? 16 : 0 }}
+          onClick={() => setShowSummary(!showSummary)}
+        >
+          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: '#2d2a26' }}>
+            {t('perf.summary', lang)}
+          </h2>
+          <span style={{ fontSize: 12, color: theme.accent }}>{showSummary ? '▲' : '▼'}</span>
+        </div>
+
+        {showSummary && (
+          <div>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 12, color: theme.textSecondary }}>{t('perf.date_from', lang)}:</label>
+              <input type="date" style={S.input} value={summaryFrom} onChange={e => setSummaryFrom(e.target.value)} />
+              <label style={{ fontSize: 12, color: theme.textSecondary }}>{t('perf.date_to', lang)}:</label>
+              <input type="date" style={S.input} value={summaryTo} onChange={e => setSummaryTo(e.target.value)} />
+              <button
+                style={{ ...S.teamTab(true), padding: '8px 20px' }}
+                onClick={() => {
+                  setSummaryLoading(true)
+                  api.performanceSummary(summaryFrom, summaryTo, team !== 'all' ? team : undefined)
+                    .then(setSummaryData)
+                    .catch(() => setSummaryData(null))
+                    .finally(() => setSummaryLoading(false))
+                }}
+              >
+                {t('common.search', lang)}
+              </button>
+            </div>
+
+            {summaryLoading && <div style={S.empty}>{t('common.loading', lang)}</div>}
+            {summaryData && !summaryLoading && (
+              <div>
+                {(summaryData.staff || []).map((s: any) => (
+                  <div key={s.staff_id || s.display_name} style={S.card}>
+                    <div style={S.cardName}>{s.display_name}</div>
+                    <div style={S.cardTeam}>{s.team || '—'} · {summaryFrom} ~ {summaryTo}</div>
+                    <div style={S.metricsGrid}>
+                      {metric(t('perf.new_powder', lang), s.new_leads || 0, '#3b82f6')}
+                      {metric(t('perf.reply_rate', lang), `${s.reply_rate || 0}%`, '#22c55e')}
+                      {metric(t('perf.register', lang), s.registered || 0, '#3b82f6')}
+                      {metric(t('perf.new_order', lang), s.new_orders || 0, '#22c55e')}
+                      {metric(t('perf.deposit', lang), `$${(s.total_deposit || 0).toFixed(0)}`, '#22c55e')}
+                    </div>
+                  </div>
+                ))}
+                {summaryData.totals && (
+                  <div style={S.summaryCard}>
+                    <div style={S.summaryTitle}>{t('perf.team_total', lang)} ({summaryFrom} ~ {summaryTo})</div>
+                    <div style={S.metricsGrid}>
+                      {metric(t('perf.new_powder', lang), summaryData.totals.new_leads || 0, '#3b82f6')}
+                      {metric(t('perf.new_order', lang), summaryData.totals.new_orders || 0, '#22c55e')}
+                      {metric(t('perf.deposit', lang), `$${(summaryData.totals.total_deposit || 0).toFixed(0)}`, '#22c55e')}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

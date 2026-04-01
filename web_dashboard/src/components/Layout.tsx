@@ -23,6 +23,7 @@ const NAV_ALL: NavItem[] = [
   { path: '/phone-lookup', labelKey: 'nav.phone_lookup', icon: '☎', end: false },
   { path: '/reports', labelKey: 'nav.reports', icon: '⌬', end: false },
   { path: '/performance', labelKey: 'nav.performance', icon: '⊞', end: false },
+  { path: '/org-chart', labelKey: 'nav.org_chart', icon: '⊡', end: false, adminOnly: true },
   { path: '/permissions', labelKey: 'nav.permissions', icon: '🔐', end: false, adminOnly: true },
   { path: '/users', labelKey: 'nav.users', icon: '◎', end: false, adminOnly: true },
 ]

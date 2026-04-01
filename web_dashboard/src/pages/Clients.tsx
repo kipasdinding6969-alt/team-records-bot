@@ -15,6 +15,15 @@ export default function Clients() {
   const [data, setData] = useState<ClientList | null>(null)
   const [loading, setLoading] = useState(true)
   const nav = useNavigate()
+  const [showAdd, setShowAdd] = useState(false)
+  const [addPhone, setAddPhone] = useState('')
+  const [addSource, setAddSource] = useState('web')
+  const [addNickname, setAddNickname] = useState('')
+  const [addError, setAddError] = useState('')
+  const [addSuccess, setAddSuccess] = useState('')
+  const [phoneStatus, setPhoneStatus] = useState<any>(null)
+  const [checkTimer, setCheckTimer] = useState<any>(null)
+  const [addSubmitting, setAddSubmitting] = useState(false)
 
   const status = params.get('status') || ''
   const search = params.get('search') || ''
@@ -37,6 +46,40 @@ export default function Clients() {
   }, [status, search, page])
 
   const totalPages = data ? Math.ceil(data.total / PER_PAGE) : 1
+
+  function checkPhone(phone: string) {
+    if (checkTimer) clearTimeout(checkTimer)
+    setPhoneStatus(null)
+    setAddError('')
+    if (phone.replace(/[^\d]/g, '').length < 5) return
+    const timer = setTimeout(() => {
+      api.phoneCheck(phone).then(setPhoneStatus).catch(() => {})
+    }, 400)
+    setCheckTimer(timer)
+  }
+
+  async function submitNewClient() {
+    if (!addPhone.trim() || !addSource) return
+    setAddSubmitting(true)
+    setAddError('')
+    setAddSuccess('')
+    try {
+      const res = await api.createClient({ phone: addPhone.trim(), source: addSource, nickname: addNickname || undefined })
+      setAddSuccess(`Client #${res.client_id} created`)
+      setAddPhone('')
+      setAddNickname('')
+      setPhoneStatus(null)
+      // Refresh list
+      setLoading(true)
+      api.clients({ status: status || undefined, search: search || undefined, page, per_page: PER_PAGE })
+        .then(setData).finally(() => setLoading(false))
+    } catch (e: any) {
+      const msg = typeof e.message === 'string' ? e.message : 'Failed to create client'
+      setAddError(msg)
+    } finally {
+      setAddSubmitting(false)
+    }
+  }
 
   return (
     <div>
@@ -67,6 +110,12 @@ export default function Clients() {
           style={getBtnStyle(theme)}
         >
           导出 CSV
+        </button>
+        <button
+          onClick={() => { setShowAdd(true); setAddError(''); setAddSuccess(''); setPhoneStatus(null) }}
+          style={{ ...getBtnStyle(theme), background: '#22c55e', color: '#fff', border: 'none', fontWeight: 600 }}
+        >
+          ➕ 新增客户
         </button>
         {data && (
           <span style={{ fontSize: 12, color: theme.textSecondary, marginLeft: 'auto' }}>
@@ -173,9 +222,107 @@ export default function Clients() {
           )}
         </div>
       )}
+
+      {/* Add Client Modal */}
+      {showAdd && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        }} onClick={e => { if (e.target === e.currentTarget) setShowAdd(false) }}>
+          <div style={{
+            background: theme.cardBg, borderRadius: 12, padding: 24, width: 420,
+            maxWidth: '90vw', boxShadow: theme.shadow,
+          }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700 }}>➕ 新增客户 / Add Client</h3>
+
+            {/* Phone input with live check */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>电话 / Phone</label>
+              <input
+                value={addPhone}
+                onChange={e => { setAddPhone(e.target.value); checkPhone(e.target.value) }}
+                placeholder="e.g. +60123456789"
+                style={{ ...modalInputStyle(theme), width: '100%' }}
+              />
+              {phoneStatus && (
+                <div style={{ marginTop: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {phoneStatus.status === 'available' && (
+                    <span style={{ color: '#22c55e', fontWeight: 600 }}>✓ 可用 / Available</span>
+                  )}
+                  {phoneStatus.status === 'own' && (
+                    <span style={{ color: '#f59e0b', fontWeight: 600 }}>⚡ 你的号码 / Your Number — editable</span>
+                  )}
+                  {phoneStatus.status === 'taken' && (
+                    <span style={{ color: '#ef4444', fontWeight: 600 }}>
+                      ✗ 已被占用 / Taken by {phoneStatus.owner} ({phoneStatus.submitted_at?.split('T')[0]})
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Source */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>来源 / Source</label>
+              <select
+                value={addSource}
+                onChange={e => setAddSource(e.target.value)}
+                style={{ ...modalInputStyle(theme), width: '100%' }}
+              >
+                {['web', 'telegram', 'whatsapp', 'referral', 'facebook', 'instagram', 'tiktok', 'other'].map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Nickname */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>昵称 / Nickname (optional)</label>
+              <input
+                value={addNickname}
+                onChange={e => setAddNickname(e.target.value)}
+                placeholder="Optional"
+                style={{ ...modalInputStyle(theme), width: '100%' }}
+              />
+            </div>
+
+            {addError && <div style={{ color: '#ef4444', fontSize: 12, marginBottom: 10 }}>{addError}</div>}
+            {addSuccess && <div style={{ color: '#22c55e', fontSize: 12, marginBottom: 10 }}>{addSuccess}</div>}
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowAdd(false)} style={{ ...getBtnStyle(theme), padding: '8px 20px' }}>
+                取消 / Cancel
+              </button>
+              <button
+                onClick={submitNewClient}
+                disabled={addSubmitting || phoneStatus?.status === 'taken'}
+                style={{
+                  ...getBtnStyle(theme), padding: '8px 20px',
+                  background: phoneStatus?.status === 'taken' ? '#94a3b8' : '#22c55e',
+                  color: '#fff', border: 'none', fontWeight: 600,
+                  opacity: addSubmitting ? 0.6 : 1,
+                }}
+              >
+                {addSubmitting ? '...' : '提交 / Submit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
+const modalInputStyle = (theme: any): React.CSSProperties => ({
+  padding: '8px 12px',
+  background: theme.inputBg,
+  border: `1px solid ${theme.inputBorder}`,
+  borderRadius: 6,
+  color: theme.textPrimary,
+  fontSize: 13,
+  outline: 'none',
+  boxSizing: 'border-box' as const,
+})
 
 const getInputStyle = (theme: any): React.CSSProperties => ({
   padding: '8px 12px',

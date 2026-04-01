@@ -13,6 +13,7 @@ import UserManagement from './pages/UserManagement'
 import NumberLookup from './pages/NumberLookup'
 import PermissionManager from './pages/PermissionManager'
 import Performance from './pages/Performance'
+import OrgChart from './pages/OrgChart'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated() ? <>{children}</> : <Navigate to="/login" replace />
@@ -60,6 +61,14 @@ export default function App() {
               <ProtectedRoute>
                 <NumberLookup />
               </ProtectedRoute>
+            }
+          />
+          <Route
+            path="org-chart"
+            element={
+              <AdminRoute>
+                <OrgChart />
+              </AdminRoute>
             }
           />
           <Route

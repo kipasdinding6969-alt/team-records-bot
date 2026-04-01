@@ -38,6 +38,10 @@ export default function ClientDetail() {
   const [error, setError] = useState('')
   const nav = useNavigate()
 
+  // Linked timeline
+  const [linkedTimeline, setLinkedTimeline] = useState<any>(null)
+  const [showLinked, setShowLinked] = useState(false)
+
   // Note form
   const [noteContent, setNoteContent] = useState('')
   const [noteType, setNoteType] = useState('comment')
@@ -321,6 +325,70 @@ export default function ClientDetail() {
           </button>
         </div>
       </div>
+
+      {/* Linked Timeline Toggle */}
+      {links.length > 0 && (
+        <div style={{ ...CARD, cursor: 'pointer' }} onClick={() => {
+          if (!linkedTimeline) {
+            api.linkedTimeline(clientId).then(setLinkedTimeline).catch(() => {})
+          }
+          setShowLinked(!showLinked)
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: 12, color: theme.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              {t('detail.linked_timeline', lang)} {linkedTimeline ? `(${linkedTimeline.timeline?.length || 0})` : ''}
+            </div>
+            <span style={{ fontSize: 12, color: theme.accent }}>{showLinked ? '▲ 收起' : '▼ 展开 / Expand'}</span>
+          </div>
+          {showLinked && linkedTimeline && (
+            <div style={{ marginTop: 14 }}>
+              {linkedTimeline.linked_client_ids?.length > 0 && (
+                <div style={{ marginBottom: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11, color: theme.textSecondary }}>{t('detail.linked_clients', lang)}:</span>
+                  {linkedTimeline.linked_client_ids.map((lid: number) => (
+                    <span key={lid} onClick={e => { e.stopPropagation(); nav(`/clients/${lid}`) }}
+                      style={{
+                        fontSize: 11, padding: '2px 8px', borderRadius: 10,
+                        background: '#dbeafe', color: '#2563eb', cursor: 'pointer', fontWeight: 600,
+                      }}>
+                      #{lid}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {(linkedTimeline.timeline || []).map((item: any, i: number) => (
+                <div key={`lt-${i}`} style={{
+                  padding: '8px 0', borderBottom: i < linkedTimeline.timeline.length - 1 ? '1px solid #f1f5f9' : 'none',
+                  display: 'flex', gap: 10, alignItems: 'flex-start',
+                }}>
+                  <span style={{
+                    fontSize: 9, padding: '2px 5px', borderRadius: 4, fontWeight: 700, flexShrink: 0, marginTop: 2,
+                    ...(item.timeline_type === 'deposit' ? { background: '#d1fae5', color: '#059669' }
+                      : item.timeline_type === 'link' ? { background: '#e0e7ff', color: '#4f46e5' }
+                      : item.client_id !== clientId ? { background: '#fef3c7', color: '#92400e' }
+                      : { background: '#f1f5f9', color: '#64748b' }),
+                  }}>
+                    {item.timeline_type === 'deposit' ? '$' : item.timeline_type === 'link' ? '⇄' : item.client_id !== clientId ? `#${item.client_id}` : '●'}
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, color: theme.textSecondary }}>
+                      {item.staff_name || item.author_name || '-'}
+                      {item.client_phone && item.client_id !== clientId && (
+                        <span style={{ marginLeft: 6, fontSize: 10, color: '#3b82f6' }}>({item.client_phone})</span>
+                      )}
+                      <span style={{ float: 'right', fontSize: 11 }}>{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</span>
+                    </div>
+                    {item.content && <div style={{ fontSize: 13, color: '#2d2a26', marginTop: 2 }}>{item.content}</div>}
+                  </div>
+                </div>
+              ))}
+              {(linkedTimeline.timeline || []).length === 0 && (
+                <div style={{ color: theme.textSecondary, fontSize: 13 }}>{t('detail.no_notes', lang)}</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Timeline */}
       <div style={CARD}>

@@ -280,4 +280,31 @@ export const api = {
     if (team) p.set('team', team)
     return req<any>(`/api/performance/summary?${p}`)
   },
+
+  // Phase 17: Org Chart
+  orgChart: () => req<any>('/api/org-chart'),
+
+  // Phase 17: Linked Timeline (cross-client)
+  linkedTimeline: (clientId: number) => req<any>(`/api/clients/${clientId}/linked-timeline`),
+
+  // Phase 17: Create client via dashboard
+  createClient: (data: { phone: string; source: string; account_id?: string; nickname?: string; platform?: string }) =>
+    req<{ ok: boolean; client_id: number }>('/api/clients', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Phase 17: Phone duplicate pre-check
+  phoneCheck: (phone: string) =>
+    req<any>(`/api/phone-registry/check?phone=${encodeURIComponent(phone)}`),
+
+  // Phase 17: Bulk permissions
+  bulkPermissions: (data: { staff_id: number; permissions: Record<string, boolean>; reason?: string }) =>
+    req<{ ok: boolean; updated: number }>('/api/permissions/bulk', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Phase 17: Team performance
+  teamPerformance: (team: string) => req<any>(`/api/team/${encodeURIComponent(team)}/performance`),
 }
