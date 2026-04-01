@@ -2279,6 +2279,394 @@ async def check_phone_duplicate(
     return result
 
 
+# ─── Phase 19: Team Targets API ──────────────────────────────────────────────
+
+class SetTargetRequest(BaseModel):
+    team: str
+    period_type: str = 'weekly'  # weekly or monthly
+    period_start: str  # YYYY-MM-DD
+    period_end: str
+    target_leads: Optional[int] = None
+    target_registers: Optional[int] = None
+    target_orders: Optional[int] = None
+    target_deposit: Optional[float] = None
+
+
+@app.get('/api/targets')
+async def get_targets(
+    team: str = Query(default='all'),
+    user: dict = Depends(get_current_user),
+):
+    """Get team targets. Scoped by role."""
+    async with _connect_db() as db:
+        where = '1=1'
+        params: list = []
+        if team != 'all':
+            where = 'tt.team = ?'
+            params = [team]
+        elif user['role'] == 'admin':
+            where = 'tt.team = ?'
+            params = [user['team_scope']]
+
+        async with db.execute(
+            f"""SELECT tt.id, tt.team, tt.period_type, tt.period_start, tt.period_end,
+                       tt.target_leads, tt.target_registers, tt.target_orders, tt.target_deposit,
+                       s.display_name AS created_by_name, tt.created_at
+                FROM team_targets tt
+                LEFT JOIN staff s ON tt.created_by = s.id
+                WHERE {where}
+                ORDER BY tt.period_start DESC LIMIT 50""",
+            params
+        ) as cur:
+            return [row_to_dict(r) for r in await cur.fetchall()]
+
+
+@app.post('/api/targets')
+async def set_target(
+    body: SetTargetRequest,
+    user: dict = Depends(_require_owner_or_admin),
+):
+    """Set or update a team target."""
+    if user['role'] == 'admin' and body.team != user['team_scope']:
+        raise HTTPException(status_code=403, detail='Cannot set targets for other teams')
+
+    async with _connect_db() as db:
+        await db.execute(
+            """INSERT INTO team_targets
+               (team, period_type, period_start, period_end, target_leads, target_registers, target_orders, target_deposit, created_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(team, period_type, period_start)
+               DO UPDATE SET period_end=excluded.period_end, target_leads=excluded.target_leads,
+                 target_registers=excluded.target_registers, target_orders=excluded.target_orders,
+                 target_deposit=excluded.target_deposit""",
+            (body.team, body.period_type, body.period_start, body.period_end,
+             body.target_leads, body.target_registers, body.target_orders, body.target_deposit,
+             user.get('staff_id'))
+        )
+        await db.commit()
+    return {'ok': True}
+
+
+# ─── Phase 19: Real 7-Day Trend Data ────────────────────────────────────────
+
+@app.get('/api/performance/trend')
+async def get_performance_trend(
+    staff_id: int = Query(...),
+    days: int = Query(default=7),
+    user: dict = Depends(get_current_user),
+):
+    """Get N-day daily stats trend for a staff member."""
+    async with _connect_db() as db:
+        async with db.execute(
+            """SELECT stat_date, new_leads, contacted, replied, registered,
+                      training, withdrew, new_orders, ghosted, dead, total_deposit,
+                      reply_rate, conversion_rate
+               FROM daily_stats
+               WHERE staff_id = ? AND stat_date >= DATE('now', ?)
+               ORDER BY stat_date ASC""",
+            (staff_id, f'-{min(days, 90)} days')
+        ) as cur:
+            return [row_to_dict(r) for r in await cur.fetchall()]
+
+
+@app.get('/api/performance/trends-batch')
+async def get_trends_batch(
+    team: str = Query(default='all'),
+    days: int = Query(default=7),
+    user: dict = Depends(get_current_user),
+):
+    """Get 7-day new_leads trend for all staff in a team. Used for sparklines."""
+    async with _connect_db() as db:
+        where = "s.is_active = 1 AND s.role IN ('frontdesk', 'newbie', 'customer_service')"
+        params: list = [f'-{min(days, 90)} days']
+
+        effective_team = team
+        if user['role'] == 'admin' and team == 'all':
+            effective_team = user['team_scope']
+        elif user['role'] == 'member':
+            where += ' AND s.id = ?'
+            params.append(user.get('staff_id'))
+
+        if effective_team and effective_team != 'all':
+            where += ' AND s.team = ?'
+            params.append(effective_team)
+
+        async with db.execute(
+            f"""SELECT s.id AS staff_id, ds.stat_date, ds.new_leads
+                FROM staff s
+                LEFT JOIN daily_stats ds ON s.id = ds.staff_id AND ds.stat_date >= DATE('now', ?)
+                WHERE {where}
+                ORDER BY s.id, ds.stat_date ASC""",
+            params
+        ) as cur:
+            rows = [row_to_dict(r) for r in await cur.fetchall()]
+
+    # Group by staff_id
+    trends: dict = {}
+    for r in rows:
+        sid = r['staff_id']
+        if sid not in trends:
+            trends[sid] = []
+        if r.get('stat_date'):
+            trends[sid].append(r['new_leads'] or 0)
+
+    return trends
+
+
+# ─── Phase 19: Commission API ───────────────────────────────────────────────
+
+@app.get('/api/commissions')
+async def get_commissions(
+    period: str = Query(default=None),
+    team: str = Query(default='all'),
+    user: dict = Depends(get_current_user),
+):
+    """Get commissions. Scoped by role."""
+    async with _connect_db() as db:
+        where_parts = ['1=1']
+        params: list = []
+
+        if period:
+            where_parts.append('co.period = ?')
+            params.append(period)
+
+        if user['role'] == 'member':
+            where_parts.append('co.staff_id = ?')
+            params.append(user.get('staff_id'))
+        elif user['role'] == 'admin':
+            where_parts.append('s.team = ?')
+            params.append(user['team_scope'])
+        elif team != 'all':
+            where_parts.append('s.team = ?')
+            params.append(team)
+
+        where = ' AND '.join(where_parts)
+        async with db.execute(
+            f"""SELECT co.id, co.staff_id, co.trigger_type, co.amount, co.status,
+                       co.period, co.created_at,
+                       s.display_name AS staff_name, s.team
+                FROM commissions co
+                JOIN staff s ON co.staff_id = s.id
+                WHERE {where}
+                ORDER BY co.created_at DESC LIMIT 200""",
+            params
+        ) as cur:
+            return [row_to_dict(r) for r in await cur.fetchall()]
+
+
+@app.get('/api/commissions/summary')
+async def get_commission_summary(
+    period: str = Query(default=None),
+    user: dict = Depends(get_current_user),
+):
+    """Aggregate commission summary per staff."""
+    async with _connect_db() as db:
+        where = '1=1'
+        params: list = []
+        if period:
+            where += ' AND co.period = ?'
+            params.append(period)
+        if user['role'] == 'admin':
+            where += ' AND s.team = ?'
+            params.append(user['team_scope'])
+        elif user['role'] == 'member':
+            where += ' AND co.staff_id = ?'
+            params.append(user.get('staff_id'))
+
+        async with db.execute(
+            f"""SELECT co.staff_id, s.display_name, s.team,
+                       SUM(CASE WHEN co.status = 'approved' THEN co.amount ELSE 0 END) AS approved_total,
+                       SUM(CASE WHEN co.status = 'pending' THEN co.amount ELSE 0 END) AS pending_total,
+                       COUNT(*) AS total_entries
+                FROM commissions co
+                JOIN staff s ON co.staff_id = s.id
+                WHERE {where}
+                GROUP BY co.staff_id
+                ORDER BY approved_total DESC""",
+            params
+        ) as cur:
+            return [row_to_dict(r) for r in await cur.fetchall()]
+
+
+# ─── Phase 19: Message Templates API ────────────────────────────────────────
+
+@app.get('/api/templates')
+async def get_templates(user: dict = Depends(get_current_user)):
+    """List all message templates."""
+    async with _connect_db() as db:
+        async with db.execute(
+            """SELECT mt.id, mt.name, mt.content, mt.category, mt.is_default, mt.created_at,
+                      s.display_name AS created_by_name
+               FROM message_templates mt
+               LEFT JOIN staff s ON mt.created_by = s.id
+               ORDER BY mt.category, mt.name"""
+        ) as cur:
+            return [row_to_dict(r) for r in await cur.fetchall()]
+
+
+class TemplateRequest(BaseModel):
+    name: str
+    content: str
+    category: str = 'general'
+    is_default: bool = False
+
+
+@app.post('/api/templates')
+async def create_template(
+    body: TemplateRequest,
+    user: dict = Depends(_require_owner_or_admin),
+):
+    """Create a message template."""
+    async with _connect_db() as db:
+        cur = await db.execute(
+            "INSERT INTO message_templates (name, content, category, is_default, created_by) VALUES (?, ?, ?, ?, ?)",
+            (body.name, body.content, body.category, int(body.is_default), user.get('staff_id'))
+        )
+        await db.commit()
+        return {'ok': True, 'id': cur.lastrowid}
+
+
+@app.put('/api/templates/{template_id}')
+async def update_template(
+    template_id: int,
+    body: TemplateRequest,
+    user: dict = Depends(_require_owner_or_admin),
+):
+    """Update a message template."""
+    async with _connect_db() as db:
+        cur = await db.execute(
+            "UPDATE message_templates SET name=?, content=?, category=?, is_default=? WHERE id=?",
+            (body.name, body.content, body.category, int(body.is_default), template_id)
+        )
+        await db.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail='Template not found')
+    return {'ok': True}
+
+
+@app.delete('/api/templates/{template_id}')
+async def delete_template(
+    template_id: int,
+    user: dict = Depends(_require_owner_or_admin),
+):
+    """Delete a message template."""
+    async with _connect_db() as db:
+        cur = await db.execute("DELETE FROM message_templates WHERE id = ?", (template_id,))
+        await db.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail='Template not found')
+    return {'ok': True}
+
+
+# ─── Phase 19: Contests / Gamification API ───────────────────────────────────
+
+@app.get('/api/contests')
+async def get_contests(user: dict = Depends(get_current_user)):
+    """List all contests."""
+    async with _connect_db() as db:
+        async with db.execute(
+            """SELECT c.id, c.title, c.metric, c.target, c.team, c.start_date, c.end_date,
+                      c.status, c.created_at,
+                      sw.display_name AS winner_name,
+                      sc.display_name AS created_by_name
+               FROM contests c
+               LEFT JOIN staff sw ON c.winner_id = sw.id
+               LEFT JOIN staff sc ON c.created_by = sc.id
+               ORDER BY c.start_date DESC"""
+        ) as cur:
+            return [row_to_dict(r) for r in await cur.fetchall()]
+
+
+class ContestRequest(BaseModel):
+    title: str
+    metric: str  # new_leads, registered, deposits, etc.
+    target: int
+    team: Optional[str] = None
+    start_date: str
+    end_date: str
+
+
+@app.post('/api/contests')
+async def create_contest(
+    body: ContestRequest,
+    user: dict = Depends(_require_owner_or_admin),
+):
+    """Create a contest."""
+    async with _connect_db() as db:
+        cur = await db.execute(
+            """INSERT INTO contests (title, metric, target, team, start_date, end_date, status, created_by)
+               VALUES (?, ?, ?, ?, ?, ?, 'active', ?)""",
+            (body.title, body.metric, body.target, body.team, body.start_date, body.end_date,
+             user.get('staff_id'))
+        )
+        await db.commit()
+        return {'ok': True, 'id': cur.lastrowid}
+
+
+@app.get('/api/contests/{contest_id}/leaderboard')
+async def get_contest_leaderboard(contest_id: int, user: dict = Depends(get_current_user)):
+    """Get leaderboard for a contest."""
+    async with _connect_db() as db:
+        async with db.execute(
+            """SELECT cs.staff_id, cs.score, cs.updated_at,
+                      s.display_name, s.team
+               FROM contest_scores cs
+               JOIN staff s ON cs.staff_id = s.id
+               WHERE cs.contest_id = ?
+               ORDER BY cs.score DESC""",
+            (contest_id,)
+        ) as cur:
+            return [row_to_dict(r) for r in await cur.fetchall()]
+
+
+# ─── Phase 19: XP & Badges API ──────────────────────────────────────────────
+
+@app.get('/api/gamification/{staff_id}')
+async def get_staff_gamification(staff_id: int, user: dict = Depends(get_current_user)):
+    """Get XP, streak, and badges for a staff member."""
+    async with _connect_db() as db:
+        # Total XP
+        async with db.execute(
+            "SELECT COALESCE(SUM(xp_amount), 0) AS total_xp FROM xp_events WHERE staff_id = ?",
+            (staff_id,)
+        ) as cur:
+            xp = (await cur.fetchone())['total_xp']
+
+        # Streak
+        async with db.execute(
+            "SELECT current_streak, longest_streak, last_action_date FROM streaks WHERE staff_id = ?",
+            (staff_id,)
+        ) as cur:
+            streak_row = await cur.fetchone()
+            streak = row_to_dict(streak_row) if streak_row else {'current_streak': 0, 'longest_streak': 0}
+
+        # Badges
+        async with db.execute(
+            """SELECT b.name, b.emoji, b.description, sb.earned_at
+               FROM staff_badges sb
+               JOIN badges b ON sb.badge_id = b.id
+               WHERE sb.staff_id = ?
+               ORDER BY sb.earned_at DESC""",
+            (staff_id,)
+        ) as cur:
+            badges = [row_to_dict(r) for r in await cur.fetchall()]
+
+        # Recent XP events
+        async with db.execute(
+            "SELECT action, xp_amount, created_at FROM xp_events WHERE staff_id = ? ORDER BY created_at DESC LIMIT 20",
+            (staff_id,)
+        ) as cur:
+            recent_xp = [row_to_dict(r) for r in await cur.fetchall()]
+
+    return {
+        'staff_id': staff_id,
+        'total_xp': xp,
+        'streak': streak,
+        'badges': badges,
+        'recent_xp': recent_xp,
+    }
+
+
 # ─── Health ───────────────────────────────────────────────────────────────────
 
 @app.get('/health')

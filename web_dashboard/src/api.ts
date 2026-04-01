@@ -330,4 +330,47 @@ export const api = {
 
   // Phase 17: Team performance
   teamPerformance: (team: string) => req<any>(`/api/team/${encodeURIComponent(team)}/performance`),
+
+  // Phase 19: Targets
+  getTargets: (team?: string) => req<any[]>(`/api/targets${team ? `?team=${encodeURIComponent(team)}` : ''}`),
+  setTarget: (data: { team: string; period_type: string; period_start: string; period_end: string; target_leads?: number; target_registers?: number; target_orders?: number; target_deposit?: number }) =>
+    req<{ ok: boolean }>('/api/targets', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Phase 19: Real trends
+  performanceTrend: (staffId: number, days?: number) =>
+    req<any[]>(`/api/performance/trend?staff_id=${staffId}${days ? `&days=${days}` : ''}`),
+  trendsBatch: (team?: string, days?: number) => {
+    const p = new URLSearchParams()
+    if (team) p.set('team', team)
+    if (days) p.set('days', String(days))
+    return req<Record<number, number[]>>(`/api/performance/trends-batch${p.toString() ? `?${p}` : ''}`)
+  },
+
+  // Phase 19: Commissions
+  getCommissions: (period?: string, team?: string) => {
+    const p = new URLSearchParams()
+    if (period) p.set('period', period)
+    if (team) p.set('team', team)
+    return req<any[]>(`/api/commissions${p.toString() ? `?${p}` : ''}`)
+  },
+  commissionSummary: (period?: string) =>
+    req<any[]>(`/api/commissions/summary${period ? `?period=${period}` : ''}`),
+
+  // Phase 19: Templates
+  getTemplates: () => req<any[]>('/api/templates'),
+  createTemplate: (data: { name: string; content: string; category?: string }) =>
+    req<{ ok: boolean; id: number }>('/api/templates', { method: 'POST', body: JSON.stringify(data) }),
+  updateTemplate: (id: number, data: { name: string; content: string; category?: string }) =>
+    req<{ ok: boolean }>(`/api/templates/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteTemplate: (id: number) =>
+    req<{ ok: boolean }>(`/api/templates/${id}`, { method: 'DELETE' }),
+
+  // Phase 19: Contests
+  getContests: () => req<any[]>('/api/contests'),
+  createContest: (data: { title: string; metric: string; target: number; team?: string; start_date: string; end_date: string }) =>
+    req<{ ok: boolean; id: number }>('/api/contests', { method: 'POST', body: JSON.stringify(data) }),
+  contestLeaderboard: (contestId: number) => req<any[]>(`/api/contests/${contestId}/leaderboard`),
+
+  // Phase 19: Gamification
+  staffGamification: (staffId: number) => req<any>(`/api/gamification/${staffId}`),
 }
