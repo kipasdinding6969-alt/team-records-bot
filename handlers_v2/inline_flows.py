@@ -545,6 +545,26 @@ async def handle_add_await_phone(task_data: Dict[str, Any]):
             await _show_client_detail(chat_id, None, staff, existing.id, lang)
         return
 
+    # Phase 17: Phone registry duplicate guard (cross-frontdesk, catches ChatExport imports)
+    registry_entry = await database_v2.phone_registry_lookup(phone)
+    if registry_entry:
+        owner_name = registry_entry['submitter_name']
+        owner_staff_id = registry_entry['submitter_staff_id']
+        submitted_at = registry_entry['submitted_at']
+        if owner_staff_id and owner_staff_id != staff.id:
+            import json
+            await database_v2.phone_registry_log_action(
+                phone, 'duplicate_blocked', staff.display_name, staff.id,
+                json.dumps({'original_submitter': owner_name}, ensure_ascii=False))
+            await telegram_handler.clear_conversation_state(user_id)
+            await telegram_handler.send_message(chat_id,
+                f"⚠️ 号码重复 / Duplicate Number\n"
+                f"该号码已由 {owner_name} 于 {submitted_at} 提交\n"
+                f"This number was submitted by {owner_name} on {submitted_at}\n"
+                f"如需覆盖请联系管理员 / Contact admin to override")
+            return
+        # Same frontdesk — allow (fall through to source selection)
+
     await telegram_handler.set_conversation_state(user_id, {
         'step': 'add_await_source',
         'pending': {'phone': phone},
@@ -593,7 +613,20 @@ async def handle_add_source_callback(task_data: Dict[str, Any]):
     source = _SOURCE_MAP.get(src_code, src_code)
 
     c = Client(frontdesk_id=staff.id, phone=phone, source=source)
-    await database_v2.create_client(c)
+    client_id = await database_v2.create_client(c)
+
+    # Phase 17: Register phone in registry if not already there
+    existing_reg = await database_v2.phone_registry_lookup(phone)
+    if not existing_reg:
+        try:
+            from datetime import datetime as _dt
+            await database_v2.phone_registry_insert(
+                phone, staff.display_name, _dt.utcnow().isoformat(),
+                source='bot', submitter_staff_id=staff.id)
+            await database_v2.phone_registry_log_action(
+                phone, 'submit', staff.display_name, staff.id)
+        except Exception as _e:
+            logger.debug(f'Phone registry insert skipped (inline): {_e}')
 
     kb = telegram_handler.create_inline_keyboard([
         [

@@ -1724,6 +1724,339 @@ async def get_performance_summary(
     return {'from': date_from, 'to': date_to, 'team': team, 'staff': rows}
 
 
+# ─── Phase 17: Org Chart / Team Hierarchy API ────────────────────────────────
+
+@app.get('/api/org-chart')
+async def get_org_chart(user: dict = Depends(get_current_user)):
+    """Return team hierarchy tree. Owner sees all, admin sees own team, member sees own team."""
+    async with _connect_db() as db:
+        where = 'WHERE s.is_active = 1'
+        params: list = []
+
+        if user['role'] == 'admin':
+            where += ' AND s.team = ?'
+            params.append(user['team_scope'])
+        elif user['role'] == 'member':
+            where += ' AND s.team = ?'
+            params.append(user.get('team_scope', ''))
+
+        async with db.execute(
+            f"""SELECT s.id, s.display_name, s.role, s.team, s.maintenance_id,
+                       s.tg_username, s.daily_target, s.last_active_at,
+                       (SELECT COUNT(*) FROM clients c WHERE c.frontdesk_id = s.id
+                        AND c.status NOT IN ('dead', 'blocked', 'scammed')) AS active_clients,
+                       (SELECT COUNT(*) FROM permission_overrides po WHERE po.staff_id = s.id) AS override_count
+                FROM staff s {where}
+                ORDER BY s.role, s.team, s.display_name""",
+            params
+        ) as cur:
+            staff_rows = [row_to_dict(r) for r in await cur.fetchall()]
+
+    # Build tree: teams → leaders → members
+    teams: dict = {}
+    unassigned = []
+    for s in staff_rows:
+        team = s.get('team')
+        if not team:
+            unassigned.append(s)
+            continue
+        if team not in teams:
+            teams[team] = {'name': team, 'leader': None, 'members': []}
+        if s['role'] in ('maintenance', 'leader', 'manager'):
+            teams[team]['leader'] = s
+        else:
+            teams[team]['members'].append(s)
+
+    result = []
+    for team_name, team_data in sorted(teams.items()):
+        node = {
+            'team': team_name,
+            'leader': team_data['leader'],
+            'members': team_data['members'],
+            'member_count': len(team_data['members']),
+            'total_clients': sum(m.get('active_clients', 0) for m in team_data['members']),
+        }
+        if team_data['leader']:
+            node['total_clients'] += team_data['leader'].get('active_clients', 0)
+        result.append(node)
+
+    return {'teams': result, 'unassigned': unassigned}
+
+
+# ─── Phase 17: Cross-Client Linked Timeline ──────────────────────────────────
+
+@app.get('/api/clients/{client_id}/linked-timeline')
+async def get_linked_timeline(
+    client_id: int,
+    user: dict = Depends(get_current_user),
+):
+    """Get unified timeline across a client AND all their linked clients.
+    Shows notes, status changes, deposits from linked records for full picture."""
+    items = []
+    async with _connect_db() as db:
+        # Get all linked client IDs (including self)
+        async with db.execute(
+            """SELECT client_id_b AS linked_id FROM client_links WHERE client_id_a = ?
+               UNION
+               SELECT client_id_a AS linked_id FROM client_links WHERE client_id_b = ?""",
+            (client_id, client_id)
+        ) as cur:
+            linked_ids = [row['linked_id'] for row in await cur.fetchall()]
+
+        all_ids = [client_id] + linked_ids
+        placeholders = ','.join('?' * len(all_ids))
+
+        # Notes from all linked clients
+        async with db.execute(
+            f"""SELECT cn.id, cn.client_id, 'note' AS timeline_type,
+                       cn.note_type, cn.content, cn.created_at,
+                       cn.author_name, cn.old_status, cn.new_status,
+                       c.phone AS client_phone,
+                       s.display_name AS staff_name
+                FROM client_notes cn
+                JOIN clients c ON cn.client_id = c.id
+                LEFT JOIN staff s ON cn.staff_id = s.id
+                WHERE cn.client_id IN ({placeholders})
+                ORDER BY cn.created_at DESC LIMIT 200""",
+            all_ids
+        ) as cur:
+            items.extend([row_to_dict(r) for r in await cur.fetchall()])
+
+        # Deposits from all linked clients
+        async with db.execute(
+            f"""SELECT d.id, d.client_id, 'deposit' AS timeline_type,
+                       'deposit' AS note_type,
+                       d.amount, d.currency, d.platform, d.deposit_date AS created_at,
+                       c.phone AS client_phone,
+                       s.display_name AS staff_name
+                FROM deposits d
+                JOIN clients c ON d.client_id = c.id
+                LEFT JOIN staff s ON d.frontdesk_id = s.id
+                WHERE d.client_id IN ({placeholders})
+                ORDER BY d.deposit_date DESC LIMIT 100""",
+            all_ids
+        ) as cur:
+            for r in await cur.fetchall():
+                rd = row_to_dict(r)
+                rd['content'] = f"${rd.get('amount', 0):.2f} {rd.get('currency', 'USD')} ({rd.get('platform', 'unknown')})"
+                items.append(rd)
+
+        # Link events
+        async with db.execute(
+            f"""SELECT cl.id, cl.client_id_a AS client_id, 'link' AS timeline_type,
+                       cl.link_type AS note_type, cl.note AS content,
+                       cl.created_at,
+                       s.display_name AS staff_name,
+                       ca.phone AS phone_a, cb.phone AS phone_b
+                FROM client_links cl
+                JOIN clients ca ON cl.client_id_a = ca.id
+                JOIN clients cb ON cl.client_id_b = cb.id
+                LEFT JOIN staff s ON cl.created_by = s.id
+                WHERE cl.client_id_a IN ({placeholders}) OR cl.client_id_b IN ({placeholders})
+                ORDER BY cl.created_at DESC""",
+            all_ids + all_ids
+        ) as cur:
+            items.extend([row_to_dict(r) for r in await cur.fetchall()])
+
+    items.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+    return {
+        'client_id': client_id,
+        'linked_client_ids': linked_ids,
+        'timeline': items[:200],
+    }
+
+
+# ─── Phase 17: Dashboard Duplicate Check API ─────────────────────────────────
+
+class CreateClientRequest(BaseModel):
+    phone: str
+    source: str
+    account_id: Optional[str] = None
+    nickname: Optional[str] = None
+    platform: Optional[str] = None
+
+
+@app.post('/api/clients')
+async def create_client_via_dashboard(
+    body: CreateClientRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Create a client via dashboard with phone_registry duplicate guard."""
+    staff_id = user.get('staff_id')
+    if not staff_id:
+        raise HTTPException(status_code=403, detail='No linked staff account')
+
+    import re
+    phone_normalized = re.sub(r'[^\d]', '', body.phone)
+
+    async with _connect_db() as db:
+        # Check clients table (same frontdesk)
+        async with db.execute(
+            'SELECT id, status FROM clients WHERE phone = ? AND frontdesk_id = ?',
+            (body.phone, staff_id)
+        ) as cur:
+            existing = await cur.fetchone()
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=f'You already have this client (ID #{existing["id"]}, status: {existing["status"]})'
+            )
+
+        # Check phone_registry (cross-frontdesk)
+        async with db.execute(
+            'SELECT submitter_name, submitter_staff_id, submitted_at FROM phone_registry WHERE phone_normalized = ?',
+            (phone_normalized,)
+        ) as cur:
+            registry = await cur.fetchone()
+
+        if registry and registry['submitter_staff_id'] and registry['submitter_staff_id'] != staff_id:
+            # Log the blocked attempt
+            await db.execute(
+                """INSERT INTO phone_registry_log
+                   (phone_normalized, action, actor_name, actor_staff_id, details)
+                   VALUES (?, 'duplicate_blocked_dashboard', ?, ?, ?)""",
+                (phone_normalized, user['display_name'], staff_id,
+                 f'{{"original_submitter": "{registry["submitter_name"]}"}}')
+            )
+            await db.commit()
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    'type': 'duplicate',
+                    'owner': registry['submitter_name'],
+                    'submitted_at': registry['submitted_at'],
+                    'message': f'This number is owned by {registry["submitter_name"]} (submitted {registry["submitted_at"]}). Contact admin to override.'
+                }
+            )
+
+        # Create the client
+        cur = await db.execute(
+            """INSERT INTO clients
+               (frontdesk_id, phone, source, account_id, nickname, platform, status)
+               VALUES (?, ?, ?, ?, ?, ?, 'new')""",
+            (staff_id, body.phone, body.source, body.account_id,
+             body.nickname, body.platform)
+        )
+        client_id = cur.lastrowid
+
+        # Register in phone_registry if new
+        if not registry:
+            from datetime import datetime as _dt
+            try:
+                await db.execute(
+                    """INSERT INTO phone_registry
+                       (phone, phone_normalized, submitter_name, submitter_staff_id, source, submitted_at)
+                       VALUES (?, ?, ?, ?, 'dashboard', ?)""",
+                    (body.phone, phone_normalized, user['display_name'], staff_id,
+                     _dt.now(UTC).isoformat())
+                )
+                await db.execute(
+                    """INSERT INTO phone_registry_log
+                       (phone_normalized, action, actor_name, actor_staff_id)
+                       VALUES (?, 'submit_dashboard', ?, ?)""",
+                    (phone_normalized, user['display_name'], staff_id)
+                )
+            except aiosqlite.IntegrityError:
+                pass  # race condition, already registered
+
+        await db.commit()
+
+    return {'ok': True, 'client_id': client_id}
+
+
+# ─── Phase 17: Bulk Permission Management ────────────────────────────────────
+
+class BulkPermissionRequest(BaseModel):
+    staff_id: int
+    permissions: dict  # {command: bool} e.g. {"add": true, "export": false}
+    reason: Optional[str] = None
+
+
+@app.post('/api/permissions/bulk')
+async def set_bulk_permissions(
+    body: BulkPermissionRequest,
+    user: dict = Depends(_require_owner_or_admin),
+):
+    """Set multiple permission overrides at once. Admin can only manage own team."""
+    if user['role'] == 'admin':
+        async with _connect_db() as db:
+            async with db.execute('SELECT team, role FROM staff WHERE id = ?', (body.staff_id,)) as cur:
+                row = await cur.fetchone()
+            if not row or row['team'] != user['team_scope']:
+                raise HTTPException(status_code=403, detail='Cannot manage permissions for staff outside your team')
+            # Admin cannot modify admin/leader/maintenance permissions (same or higher level)
+            if row['role'] in ('admin', 'leader', 'manager', 'maintenance'):
+                raise HTTPException(status_code=403, detail='Cannot modify permissions for staff at or above your level')
+
+    granter_id = user.get('staff_id')
+    async with _connect_db() as db:
+        for cmd, allowed in body.permissions.items():
+            cmd_clean = cmd.lstrip('/')
+            await db.execute(
+                """INSERT INTO permission_overrides
+                   (staff_id, command, allowed, granted_by, reason)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(staff_id, command)
+                   DO UPDATE SET allowed = excluded.allowed,
+                                 granted_by = excluded.granted_by,
+                                 reason = excluded.reason,
+                                 updated_at = CURRENT_TIMESTAMP""",
+                (body.staff_id, cmd_clean, allowed, granter_id, body.reason)
+            )
+        await db.commit()
+    return {'ok': True, 'updated': len(body.permissions)}
+
+
+# ─── Phase 17: Phone Registry Duplicate Check (pre-submit) ───────────────────
+
+@app.get('/api/phone-registry/check')
+async def check_phone_duplicate(
+    phone: str = Query(...),
+    user: dict = Depends(get_current_user),
+):
+    """Quick duplicate check before submission. Returns owner info if exists."""
+    import re
+    normalized = re.sub(r'[^\d]', '', phone)
+    staff_id = user.get('staff_id')
+
+    result = {'phone': phone, 'normalized': normalized, 'status': 'available'}
+
+    async with _connect_db() as db:
+        # Check phone_registry
+        async with db.execute(
+            """SELECT submitter_name, submitter_staff_id, submitted_at, category, team_name
+               FROM phone_registry WHERE phone_normalized = ?""",
+            (normalized,)
+        ) as cur:
+            registry = await cur.fetchone()
+
+        if registry:
+            is_own = registry['submitter_staff_id'] == staff_id
+            result['status'] = 'own' if is_own else 'taken'
+            result['owner'] = registry['submitter_name']
+            result['submitted_at'] = registry['submitted_at']
+            result['category'] = registry['category']
+            result['team_name'] = registry['team_name']
+            result['editable'] = is_own
+
+        # Also check clients table
+        async with db.execute(
+            """SELECT c.id, c.status, c.frontdesk_id, s.display_name AS frontdesk_name
+               FROM clients c LEFT JOIN staff s ON c.frontdesk_id = s.id
+               WHERE c.phone = ? LIMIT 1""",
+            (phone,)
+        ) as cur:
+            client = await cur.fetchone()
+
+        if client:
+            result['client_id'] = client['id']
+            result['client_status'] = client['status']
+            result['client_owner'] = client['frontdesk_name']
+            result['is_own_client'] = client['frontdesk_id'] == staff_id
+
+    return result
+
+
 # ─── Health ───────────────────────────────────────────────────────────────────
 
 @app.get('/health')
