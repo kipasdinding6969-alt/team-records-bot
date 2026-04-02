@@ -57,7 +57,7 @@ export default function Reports() {
       <div className="toolbar">
         <PageHeader title={t('reports.title', getLang())} />
         <div className="toolbar-spacer" />
-        <div className="tab-bar" style={{ marginBottom: 0 }}>
+        <div className="tab-bar mb-0">
           {(['daily', 'weekly', 'monthly'] as Period[]).map(p => (
             <button
               className={`tab-btn ${period === p ? 'active' : ''}`}
@@ -77,7 +77,7 @@ export default function Reports() {
       </div>
 
       {/* Line charts: new clients + orders */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+      <div className="grid-2col gap-20 mb-20">
         <div className="card">
           <SectionTitle>{t('reports.new_client_trend', getLang())}</SectionTitle>
           {!trends?.daily_new.length ? (
@@ -128,7 +128,7 @@ export default function Reports() {
       </div>
 
       {/* Deposit trend + status donut */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20, marginBottom: 20 }}>
+      <div className="grid-2fr-1fr gap-20 mb-20">
         <div className="card">
           <SectionTitle>{t('reports.deposit_trend_30', getLang())}</SectionTitle>
           {!trends?.daily_deposits.length ? (
@@ -190,23 +190,23 @@ export default function Reports() {
 
       {/* Conversion rate card */}
       {stats && (
-        <div className="card" style={{ display: 'flex', gap: 32 }}>
+        <div className="card d-flex gap-32">
           <div>
-            <div className="field-label" style={{ marginBottom: 8 }}>
+            <div className="field-label mb-8">
               {t('reports.overall_conversion', getLang())}
             </div>
-            <div className="metric-value" style={{ color: theme.accent }}>
+            <div className="metric-value text-accent">
               {stats.conversion_rate}%
             </div>
-            <div style={{ fontSize: 12, color: theme.textSecondary, marginTop: 4 }}>
+            <div className="caption mt-4">
               {stats.by_status['ordered'] || 0} {t('reports.orders_label', getLang())} / {stats.total_clients} {t('dash.total_clients', getLang())}
             </div>
           </div>
           <div>
-            <div className="field-label" style={{ marginBottom: 8 }}>
+            <div className="field-label mb-8">
               {t('reports.total_deposit', getLang())}
             </div>
-            <div className="metric-value" style={{ color: theme.accent }}>
+            <div className="metric-value text-accent">
               ${stats.total_deposits.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </div>
           </div>

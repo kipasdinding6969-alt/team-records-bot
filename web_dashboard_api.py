@@ -2433,12 +2433,12 @@ async def check_phone_duplicate(
             result['team_name'] = registry['team_name']
             result['editable'] = is_own
 
-        # Also check clients table
+        # Also check clients table (match exact or last 8 digits for format differences)
         async with db.execute(
             """SELECT c.id, c.status, c.frontdesk_id, s.display_name AS frontdesk_name
                FROM clients c LEFT JOIN staff s ON c.frontdesk_id = s.id
-               WHERE c.phone = ? LIMIT 1""",
-            (phone,)
+               WHERE c.phone = ? OR c.phone LIKE ? LIMIT 1""",
+            (phone, f'%{normalized[-8:]}%')
         ) as cur:
             client = await cur.fetchone()
 

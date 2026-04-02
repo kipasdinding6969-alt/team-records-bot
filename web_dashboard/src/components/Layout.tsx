@@ -78,50 +78,27 @@ export default function Layout() {
   const roleLabel = t(`role.${auth?.role || 'member'}`, lang as 'en' | 'zh')
 
   return (
-    <div style={{
-      display: 'flex',
-      minHeight: '100vh',
-      background: theme.bg,
-      color: theme.textPrimary,
-      fontFamily: theme.fontFamily,
-    }}>
+    <div className="layout-root">
       {/* Mobile overlay backdrop */}
       {isMobile && sidebarOpen && (
         <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 25, backdropFilter: 'blur(4px)' }}
+          className="mobile-overlay"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* --- Sidebar --- */}
-      <aside className="glass-panel" style={{
-        width: 240,
-        display: 'flex',
-        flexDirection: 'column',
-        flexShrink: 0,
-        zIndex: 30,
-        borderRight: `1px solid ${theme.glassBorder}`,
-        transition: 'transform 0.3s ease',
-        position: isMobile ? 'fixed' : 'relative',
-        height: isMobile ? '100vh' : '100%',
-        transform: isMobile && !sidebarOpen ? 'translateX(-240px)' : 'translateX(0)',
-        background: theme.sidebarBg,
-      }}>
+      <aside className={`layout-sidebar glass-panel${isMobile ? ' mobile' : ''}${isMobile && !sidebarOpen ? ' collapsed' : ''}`}>
         {/* Brand */}
-        <div style={{ padding: '20px 20px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: 8, background: theme.accent,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#fff', fontWeight: 'bold', fontSize: 18,
-            boxShadow: `0 4px 16px ${theme.accentLight}`,
-          }}>
+        <div className="sidebar-brand">
+          <div className="sidebar-brand-icon">
             T
           </div>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: theme.textPrimary, letterSpacing: '-0.02em' }}>
+            <div className="sidebar-brand-title">
               {t('nav.brand', lang as 'en' | 'zh')}
             </div>
-            <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 2, fontWeight: 500 }}>
+            <div className="sidebar-brand-sub">
               {t('nav.brand_sub', lang as 'en' | 'zh')}
             </div>
           </div>
@@ -129,31 +106,24 @@ export default function Layout() {
 
         {/* User card */}
         {auth && (
-          <div style={{ padding: '0 12px 12px', borderBottom: `1px solid ${theme.glassBorder}` }}>
-            <div className="glass-card" style={{ borderRadius: theme.radiusCard, padding: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{
-                width: 36, height: 36, borderRadius: '50%',
-                background: theme.accentLight,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: theme.accent, fontWeight: 600, fontSize: 15,
-              }}>
+          <div className="sidebar-user">
+            <div className="sidebar-user-card glass-card">
+              <div className="sidebar-user-avatar">
                 {auth.display_name.charAt(0).toUpperCase()}
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, color: theme.textPrimary, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div className="sidebar-user-info">
+                <div className="sidebar-user-name">
                   {auth.display_name}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                <div className="sidebar-user-meta">
                   <span className="pill-badge" style={{
-                    fontSize: 10,
-                    color: ROLE_COLORS[auth.role] || theme.textSecondary,
-                    background: `${ROLE_COLORS[auth.role] || theme.textMuted}1a`,
-                    textTransform: 'uppercase',
+                    color: ROLE_COLORS[auth.role] || undefined,
+                    background: ROLE_COLORS[auth.role] ? `${ROLE_COLORS[auth.role]}1a` : undefined,
                   }}>
                     {roleLabel}
                   </span>
                   {auth.team_scope && (
-                    <span style={{ fontSize: 11, color: theme.textSecondary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500 }}>
+                    <span className="sidebar-user-scope">
                       {auth.team_scope}
                     </span>
                   )}
@@ -164,14 +134,13 @@ export default function Layout() {
         )}
 
         {/* Navigation */}
-        <nav style={{ flex: 1, padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
+        <nav className="sidebar-nav">
           {navItems.map(item => (
             <NavLink
               key={item.path}
               to={item.path}
               end={item.end}
               className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-              style={{ padding: '8px 12px' }}
               onClick={() => isMobile && setSidebarOpen(false)}
             >
               <span className="nav-item-icon">{item.icon}</span>
@@ -181,8 +150,8 @@ export default function Layout() {
         </nav>
 
         {/* Footer — theme / lang / logout */}
-        <div style={{ borderTop: `1px solid ${theme.glassBorder}`, padding: 12 }}>
-          <div style={{ display: 'flex', gap: 8 }}>
+        <div className="sidebar-footer">
+          <div className="sidebar-footer-btns">
             <button className="glass-btn" onClick={toggleTheme} style={{ flex: 1 }}>
               {themeMode === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19'}
             </button>
@@ -197,41 +166,28 @@ export default function Layout() {
       </aside>
 
       {/* --- Main content --- */}
-      <main style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <main className="layout-main">
         {/* Header: 52px, search + status */}
-        <header className="glass-panel" style={{
-          height: 52,
-          display: 'flex',
-          alignItems: 'center',
-          padding: '0 24px',
-          flexShrink: 0,
-          position: 'sticky',
-          top: 0,
-          zIndex: 10,
-          borderBottom: `1px solid ${theme.glassBorder}`,
-          gap: 12,
-        }}>
+        <header className="layout-header glass-panel">
           {isMobile && (
             <button
-              className="glass-btn"
+              className="burger-btn glass-btn"
               onClick={() => setSidebarOpen(true)}
-              style={{ background: 'transparent', border: 'none', color: theme.textPrimary, fontSize: 20, cursor: 'pointer', padding: 4 }}
             >
               {'\u2630'}
             </button>
           )}
           {isMobile && (
-            <div style={{ fontSize: 13, fontWeight: 600, color: theme.textSecondary }}>
+            <div className="mobile-brand">
               {t('nav.brand', lang as 'en' | 'zh')}
             </div>
           )}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'flex-end' }}>
-            <div style={{ position: 'relative', flex: 1, maxWidth: 320 }}>
+            <div className="search-input-wrap">
               <input
                 type="text"
                 placeholder={t('common.search', lang as 'en' | 'zh') + '...'}
                 className="input"
-                style={{ paddingLeft: 32, width: '100%' }}
                 onKeyDown={e => {
                   if (e.key === 'Enter') {
                     const val = (e.target as HTMLInputElement).value.trim()
@@ -239,24 +195,17 @@ export default function Layout() {
                   }
                 }}
               />
-              <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: theme.textMuted }}>
-                {'\u2315'}
-              </span>
+              <span className="search-icon">{'\u2315'}</span>
             </div>
-            <div style={{
-              cursor: 'default', padding: '4px 10px', borderRadius: 8,
-              background: theme.successBg, border: `1px solid ${theme.success}33`,
-              color: theme.success, fontSize: 11, fontWeight: 600,
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: theme.success, display: 'inline-block' }} />
+            <div className="status-ok">
+              <span className="dot" />
               OK
             </div>
           </div>
         </header>
 
         {/* Content area */}
-        <div style={{ flex: 1, minWidth: 0, maxWidth: 1400, margin: '0 auto', width: '100%' }}>
+        <div className="layout-content">
           <ScopeBanner auth={auth} />
           <Outlet />
         </div>

@@ -31,15 +31,15 @@ interface OrgData {
   unassigned: StaffNode[]
 }
 
-const ROLE_BADGE: Record<string, { bg: string; color: string }> = {
-  admin: { bg: 'rgba(248,113,113,0.15)', color: '#f87171' },
-  manager: { bg: 'rgba(251,191,36,0.15)', color: '#fbbf24' },
-  leader: { bg: 'rgba(45,212,191,0.15)', color: '#2dd4bf' },
-  maintenance: { bg: 'rgba(52,211,153,0.15)', color: '#34d399' },
-  frontdesk: { bg: 'rgba(127,132,142,0.15)', color: '#7f848e' },
-  customer_service: { bg: 'rgba(13,148,136,0.15)', color: '#0d9488' },
-  newbie: { bg: 'rgba(251,191,36,0.15)', color: '#fbbf24' },
-  viewer: { bg: 'rgba(127,132,142,0.15)', color: '#7f848e' },
+const ROLE_BADGE: Record<string, string> = {
+  admin: 'role-admin',
+  manager: 'role-manager',
+  leader: 'role-leader',
+  maintenance: 'role-maintenance',
+  frontdesk: 'role-frontdesk',
+  customer_service: 'role-cs',
+  newbie: 'role-newbie',
+  viewer: 'role-viewer',
 }
 
 export default function OrgChart() {
@@ -73,8 +73,8 @@ export default function OrgChart() {
     loadData()
   }, [])
 
-  if (loading && !data) return <div style={{ padding: 32, color: theme.textSecondary }}>{t('common.loading', lang)}</div>
-  if (!data) return <div style={{ padding: 32, color: theme.textSecondary }}>{t('common.error', lang)}</div>
+  if (loading && !data) return <div className="empty-state">{t('common.loading', lang)}</div>
+  if (!data) return <div className="empty-state">{t('common.error', lang)}</div>
 
   const totalStaff = data.teams.reduce((sum, tm) => sum + tm.member_count + (tm.leader ? 1 : 0), 0) + data.unassigned.length
   const totalClients = data.teams.reduce((sum, tm) => sum + tm.total_clients, 0)
@@ -102,56 +102,51 @@ export default function OrgChart() {
         <h1 className="page-title">{t('org.title', lang)}</h1>
         <div className="toolbar-spacer" />
         <input
-          className="input"
+          className="input w-260"
           type="text"
           placeholder={t("org.search_staff", lang)}
           value={search}
           onChange={e => setSearch(e.target.value)}
-          style={{ width: 260 }}
         />
       </div>
 
       {/* Summary bar */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+      <div className="grid-3col gap-12 mb-20">
         {[
-          { label: t('org.total_teams', lang), value: data.teams.length, color: theme.accent },
-          { label: t('org.total_staff', lang), value: totalStaff, color: theme.success },
-          { label: t('org.active_clients', lang), value: totalClients, color: theme.warning },
+          { label: t('org.total_teams', lang), value: data.teams.length, cls: 'text-accent' },
+          { label: t('org.total_staff', lang), value: totalStaff, cls: 'text-success' },
+          { label: t('org.active_clients', lang), value: totalClients, cls: 'text-warning' },
         ].map(s => (
           <div key={s.label} className="stat-card">
-            <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
+            <div className={`stat-value ${s.cls}`}>{s.value}</div>
             <div className="stat-label">{s.label}</div>
           </div>
         ))}
       </div>
 
       {/* Team cards with collapsible nodes */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 20 }}>
+      <div className="grid-auto-360 gap-20">
         {filteredTeams.map(team => {
           const isCollapsed = collapsedTeams.has(team.team)
           return (
-            <div key={team.team} className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div key={team.team} className="card p-0 overflow-hidden">
               {/* Team header - clickable to collapse */}
               <div
-                style={{
-                  padding: '12px 20px', borderBottom: `1px solid ${theme.cardBorder}`,
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  cursor: 'pointer',
-                }}
+                className="org-team-header cursor-pointer"
                 onClick={() => toggleCollapse(team.team)}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 13, color: theme.textSecondary, transition: 'transform 0.2s', display: 'inline-block', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>&#x25BC;</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: theme.textPrimary }}>{team.team}</span>
-                  <span style={{ fontSize: 12, color: theme.textSecondary }}>
+                <div className="d-flex align-center gap-8">
+                  <span className={`collapse-arrow ${isCollapsed ? 'collapsed' : ''}`}>&#x25BC;</span>
+                  <span className="label-sm text-bold">{team.team}</span>
+                  <span className="caption">
                     {team.members.length} {t('org.members', lang)}
                   </span>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <span className="badge-success" style={{ fontSize: 12 }}>
+                <div className="d-flex gap-8">
+                  <span className="badge-success caption">
                     ${team.total_deposit?.toLocaleString() || 0}
                   </span>
-                  <span className="badge-warning" style={{ fontSize: 12 }}>
+                  <span className="badge-warning caption">
                     {team.total_clients} {t('org.active_clients', lang)}
                   </span>
                 </div>
@@ -162,23 +157,15 @@ export default function OrgChart() {
                   {/* Leader */}
                   {team.leader && (
                     <div
-                      style={{
-                        padding: '8px 20px', borderBottom: `1px solid ${theme.cardBorder}`,
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        background: theme.activeNav,
-                        cursor: 'pointer',
-                      }}
+                      className="org-leader-row cursor-pointer"
                       onClick={() => setSelectedStaffId(team.leader!.id)}
                     >
-                      <div style={{
-                        width: 32, height: 32, borderRadius: '50%', background: theme.accent, color: '#fff',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14
-                      }}>
+                      <div className="avatar-circle avatar-accent">
                         {team.leader.display_name.charAt(0).toUpperCase()}
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13 }}>{team.leader.display_name}</div>
-                        <div style={{ fontSize: 12, color: theme.textSecondary }}>
+                      <div className="flex-1">
+                        <div className="label-sm text-bold">{team.leader.display_name}</div>
+                        <div className="caption">
                           {t('org.leader', lang)} · {team.leader.active_clients} {t('org.active_clients', lang)}
                         </div>
                       </div>
@@ -188,36 +175,28 @@ export default function OrgChart() {
 
                   {/* Members */}
                   {team.members.map(m => (
-                    <div key={m.id} style={{
-                      padding: '8px 20px', borderBottom: `1px solid ${theme.cardBorder}15`,
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      cursor: 'pointer', transition: 'background 0.1s',
-                    }}
-                    onClick={() => setSelectedStaffId(m.id)}
-                    onMouseEnter={e => (e.currentTarget.style.background = theme.activeNav)}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    <div key={m.id}
+                      className="org-member-row cursor-pointer hoverable"
+                      onClick={() => setSelectedStaffId(m.id)}
                     >
-                      <div style={{
-                        width: 24, height: 24, borderRadius: 12, background: theme.inputBorder, color: theme.textSecondary,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 12
-                      }}>
+                      <div className="avatar-circle avatar-muted avatar-sm">
                         {m.display_name.charAt(0).toUpperCase()}
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <span style={{ fontSize: 13 }}>{m.display_name}</span>
+                      <div className="flex-1">
+                        <span className="caption text-bold">{m.display_name}</span>
                         {m.tg_username && (
-                          <span style={{ fontSize: 12, color: theme.textSecondary, marginLeft: 8 }}>@{m.tg_username}</span>
+                          <span className="caption text-secondary ml-8">@{m.tg_username}</span>
                         )}
                       </div>
                       {m.daily_target ? (
-                         <span style={{ fontSize: 12, color: theme.success, fontWeight: 600 }}>T:{m.daily_target}</span>
+                         <span className="caption text-success text-bold">T:{m.daily_target}</span>
                       ) : null}
-                      <span style={{ fontSize: 12, color: theme.textSecondary, fontFamily: 'monospace' }}>
+                      <span className="caption cell-mono text-secondary">
                         C:{m.active_clients}
                       </span>
                       <RoleBadge role={m.role} />
                       {m.override_count > 0 && (
-                        <span className="badge-danger" style={{ fontSize: 12, fontWeight: 600 }}>
+                        <span className="badge-danger caption text-bold">
                           {m.override_count}
                         </span>
                       )}
@@ -232,33 +211,26 @@ export default function OrgChart() {
 
       {/* Unassigned */}
       {filteredUnassigned.length > 0 && (
-        <div style={{ marginTop: 24 }}>
+        <div className="mt-24">
           <h3 className="section-title">
             {t('org.unassigned', lang)} ({filteredUnassigned.length})
           </h3>
           <div className="card">
             {filteredUnassigned.map(s => (
-              <div key={s.id} style={{
-                padding: '8px 0', display: 'flex', alignItems: 'center', gap: 8,
-                borderBottom: `1px solid ${theme.cardBorder}15`, cursor: 'pointer'
-              }} onClick={() => setSelectedStaffId(s.id)}
-              onMouseEnter={e => (e.currentTarget.style.background = theme.activeNav)}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              <div key={s.id}
+                className="org-member-row cursor-pointer hoverable"
+                onClick={() => setSelectedStaffId(s.id)}
               >
-                <div style={{
-                  width: 24, height: 24, borderRadius: '50%', background: theme.inputBorder, color: theme.textSecondary,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 12
-                }}>
+                <div className="avatar-circle avatar-muted avatar-sm">
                   {s.display_name.charAt(0).toUpperCase()}
                 </div>
-                <span style={{ fontSize: 13 }}>{s.display_name}</span>
+                <span className="caption text-bold">{s.display_name}</span>
                 <RoleBadge role={s.role} />
-                <span style={{ fontSize: 12, color: theme.textSecondary, marginLeft: 'auto' }}>
+                <span className="caption ml-auto">
                   {s.active_clients} {t('org.active_clients', lang)}
                 </span>
                 <select
-                  className="input"
-                  style={{ width: 'auto', marginLeft: 8 }}
+                  className="input width-auto ml-8"
                   value=""
                   onClick={e => e.stopPropagation()}
                   onChange={e => {
@@ -288,12 +260,9 @@ export default function OrgChart() {
 }
 
 function RoleBadge({ role }: { role: string }) {
-  const style = ROLE_BADGE[role] || ROLE_BADGE.viewer
+  const cls = ROLE_BADGE[role] || ROLE_BADGE.viewer
   return (
-    <span className="pill-badge" style={{
-      fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 12,
-      background: style.bg, color: style.color, textTransform: 'uppercase',
-    }}>
+    <span className={`pill-badge ${cls}`}>
       {role}
     </span>
   )

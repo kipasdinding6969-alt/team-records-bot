@@ -135,18 +135,18 @@ export default function PerformanceDetail() {
   }
 
   return (
-    <div className="page-container" style={{ maxWidth: 1600 }}>
-      <h1 className="page-title" style={{ marginBottom: 8 }}>
+    <div className="page-container max-w-1600">
+      <h1 className="page-title mb-8">
         {t('perf_detail.title', lang)}
       </h1>
-      <p className="page-subtitle" style={{ marginBottom: 20 }}>
+      <p className="page-subtitle mb-20">
         {t('perf_detail.subtitle', lang)}
       </p>
 
       {/* Controls row */}
-      <div className="toolbar" style={{ overflowX: 'auto', paddingBottom: 4 }}>
-        <input type="date" className="input" style={{ width: 'auto' }} value={selectedDate} onChange={e => setSelectedDate(e.target.value)} />
-        <div className="tab-bar" style={{ marginBottom: 0 }}>
+      <div className="toolbar overflow-x-auto pb-4">
+        <input type="date" className="input width-auto" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} />
+        <div className="tab-bar mb-0">
           <button
             key="all"
             className={`tab-btn ${team === 'all' ? 'active' : ''}`}
@@ -177,11 +177,11 @@ export default function PerformanceDetail() {
         <div className="empty-state">{t('common.loading', lang)}...</div>
       ) : rows.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-text" style={{ fontSize: 14, color: theme.textPrimary, marginBottom: 4 }}>--</div>
+          <div className="empty-text subtitle mb-4">--</div>
           <div className="empty-text">{t('perf.no_data', lang)}</div>
         </div>
       ) : (
-        <div className="card" style={{ overflowX: 'auto', padding: 0 }}>
+        <div className="card overflow-x-auto p-0">
           <style>{`
             .pd-parent-row { cursor: pointer; }
             .pd-parent-row:hover { background: ${accent}08 !important; }
@@ -189,13 +189,13 @@ export default function PerformanceDetail() {
             .pd-child-row td:first-child { border-left: 3px solid ${accent}30; padding-left: 24px !important; }
             .pd-total-row td { border-top: 2px solid ${accent}40 !important; font-weight: 700 !important; }
           `}</style>
-          <table className="data-grid-table" style={{ minWidth: 1400 }}>
+          <table className="data-grid-table min-w-1400">
             <thead>
               <tr>
-                <th style={{ textAlign: 'left', position: 'sticky', left: 0, zIndex: 3, minWidth: 140 }}>{t('perf.name', lang)}</th>
-                <th style={{ textAlign: 'left' }}>{t('perf.team', lang)}</th>
-                <th style={{ textAlign: 'left' }}>{t('frontdesk.category', lang)}</th>
-                {COLUMNS.map(c => <th key={c.key} style={{ textAlign: 'right' }}>{t(c.i18nKey, lang)}</th>)}
+                <th className="text-left sticky-left z-3 min-w-140">{t('perf.name', lang)}</th>
+                <th className="text-left">{t('perf.team', lang)}</th>
+                <th className="text-left">{t('frontdesk.category', lang)}</th>
+                {COLUMNS.map(c => <th key={c.key} className="text-right">{t(c.i18nKey, lang)}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -205,27 +205,27 @@ export default function PerformanceDetail() {
                 return (
                   <>{/* Fragment key on tr below */}
                     <tr key={`p-${key}`} className="pd-parent-row" onClick={() => toggleExpand(key)}>
-                      <td style={{ fontWeight: 600, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, minWidth: 140, background: theme.cardBg }}>
-                        <span style={{ marginRight: 8, fontSize: 12, color: accent, display: 'inline-block', transition: 'transform 0.2s', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>&#9654;</span>
+                      <td className="text-bold text-left sticky-left z-1 min-w-140 bg-card">
+                        <span className={`expand-arrow ${isOpen ? 'open' : ''}`}>&#9654;</span>
                         {g.name}
                       </td>
-                      <td style={{ textAlign: 'left' }}>
+                      <td className="text-left">
                         <span className="pill-badge badge-info">{g.team || '-'}</span>
                       </td>
-                      <td style={{ color: theme.textSecondary, fontSize: 12, textAlign: 'left' }}>({g.categories.length})</td>
+                      <td className="caption text-left">({g.categories.length})</td>
                       {COLUMNS.map(c => (
-                        <td key={c.key} style={{ textAlign: 'right', fontFamily: 'monospace', color: c.key === 'dead' ? theme.danger : c.pct ? accent : theme.textPrimary }}>
+                        <td key={c.key} className={`text-right cell-mono ${c.key === 'dead' ? 'text-danger' : c.pct ? 'text-accent' : ''}`}>
                           {c.pct ? `${personTotal[c.key] || 0}%` : personTotal[c.key] || 0}
                         </td>
                       ))}
                     </tr>
                     {isOpen && g.categories.map((cat, ci) => (
                       <tr key={`c-${key}-${ci}`} className="pd-child-row">
-                        <td style={{ position: 'sticky', left: 0, zIndex: 1, background: theme.bg }}></td>
+                        <td className="sticky-left z-1 bg-page"></td>
                         <td></td>
-                        <td style={{ fontSize: 12, fontWeight: 600, textAlign: 'left' }}>{cat.category}</td>
+                        <td className="caption text-bold text-left">{cat.category}</td>
                         {COLUMNS.map(c => (
-                          <td key={c.key} style={{ textAlign: 'right', fontFamily: 'monospace' }}>
+                          <td key={c.key} className="text-right cell-mono">
                             {c.pct ? `${(cat[c.key] as number) || 0}%` : (cat[c.key] as number) || 0}
                           </td>
                         ))}
@@ -235,13 +235,13 @@ export default function PerformanceDetail() {
                 )
               })}
               <tr className="pd-total-row">
-                <td style={{ fontWeight: 700, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, background: `${accent}0A` }}>
+                <td className="text-bold text-left sticky-left z-1 bg-accent-subtle">
                   {t('perf_detail.grand_total', lang)}
                 </td>
                 <td></td>
                 <td></td>
                 {COLUMNS.map(c => (
-                  <td key={c.key} style={{ textAlign: 'right', fontFamily: 'monospace', color: c.key === 'dead' ? theme.danger : accent }}>
+                  <td key={c.key} className={`text-right cell-mono ${c.key === 'dead' ? 'text-danger' : 'text-accent'}`}>
                     {c.pct ? `${grandTotal[c.key] || 0}%` : grandTotal[c.key] || 0}
                   </td>
                 ))}
@@ -255,21 +255,15 @@ export default function PerformanceDetail() {
       {drawerOpen && (
         <>
           <div
-            className="modal-overlay"
-            style={{ alignItems: 'stretch', justifyContent: 'flex-end' }}
+            className="modal-overlay drawer-overlay"
             onClick={() => setDrawerOpen(false)}
           />
-          <div style={{
-            position: 'fixed', top: 0, right: 0, bottom: 0, width: 400, maxWidth: '90vw',
-            background: theme.cardBg, borderLeft: `1px solid ${theme.cardBorder}`,
-            zIndex: 101, display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 24px rgba(0,0,0,0.2)',
-          }}>
+          <div className="drawer-right">
             {/* Drawer header */}
-            <div style={{ padding: 20, borderBottom: `1px solid ${theme.cardBorder}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: theme.textPrimary }}>{t('perf_detail.blown', lang)}</h2>
+            <div className="drawer-header">
+              <h2 className="heading-md">{t('perf_detail.blown', lang)}</h2>
               <button
-                className="btn-secondary"
-                style={{ height: 32, padding: '0 12px', fontSize: 14 }}
+                className="btn-secondary btn-sm"
                 onClick={() => setDrawerOpen(false)}
               >
                 X
@@ -277,7 +271,7 @@ export default function PerformanceDetail() {
             </div>
 
             {/* Blown list */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+            <div className="drawer-body">
               {blownLoading ? (
                 <div className="empty-state">{t('common.loading', lang)}...</div>
               ) : blownList.length === 0 ? (
@@ -285,13 +279,13 @@ export default function PerformanceDetail() {
                   <div className="empty-text">--</div>
                 </div>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div className="grid-2col gap-8">
                   {blownList.map((b, i) => (
-                    <div key={b.id || i} className="card" style={{ padding: 12 }}>
-                      <div style={{ fontWeight: 700, color: theme.textPrimary, marginBottom: 4, fontSize: 14 }}>{b.account_name}</div>
-                      <div style={{ color: theme.textSecondary, fontSize: 12 }}>{b.staff_name} / {b.team}</div>
-                      <div style={{ color: theme.textSecondary, fontSize: 12, marginTop: 4 }}>{b.date}</div>
-                      {b.note && <div style={{ color: theme.textSecondary, fontSize: 12, marginTop: 4, fontStyle: 'italic' }}>{b.note}</div>}
+                    <div key={b.id || i} className="card p-12">
+                      <div className="text-bold subtitle mb-4">{b.account_name}</div>
+                      <div className="caption">{b.staff_name} / {b.team}</div>
+                      <div className="caption mt-4">{b.date}</div>
+                      {b.note && <div className="caption mt-4 text-italic">{b.note}</div>}
                     </div>
                   ))}
                 </div>
@@ -299,17 +293,16 @@ export default function PerformanceDetail() {
             </div>
 
             {/* Add blown form */}
-            <div style={{ padding: 20, borderTop: `1px solid ${theme.cardBorder}` }}>
-              <h3 className="section-title" style={{ margin: '0 0 12px' }}>{t('perf_detail.add_blown', lang)}</h3>
-              <div className="form-grid-2col" style={{ gap: 8 }}>
+            <div className="drawer-footer">
+              <h3 className="section-title mb-12">{t('perf_detail.add_blown', lang)}</h3>
+              <div className="form-grid-2col gap-8">
                 <input className="input" placeholder={t('perf.name', lang)} value={blownForm.staff_name} onChange={e => setBlownForm(p => ({ ...p, staff_name: e.target.value }))} />
                 <input className="input" placeholder={t('perf.team', lang)} value={blownForm.team} onChange={e => setBlownForm(p => ({ ...p, team: e.target.value }))} />
                 <input className="input" placeholder={t('perf_detail.account_name', lang)} value={blownForm.account_name} onChange={e => setBlownForm(p => ({ ...p, account_name: e.target.value }))} />
                 <input className="input" placeholder={t('detail.link_note', lang)} value={blownForm.note} onChange={e => setBlownForm(p => ({ ...p, note: e.target.value }))} />
               </div>
               <button
-                className="btn-primary"
-                style={{ marginTop: 8, width: '100%', height: 40 }}
+                className="btn-primary mt-8 w-full btn-md"
                 onClick={handleAddBlown}
               >
                 {t('perf_detail.add_blown', lang)}

@@ -100,7 +100,7 @@ export default function Team() {
       {error && <div className="alert alert-error">{error}</div>}
 
       {/* Targets Section */}
-      <div className="toolbar" style={{ marginTop: 24 }}>
+      <div className="toolbar mt-20">
         <h2 className="section-title" style={{ margin: 0 }}>{t('targets.title', lang)}</h2>
         <div className="toolbar-spacer" />
         {(auth?.role === 'admin' || auth?.role === 'owner') && (
@@ -111,7 +111,7 @@ export default function Team() {
       </div>
 
       {targets.length > 0 ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20, marginBottom: 20 }}>
+        <div className="grid-4 mb-20" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
           {targets.map(targetItem => {
             const teamPerf = teams.find(tm => tm.team === targetItem.team)?.performance || {}
 
@@ -126,13 +126,13 @@ export default function Team() {
             const bar = (label: string, actual: number, targetValue: number | null, pct: number, prefix='') => {
               if (!targetValue) return null
               return (
-                <div key={label} style={{ marginBottom: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4, fontWeight: 600, color: theme.textSecondary }}>
+                <div key={label} className="mb-12">
+                  <div className="d-flex justify-between fs-12 fw-600 text-secondary mb-4">
                     <span>{label}</span>
                     <span>{prefix}{actual} / {prefix}{targetValue} ({pct.toFixed(0)}%)</span>
                   </div>
-                  <div style={{ height: 8, background: theme.bg, borderRadius: 4, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${pct}%`, background: getBarColor(pct), borderRadius: 4 }} />
+                  <div className="progress-bar">
+                    <div className="progress-fill" style={{ width: `${pct}%`, background: getBarColor(pct) }} />
                   </div>
                 </div>
               )
@@ -140,11 +140,11 @@ export default function Team() {
 
             return (
               <div key={targetItem.id} className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <h3 style={{ margin: 0, fontSize: 16, color: theme.textPrimary }}>{targetItem.team === 'all' ? t('common.all', lang) : targetItem.team}</h3>
+                <div className="d-flex justify-between items-center mb-12">
+                  <h3 className="heading-sm">{targetItem.team === 'all' ? t('common.all', lang) : targetItem.team}</h3>
                   <span className="pill-badge badge-info">{targetItem.period_type}</span>
                 </div>
-                <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 12 }}>{targetItem.period_start} ~ {targetItem.period_end}</div>
+                <div className="fs-12 text-secondary mb-12">{targetItem.period_start} ~ {targetItem.period_end}</div>
                 {bar(t('targets.leads', lang), leadsActual, targetItem.target_leads, leadsPct)}
                 {bar(t('targets.orders', lang), ordersActual, targetItem.target_orders, ordersPct)}
                 {bar(t('team.today_deposit', lang), depActual, targetItem.target_deposit, depPct, '$')}
@@ -153,44 +153,44 @@ export default function Team() {
           })}
         </div>
       ) : (
-        <div className="empty-state" style={{ marginBottom: 20 }}>{t('common.no_data', lang)}</div>
+        <div className="empty-state mb-20">{t('common.no_data', lang)}</div>
       )}
 
       {/* Team summaries */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20, marginBottom: 20 }}>
+      <div className="grid-4 mb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
         {teams.map(teamInfo => (
           <div key={teamInfo.team} className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+            <div className="d-flex justify-between items-start mb-12">
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => nav(`/clients?search=${encodeURIComponent(teamInfo.team)}`)}>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: theme.textPrimary }}>{teamInfo.team}</h3>
-                  <span style={{ fontSize: 14, color: theme.textSecondary }}>&#x2197;</span>
+                <div className="d-flex items-center gap-8 pointer" onClick={() => nav(`/clients?search=${encodeURIComponent(teamInfo.team)}`)}>
+                  <h3 className="heading-sm fw-700">{teamInfo.team}</h3>
+                  <span className="fs-14 text-secondary">&#x2197;</span>
                 </div>
-                <div style={{ fontSize: 13, color: theme.textSecondary, marginTop: 4 }}>
+                <div className="fs-13 text-secondary mt-4">
                   <span className="pill-badge" style={{ background: theme.activeNav, color: theme.accent }}>
                     {teamInfo.member_count + (teamInfo.leader ? 1 : 0)} {t('org.members', lang)}
                   </span>
                 </div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 20, fontWeight: 700, color: theme.success }}>
+              <div className="text-right">
+                <div className="fs-20 fw-700 text-success">
                   ${(teamInfo.performance?.total_deposit || 0).toLocaleString()}
                 </div>
-                <div style={{ fontSize: 12, color: theme.textSecondary, textTransform: 'uppercase' }}>{t('team.todays_deposit', lang)}</div>
+                <div className="fs-12 text-secondary text-uppercase">{t('team.todays_deposit', lang)}</div>
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <div className="grid-4" style={{ gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
               <div className="metric-card">
-                <div className="metric-value" style={{ fontSize: 16, color: theme.textPrimary }}>{teamInfo.performance?.new_leads || 0}</div>
+                <div className="metric-value fs-16 text-primary">{teamInfo.performance?.new_leads || 0}</div>
                 <div className="metric-label">{t('team.new_leads', lang)}</div>
               </div>
               <div className="metric-card">
-                <div className="metric-value" style={{ fontSize: 16, color: theme.textPrimary }}>{teamInfo.performance?.new_orders || 0}</div>
+                <div className="metric-value fs-16 text-primary">{teamInfo.performance?.new_orders || 0}</div>
                 <div className="metric-label">{t('team.orders', lang)}</div>
               </div>
               <div className="metric-card">
-                <div className="metric-value" style={{ fontSize: 16, color: theme.textPrimary }}>{teamInfo.performance?.registered || 0}</div>
+                <div className="metric-value fs-16 text-primary">{teamInfo.performance?.registered || 0}</div>
                 <div className="metric-label">{t('team.registered', lang)}</div>
               </div>
             </div>
@@ -199,7 +199,7 @@ export default function Team() {
       </div>
 
       {/* Leaderboard table */}
-      <div className="card" style={{ marginBottom: 20 }}>
+      <div className="card mb-20">
         <SectionTitle>{t('team.leaderboard', lang)}</SectionTitle>
         {staff.length === 0 ? (
           <Empty />
@@ -216,26 +216,25 @@ export default function Team() {
               {staff.map((s, i) => (
                 <tr
                   key={s.id}
-                  style={{ cursor: 'pointer' }}
+                  className="pointer"
                   onClick={() => setSelectedStaffId(s.id)}
                 >
                   <td style={{ color: i < 3 ? theme.chartLine : theme.textSecondary, fontWeight: i < 3 ? 700 : 400 }}>
                     #{i + 1}
                   </td>
-                  <td style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{
-                      width: 24, height: 24, borderRadius: '50%', background: theme.accent, color: '#fff',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700
+                  <td className="fw-600 d-flex items-center gap-8">
+                    <div className="d-flex items-center justify-center fs-12 fw-700 rounded-full" style={{
+                      width: 24, height: 24, background: theme.accent, color: '#fff',
                     }}>
                       {s.display_name.charAt(0).toUpperCase()}
                     </div>
                     {s.display_name}
                   </td>
-                  <td style={{ color: theme.textSecondary }}>{s.team || '-'}</td>
+                  <td className="text-secondary">{s.team || '-'}</td>
                   <td>
-                    <span className="pill-badge" style={{ background: theme.accentLight, fontSize: 12 }}>{s.role}</span>
+                    <span className="pill-badge fs-12" style={{ background: theme.accentLight }}>{s.role}</span>
                   </td>
-                  <td style={{ color: theme.accent, fontWeight: 600 }}>
+                  <td className="text-accent fw-600">
                     {s.xp_total.toLocaleString()}
                   </td>
                   <td>
@@ -243,10 +242,10 @@ export default function Team() {
                       {s.current_streak > 0 ? `${s.current_streak}d` : '0'}
                     </span>
                   </td>
-                  <td style={{ color: theme.textSecondary }}>{s.total_clients}</td>
-                  <td style={{ color: theme.accent }}>{s.total_orders}</td>
+                  <td className="text-secondary">{s.total_clients}</td>
+                  <td className="text-accent">{s.total_orders}</td>
                   <td style={{ color: theme.chartLine }}>{s.today_leads}</td>
-                  <td style={{ color: theme.accent }}>{s.today_orders}</td>
+                  <td className="text-accent">{s.today_orders}</td>
                 </tr>
               ))}
             </tbody>
@@ -256,7 +255,7 @@ export default function Team() {
 
       {/* Staff performance chart */}
       {chartData.length > 0 && (
-        <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card mb-20">
           <SectionTitle>{t('team.today_comparison', lang)}</SectionTitle>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 20, left: 40, bottom: 0 }}>
@@ -290,7 +289,7 @@ export default function Team() {
         <div className="modal-overlay">
           <div className="modal-content">
             <h3 className="modal-title">{t('targets.set', lang)}</h3>
-            <form onSubmit={handleTargetSubmit} className="form-grid" style={{ gap: 12 }}>
+            <form onSubmit={handleTargetSubmit} className="form-grid gap-12">
               <label>
                 <span className="field-label">{t('nav.team', lang)}</span>
                 <input className="input" required placeholder={t('targets.team_hint', lang)} value={targetForm.team} onChange={e => setTargetForm({...targetForm, team: e.target.value})} />
@@ -313,17 +312,17 @@ export default function Team() {
                 <span className="field-label">{t('perf.date_to', lang)}</span>
                 <input className="input" type="date" required value={targetForm.period_end} onChange={e => setTargetForm({...targetForm, period_end: e.target.value})} />
               </label>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <span style={{ fontSize: 13, color: theme.textSecondary }}>{t('targets.leads', lang)}</span>
+              <div className="d-flex gap-12">
+                <label className="flex-1 flex-col gap-4">
+                  <span className="field-label">{t('targets.leads', lang)}</span>
                   <input className="input" type="number" value={targetForm.target_leads} onChange={e => setTargetForm({...targetForm, target_leads: e.target.value})} />
                 </label>
-                <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <span style={{ fontSize: 13, color: theme.textSecondary }}>{t('targets.orders', lang)}</span>
+                <label className="flex-1 flex-col gap-4">
+                  <span className="field-label">{t('targets.orders', lang)}</span>
                   <input className="input" type="number" value={targetForm.target_orders} onChange={e => setTargetForm({...targetForm, target_orders: e.target.value})} />
                 </label>
-                <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <span style={{ fontSize: 13, color: theme.textSecondary }}>{t('targets.deposit', lang)}</span>
+                <label className="flex-1 flex-col gap-4">
+                  <span className="field-label">{t('targets.deposit', lang)}</span>
                   <input className="input" type="number" value={targetForm.target_deposit} onChange={e => setTargetForm({...targetForm, target_deposit: e.target.value})} />
                 </label>
               </div>

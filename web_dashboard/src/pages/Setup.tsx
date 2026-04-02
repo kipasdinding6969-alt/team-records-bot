@@ -55,7 +55,7 @@ export default function Setup() {
         <form onSubmit={submit} className="form-grid">
           {['display_name', 'username', 'password', 'confirm_password'].map(field => (
             <label key={field}>
-              <span style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 4, display: 'block' }}>
+              <span className="field-label">
                 {
                   {
                     display_name: t('setup.display_name', getLang()),
@@ -77,7 +77,7 @@ export default function Setup() {
           ))}
 
           {error && (
-            <div className="badge-danger" style={{ padding: 12, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="alert alert-error">
               {error}
             </div>
           )}

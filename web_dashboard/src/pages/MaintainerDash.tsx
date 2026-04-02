@@ -16,7 +16,7 @@ export default function MaintainerDash() {
 
   const [reassignFrom, setReassignFrom] = useState('')
   const [reassignTo, setReassignTo] = useState('')
-  const [reassignLoading, setReassignLoading] = useState(false)
+
 
   const [depositGroupFilter, setDepositGroupFilter] = useState('')
   const [deposits, setDeposits] = useState<any[]>([])
@@ -74,9 +74,17 @@ export default function MaintainerDash() {
     }
   }
 
-  const handleBulkReassign = async () => {
-    if (!reassignFrom || !reassignTo || reassignFrom === reassignTo) return
-    showMessage('error', 'Bulk reassign is coming soon. This feature is not yet implemented.')
+  const handleReassign = async () => {
+    if (!reassignFrom || !reassignTo) return
+    try {
+      await api.maintainerReassign(Number(reassignFrom), Number(reassignTo))
+      showMessage('success', t('maintainer.bulk_reassign', lang) + ' OK')
+      loadData()
+      setReassignFrom('')
+      setReassignTo('')
+    } catch (err: any) {
+      showMessage('error', err.message || 'Error')
+    }
   }
 
   const handleDepositSubmit = async () => {
@@ -155,30 +163,30 @@ export default function MaintainerDash() {
           <div>
             <h3 className="section-title">{t('maintainer.team_members', lang)} ({staff.length})</h3>
             {staff.length === 0 ? <Empty /> : (
-              <div style={{ overflowX: 'auto' }}>
+              <div className="overflow-x">
                 <table className="data-grid-table">
                   <thead>
                     <tr>
                       <th>{t('maintainer.name', lang)}</th>
                       <th>{t('maintainer.role', lang)}</th>
-                      <th style={{ textAlign: 'center' }}>{t('maintainer.status', lang)}</th>
+                      <th className="cell-center">{t('maintainer.status', lang)}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {staff.map(s => (
                       <tr key={s.id}>
-                        <td style={{ fontWeight: 600 }}>{s.display_name}</td>
+                        <td className="fw-600">{s.display_name}</td>
                         <td>
-                           <select className="input" value={s.role} onChange={e => handleUpdateStaff(s.id, { role: e.target.value })} style={{ width: 'auto' }}>
+                           <select className="input w-auto" value={s.role} onChange={e => handleUpdateStaff(s.id, { role: e.target.value })}>
                              <option value="frontdesk">frontdesk</option>
                              <option value="newbie">newbie</option>
                              <option value="customer_service">customer_service</option>
                            </select>
                         </td>
-                        <td style={{ textAlign: 'center' }}>
+                        <td className="cell-center">
                            <button
-                             className={s.is_active ? 'badge-success' : 'badge-danger'}
-                             style={{ cursor: 'pointer', fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 8 }}
+                             className={`${s.is_active ? 'badge-success' : 'badge-danger'} pointer fs-12 fw-700 rounded-8`}
+                             style={{ padding: '4px 12px' }}
                              onClick={() => handleUpdateStaff(s.id, { is_active: !s.is_active })}
                            >
                              {s.is_active ? t('maintainer.active', lang) : t('maintainer.inactive', lang)}
@@ -196,7 +204,7 @@ export default function MaintainerDash() {
         {activeTab === 'reassign' && (
            <div>
              <h3 className="section-title">{t('maintainer.bulk_reassign', lang)}</h3>
-             <div className="form-grid" style={{ maxWidth: 500, background: theme.bgElevated, padding: 20, borderRadius: 12, border: `1px solid ${theme.cardBorder}` }}>
+             <div className="form-section" style={{ maxWidth: 500 }}>
                 <label>
                   <span className="field-label">{t('maintainer.source_staff', lang)}</span>
                   <select className="input" value={reassignFrom} onChange={e => setReassignFrom(e.target.value)}>
@@ -204,7 +212,7 @@ export default function MaintainerDash() {
                     {staff.map(s => <option key={s.id} value={s.id}>{s.display_name} ({s.client_count} clients)</option>)}
                   </select>
                 </label>
-                <div style={{ textAlign: 'center', fontSize: 20, color: theme.textSecondary }}>&#8595;</div>
+                <div className="text-center fs-20 text-secondary">&#8595;</div>
                 <label>
                   <span className="field-label">{t('maintainer.target_staff', lang)}</span>
                   <select className="input" value={reassignTo} onChange={e => setReassignTo(e.target.value)}>
@@ -214,10 +222,10 @@ export default function MaintainerDash() {
                 </label>
                 <button
                   className="btn-primary"
-                  onClick={handleBulkReassign}
-                  disabled={reassignLoading || !reassignFrom || !reassignTo || reassignFrom === reassignTo}
+                  disabled={!reassignFrom || !reassignTo || reassignFrom === reassignTo}
+                  onClick={handleReassign}
                 >
-                  {reassignLoading ? '...' : t('maintainer.bulk_reassign', lang)}
+                  {t('maintainer.bulk_reassign', lang)}
                 </button>
              </div>
            </div>
@@ -226,18 +234,18 @@ export default function MaintainerDash() {
         {activeTab === 'targets' && (
           <div>
             <h3 className="section-title">{t('maintainer.edit_target', lang)}</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="flex-col gap-12">
               {staff.map(s => (
-                 <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: theme.bgElevated, borderRadius: 8, border: `1px solid ${theme.cardBorder}` }}>
-                    <span style={{ fontWeight: 600, fontSize: 14 }}>{s.display_name}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                 <div key={s.id} className="target-row">
+                    <span className="fw-600 fs-14">{s.display_name}</span>
+                    <div className="d-flex items-center gap-12">
                        <span className="field-label" style={{ marginBottom: 0 }}>{t('maintainer.daily_target', lang)}</span>
                        <input
-                         className="input"
+                         className="input text-center fw-700"
                          type="number"
                          value={s.daily_target}
                          onChange={e => handleUpdateStaff(s.id, { daily_target: parseInt(e.target.value) || 0 })}
-                         style={{ width: 80, textAlign: 'center', fontWeight: 700 }}
+                         style={{ width: 80 }}
                        />
                     </div>
                  </div>
@@ -249,22 +257,22 @@ export default function MaintainerDash() {
         {activeTab === 'sla' && (
           <div>
              <h3 className="section-title">{t('maintainer.sla', lang)}</h3>
-             <div style={{ overflowX: 'auto' }}>
+             <div className="overflow-x">
                 <table className="data-grid-table">
                   <thead>
                     <tr>
                       <th>{t('maintainer.name', lang)}</th>
-                      <th style={{ textAlign: 'right' }}>{t('maintainer.active_clients', lang)}</th>
-                      <th style={{ textAlign: 'right' }}>{t('maintainer.sla_status', lang)}</th>
+                      <th className="cell-right">{t('maintainer.active_clients', lang)}</th>
+                      <th className="cell-right">{t('maintainer.sla_status', lang)}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {staff.map(s => (
                       <tr key={s.id}>
-                        <td style={{ fontWeight: 600 }}>{s.display_name}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>{s.client_count}</td>
-                        <td style={{ textAlign: 'right' }}>
-                           <span className={s.client_count > 20 ? 'badge-warning' : 'badge-success'} style={{ fontSize: 12, fontWeight: 700 }}>
+                        <td className="fw-600">{s.display_name}</td>
+                        <td className="cell-mono-right fw-600">{s.client_count}</td>
+                        <td className="cell-right">
+                           <span className={`${s.client_count > 20 ? 'badge-warning' : 'badge-success'} fs-12 fw-700`}>
                              {s.client_count > 20 ? t('maintainer.overloaded', lang) : t('maintainer.healthy', lang)}
                            </span>
                         </td>
@@ -295,16 +303,16 @@ export default function MaintainerDash() {
             </div>
 
             {depositsLoading ? <Spinner /> : deposits.length === 0 ? <Empty label={t('common.no_data', lang)} /> : (
-              <div style={{ overflowX: 'auto' }}>
+              <div className="overflow-x">
                 <table className="data-grid-table">
                   <thead>
                     <tr>
                       <th>{t('clients.phone', lang)}</th>
                       <th>{t('detail.platform', lang)}</th>
                       <th>{t('maintainer.cut', lang)} #</th>
-                      <th style={{ textAlign: 'right' }}>{t('detail.amount', lang)}</th>
-                      <th style={{ textAlign: 'right' }}>{t('maintainer.pressure', lang)}</th>
-                      <th style={{ textAlign: 'right' }}>{t('maintainer.total_in', lang)}</th>
+                      <th className="cell-right">{t('detail.amount', lang)}</th>
+                      <th className="cell-right">{t('maintainer.pressure', lang)}</th>
+                      <th className="cell-right">{t('maintainer.total_in', lang)}</th>
                       <th>{t('clients.frontdesk', lang)}</th>
                       <th>{t('detail.date', lang)}</th>
                     </tr>
@@ -312,23 +320,23 @@ export default function MaintainerDash() {
                   <tbody>
                     {deposits.map((d: any, idx: number) => (
                       <tr key={d.id || idx}>
-                        <td style={{ fontWeight: 600, fontFamily: 'monospace' }}>{d.phone || d.client_id}</td>
+                        <td className="cell-mono fw-600">{d.phone || d.client_id}</td>
                         <td>{d.platform || '-'}</td>
                         <td>{d.knife_number || '-'}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 600, fontFamily: 'monospace', color: theme.success }}>${(d.amount || 0).toLocaleString()}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.warning }}>${(d.pressure_amount || 0).toLocaleString()}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: theme.accent }}>${(d.total_in || d.amount || 0).toLocaleString()}</td>
+                        <td className="cell-mono-right text-success fw-600">${(d.amount || 0).toLocaleString()}</td>
+                        <td className="cell-mono-right text-warning">${(d.pressure_amount || 0).toLocaleString()}</td>
+                        <td className="cell-mono-right text-accent fw-700">${(d.total_in || d.amount || 0).toLocaleString()}</td>
                         <td>{d.frontdesk_name || d.role_type || '-'}</td>
-                        <td style={{ fontSize: 12, color: theme.textSecondary }}>{d.created_at?.slice(0, 10) || '-'}</td>
+                        <td className="fs-12 text-secondary">{d.created_at?.slice(0, 10) || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr style={{ borderTop: `2px solid ${theme.cardBorder}`, background: `${theme.accent}08` }}>
-                      <td colSpan={3} style={{ fontWeight: 700, fontSize: 14 }}>{t('common.total', lang)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, fontSize: 14, fontFamily: 'monospace', color: theme.success }}>${depositTotals.amount.toLocaleString()}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, fontSize: 14, fontFamily: 'monospace', color: theme.warning }}>${depositTotals.pressure.toLocaleString()}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, fontSize: 14, fontFamily: 'monospace', color: theme.accent }}>${depositTotals.total_in.toLocaleString()}</td>
+                    <tr className="border-top" style={{ background: `${theme.accent}08` }}>
+                      <td colSpan={3} className="fw-700 fs-14">{t('common.total', lang)}</td>
+                      <td className="cell-mono-right text-success fw-700 fs-14">${depositTotals.amount.toLocaleString()}</td>
+                      <td className="cell-mono-right text-warning fw-700 fs-14">${depositTotals.pressure.toLocaleString()}</td>
+                      <td className="cell-mono-right text-accent fw-700 fs-14">${depositTotals.total_in.toLocaleString()}</td>
                       <td colSpan={2} />
                     </tr>
                   </tfoot>
@@ -401,12 +409,11 @@ export default function MaintainerDash() {
               </label>
 
               <div className="modal-actions">
-                <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setShowDepositModal(false)}>
+                <button className="btn-secondary flex-1" onClick={() => setShowDepositModal(false)}>
                   {t('common.cancel', lang)}
                 </button>
                 <button
-                  className="btn-primary"
-                  style={{ flex: 1 }}
+                  className="btn-primary flex-1"
                   onClick={handleDepositSubmit}
                   disabled={depositSubmitting || !depositForm.client_id || !depositForm.group_number || !depositForm.amount}
                 >

@@ -118,10 +118,10 @@ export default function Performance() {
 
   return (
     <div className="page-container">
-      <h1 style={{ fontSize: 24, fontWeight: 700, color: theme.textPrimary, margin: '0 0 8px', letterSpacing: '-0.02em' }}>
+      <h1 className="heading-lg mb-8">
         {t('perf.title', lang)}
       </h1>
-      <p style={{ fontSize: 14, color: theme.textSecondary, marginBottom: 20, fontWeight: 500 }}>
+      <p className="subtitle mb-20">
         {t('perf.subtitle', lang)}
       </p>
 
@@ -133,8 +133,8 @@ export default function Performance() {
 
       {/* Controls: date picker + team pills */}
       <div className="toolbar">
-        <input type="date" className="input" style={{ width: 'auto' }} value={selectedDate} onChange={e => setSelectedDate(e.target.value)} />
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap' }}>
+        <input type="date" className="input w-auto" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} />
+        <div className="d-flex gap-8 items-center nowrap">
           {teamsList.map(tm => (
             <button
               key={tm.key}
@@ -146,8 +146,8 @@ export default function Performance() {
           ))}
         </div>
         <button
-          className="btn-primary"
-          style={{ marginLeft: 'auto', height: 32, fontSize: 12, padding: '0 20px', opacity: recalculating ? 0.7 : 1 }}
+          className={`btn-primary toolbar-spacer${recalculating ? ' opacity-70' : ''}`}
+          style={{ marginLeft: 'auto' }}
           disabled={recalculating}
           onClick={() => {
             setRecalculating(true)
@@ -176,15 +176,15 @@ export default function Performance() {
         <div className="empty-state">{t('common.loading', lang)}...</div>
       ) : !data || data.staff.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-text" style={{ fontSize: 16, color: theme.textPrimary, marginBottom: 4 }}>{t('perf.no_data_title', lang)}</div>
+          <div className="empty-text fs-16 text-primary mb-4">{t('perf.no_data_title', lang)}</div>
           <div className="empty-text">{t('perf.no_data', lang)}</div>
         </div>
       ) : (
         <>
           {/* Target bars */}
           {targets && targets.length > 0 && (
-            <div style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: theme.textPrimary }}>
+            <div className="flex-col gap-12 mb-20">
+              <h2 className="heading-md">
                 {t('targets.title', lang)} ({targets[0].period_type})
               </h2>
               {targets.map(tData => {
@@ -197,10 +197,10 @@ export default function Performance() {
                 const bar = (label: string, actual: number, target: number | null, pct: number, prefix = '') => {
                   if (!target) return null
                   return (
-                    <div key={label} className="card" style={{ flex: 1, minWidth: 200, padding: 20 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600, marginBottom: 8, color: theme.textSecondary }}>
+                    <div key={label} className="card p-20" style={{ flex: 1, minWidth: 200 }}>
+                      <div className="d-flex justify-between fs-12 fw-600 mb-8 text-secondary">
                         <span>{label}</span>
-                        <span style={{ color: theme.textPrimary }}>{prefix}{actual.toLocaleString()} / {prefix}{target.toLocaleString()} ({pct.toFixed(0)}%)</span>
+                        <span className="text-primary">{prefix}{actual.toLocaleString()} / {prefix}{target.toLocaleString()} ({pct.toFixed(0)}%)</span>
                       </div>
                       <div className="progress-bar">
                         <div className="progress-fill" style={{ width: `${pct}%`, background: getBarColor(pct) }} />
@@ -210,7 +210,7 @@ export default function Performance() {
                 }
 
                 return (
-                  <div key={tData.id} style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <div key={tData.id} className="d-flex gap-12 flex-wrap">
                     {bar(t('targets.leads', lang), data.totals.new_leads || 0, tData.target_leads, leadsPct)}
                     {bar(t('targets.orders', lang), data.totals.new_orders || 0, tData.target_orders, ordersPct)}
                     {bar(t('targets.deposit', lang), data.totals.total_deposit || 0, tData.target_deposit, depositPct, '$')}
@@ -221,43 +221,43 @@ export default function Performance() {
           )}
 
           {/* Data table */}
-          <div className="card" style={{ overflowX: 'auto', marginBottom: 20, padding: 0 }}>
+          <div className="card p-0 overflow-x mb-20">
             <table className="data-grid-table">
               <thead>
                 <tr>
-                  <th style={{ textAlign: 'left' }}>{t('perf.name', lang)}</th>
-                  <th style={{ textAlign: 'left' }}>{t('perf.team', lang)}</th>
-                  <th style={{ textAlign: 'center' }}>{t('perf.trend', lang)}</th>
-                  <th style={{ textAlign: 'right' }}>{t('perf.new_powder', lang)}</th>
-                  <th style={{ textAlign: 'right' }}>{t('perf.reply_rate', lang)}</th>
-                  <th style={{ textAlign: 'right' }}>{t('perf.register', lang)}</th>
-                  <th style={{ textAlign: 'right' }}>{t('perf.training', lang)}</th>
-                  <th style={{ textAlign: 'right' }}>{t('perf.withdraw', lang)}</th>
-                  <th style={{ textAlign: 'right' }}>{t('perf.new_order', lang)}</th>
-                  <th style={{ textAlign: 'right' }}>{t('perf.conversion', lang)}</th>
-                  <th style={{ textAlign: 'right' }}>{t('perf.deposit', lang)}</th>
-                  <th style={{ textAlign: 'right' }}>{t('perf.dead', lang)}</th>
+                  <th className="text-left">{t('perf.name', lang)}</th>
+                  <th className="text-left">{t('perf.team', lang)}</th>
+                  <th className="text-center">{t('perf.trend', lang)}</th>
+                  <th className="cell-right">{t('perf.new_powder', lang)}</th>
+                  <th className="cell-right">{t('perf.reply_rate', lang)}</th>
+                  <th className="cell-right">{t('perf.register', lang)}</th>
+                  <th className="cell-right">{t('perf.training', lang)}</th>
+                  <th className="cell-right">{t('perf.withdraw', lang)}</th>
+                  <th className="cell-right">{t('perf.new_order', lang)}</th>
+                  <th className="cell-right">{t('perf.conversion', lang)}</th>
+                  <th className="cell-right">{t('perf.deposit', lang)}</th>
+                  <th className="cell-right">{t('perf.dead', lang)}</th>
                 </tr>
               </thead>
               <tbody>
                 {data.staff.map(s => (
                   <tr key={s.staff_id}>
-                    <td style={{ fontWeight: 600, textAlign: 'left' }}>{s.display_name}</td>
-                    <td style={{ textAlign: 'left' }}>
+                    <td className="fw-600 text-left">{s.display_name}</td>
+                    <td className="text-left">
                       <span className="pill-badge badge-info">{s.team || '-'}</span>
                     </td>
-                    <td style={{ textAlign: 'center', width: 60 }}>
+                    <td className="cell-center" style={{ width: 60 }}>
                       {s.trend && <Sparkline data={s.trend} color={theme.accent} />}
                     </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.accent }}>{s.new_leads}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.success }}>{s.reply_rate}%</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.accent }}>{s.registered}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.warning }}>{s.training}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.success }}>{s.withdrew}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: theme.success }}>{s.new_orders}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.accent }}>{s.conversion_rate}%</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: theme.success }}>${(s.total_deposit || 0).toLocaleString()}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.danger }}>{s.dead}</td>
+                    <td className="cell-mono-right text-accent">{s.new_leads}</td>
+                    <td className="cell-mono-right text-success">{s.reply_rate}%</td>
+                    <td className="cell-mono-right text-accent">{s.registered}</td>
+                    <td className="cell-mono-right text-warning">{s.training}</td>
+                    <td className="cell-mono-right text-success">{s.withdrew}</td>
+                    <td className="cell-mono-right text-success fw-700">{s.new_orders}</td>
+                    <td className="cell-mono-right text-accent">{s.conversion_rate}%</td>
+                    <td className="cell-mono-right text-success fw-700">${(s.total_deposit || 0).toLocaleString()}</td>
+                    <td className="cell-mono-right text-danger">{s.dead}</td>
                   </tr>
                 ))}
               </tbody>
@@ -265,11 +265,11 @@ export default function Performance() {
           </div>
 
           {/* Summary totals card */}
-          <div className="card" style={{ border: `2px solid ${theme.accent}`, marginTop: 20 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: theme.accent, marginBottom: 20, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <div className="card border-accent mt-20">
+            <div className="label-section text-accent mb-20">
               {t('perf.team_total', lang)}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+            <div className="grid-4">
               <MetricBox label={t('perf.new_powder', lang)} value={data.totals.new_leads || 0} color={theme.accent} />
               <MetricBox label={t('perf.reply_rate', lang)} value={`${data.totals.reply_rate || 0}%`} color={theme.success} />
               <MetricBox label={t('perf.register', lang)} value={data.totals.registered || 0} color={theme.accent} />
@@ -284,25 +284,24 @@ export default function Performance() {
       )}
 
       {/* Summary Report Section */}
-      <div style={{ marginTop: 20, borderTop: `1px solid ${theme.cardBorder}`, paddingTop: 20 }}>
+      <div className="mt-20 border-top" style={{ paddingTop: 20 }}>
         <div
-          style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', marginBottom: showSummary ? 20 : 0 }}
+          className={`accordion-header${showSummary ? ' mb-20' : ''}`}
           onClick={() => setShowSummary(!showSummary)}
         >
-          <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: theme.textPrimary }}>{t('perf.summary', lang)}</h2>
-          <span style={{ fontSize: 12, color: theme.accent, transition: 'transform 0.2s', display: 'inline-block', transform: showSummary ? 'rotate(180deg)' : 'rotate(0deg)' }}>V</span>
+          <h2 className="heading-md">{t('perf.summary', lang)}</h2>
+          <span className={`accordion-chevron${showSummary ? ' open' : ''}`}>V</span>
         </div>
 
         {showSummary && (
           <div>
-            <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-              <label style={{ fontSize: 12, color: theme.textSecondary, fontWeight: 600 }}>{t('perf.date_from', lang)}:</label>
-              <input type="date" className="input" style={{ width: 'auto' }} value={summaryFrom} onChange={e => setSummaryFrom(e.target.value)} />
-              <label style={{ fontSize: 12, color: theme.textSecondary, fontWeight: 600 }}>{t('perf.date_to', lang)}:</label>
-              <input type="date" className="input" style={{ width: 'auto' }} value={summaryTo} onChange={e => setSummaryTo(e.target.value)} />
+            <div className="form-row-center flex-wrap mb-20">
+              <label className="field-label">{t('perf.date_from', lang)}:</label>
+              <input type="date" className="input w-auto" value={summaryFrom} onChange={e => setSummaryFrom(e.target.value)} />
+              <label className="field-label">{t('perf.date_to', lang)}:</label>
+              <input type="date" className="input w-auto" value={summaryTo} onChange={e => setSummaryTo(e.target.value)} />
               <button
-                className="btn-primary"
-                style={{ padding: '0 24px' }}
+                className="btn-primary px-20"
                 onClick={() => {
                   setSummaryLoading(true)
                   api.performanceSummary(summaryFrom, summaryTo, team !== 'all' ? team : undefined)
@@ -317,14 +316,14 @@ export default function Performance() {
 
             {summaryLoading && <div className="empty-state">{t('common.loading', lang)}</div>}
             {summaryData && !summaryLoading && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="flex-col gap-12">
                 {(summaryData.staff || []).map((s: any) => (
                   <div key={s.staff_id || s.display_name} className="card">
-                    <div style={{ fontSize: 18, fontWeight: 700, color: theme.textPrimary, marginBottom: 4 }}>{s.display_name}</div>
-                    <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 20, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    <div className="heading-md mb-4">{s.display_name}</div>
+                    <div className="label-section text-secondary mb-20">
                       {s.team || '-'} / {summaryFrom} ~ {summaryTo}
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 12 }}>
+                    <div className="grid-4">
                       <MetricBox label={t('perf.new_powder', lang)} value={s.new_leads || 0} color={theme.accent} />
                       <MetricBox label={t('perf.reply_rate', lang)} value={`${s.reply_rate || 0}%`} color={theme.success} />
                       <MetricBox label={t('perf.register', lang)} value={s.registered || 0} color={theme.accent} />
@@ -334,11 +333,11 @@ export default function Performance() {
                   </div>
                 ))}
                 {summaryData.totals && (
-                  <div className="card" style={{ border: `2px solid ${theme.accent}` }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: theme.accent, marginBottom: 20, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  <div className="card border-accent">
+                    <div className="label-section text-accent mb-20">
                       {t('perf.team_total', lang)} ({summaryFrom} ~ {summaryTo})
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 12 }}>
+                    <div className="grid-4">
                       <MetricBox label={t('perf.new_powder', lang)} value={summaryData.totals.new_leads || 0} color={theme.accent} />
                       <MetricBox label={t('perf.new_order', lang)} value={summaryData.totals.new_orders || 0} color={theme.success} />
                       <MetricBox label={t('perf.deposit', lang)} value={`$${(summaryData.totals.total_deposit || 0).toFixed(0)}`} color={theme.success} />

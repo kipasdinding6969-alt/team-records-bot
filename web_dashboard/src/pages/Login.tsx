@@ -51,28 +51,14 @@ export default function Login() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: theme.bg,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexDirection: 'column',
-      }}
-    >
-      <div className="card" style={{ width: '100%', maxWidth: 400, padding: 24, background: theme.bgElevated }}>
-        <div style={{ marginBottom: 20, textAlign: 'center' }}>
-          <div style={{
-            width: 56, height: 56, borderRadius: 12, background: theme.accent,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            color: '#fff', fontWeight: 'bold', fontSize: 28, marginBottom: 20,
-            boxShadow: `0 8px 24px ${theme.accentLight}`
-          }}>
+    <div className="login-page">
+      <div className="card login-card">
+        <div className="login-brand">
+          <div className="login-brand-icon">
             T
           </div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: theme.textPrimary, letterSpacing: '-0.02em' }}>{t('login.title', getLang())}</div>
-          <div style={{ fontSize: 14, color: theme.textSecondary, marginTop: 8, fontWeight: 500, letterSpacing: 2 }}>{t('login.subtitle', getLang())}</div>
+          <div className="heading-lg">{t('login.title', getLang())}</div>
+          <div className="subtitle" style={{ letterSpacing: 2 }}>{t('login.subtitle', getLang())}</div>
         </div>
         <form onSubmit={submit} className="form-grid">
           <label>
@@ -96,25 +82,16 @@ export default function Login() {
               required
             />
           </label>
-          <label
-            style={{
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-              cursor: 'pointer',
-            }}
-          >
+          <label className="remember-label">
             <input
               type="checkbox"
               checked={rememberMe}
               onChange={e => setRememberMe(e.target.checked)}
-              style={{ accentColor: theme.accent, width: 16, height: 16 }}
             />
-            <span style={{ fontSize: 13, color: theme.textSecondary, fontWeight: 500 }}>{t('login.remember', getLang())}</span>
+            <span>{t('login.remember', getLang())}</span>
           </label>
           {error && (
-            <div className="badge-danger" style={{ padding: 12, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="alert alert-error">
               {error}
             </div>
           )}
@@ -128,8 +105,8 @@ export default function Login() {
           </button>
         </form>
       </div>
-      <div style={{ marginTop: 20, fontSize: 13, color: theme.textMuted, fontWeight: 500, letterSpacing: 0.5 }}>
-        v2.0 — Phase 23
+      <div className="login-version">
+        v2.9 — Phase 29
       </div>
     </div>
   )

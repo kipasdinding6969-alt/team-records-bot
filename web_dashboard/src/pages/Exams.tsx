@@ -119,7 +119,7 @@ export default function Exams() {
         <div className="alert alert-error">{error}</div>
       )}
 
-      <div className="toolbar" style={{ marginBottom: 24 }}>
+      <div className="toolbar mb-24">
         <h1 className="page-title">{t('exams.title', lang)}</h1>
         <div className="toolbar-spacer" />
         {isAdmin && (
@@ -130,82 +130,82 @@ export default function Exams() {
       </div>
 
       {loading ? (
-        <div style={{ padding: 20, textAlign: 'center', color: theme.textSecondary }}>{t('common.loading', lang)}</div>
+        <div className="empty-state text-center">{t('common.loading', lang)}</div>
       ) : (
         <>
           {/* Active exams */}
           <h2 className="section-title">{t('exams.active', lang)}</h2>
           {activeExams.length === 0 ? (
-            <div className="empty-state" style={{ marginBottom: 20 }}>
+            <div className="empty-state mb-20">
               <div className="empty-text">{t('exams.no_active', lang)}</div>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20, marginBottom: 20 }}>
+            <div className="d-flex flex-col gap-20 mb-20">
               {activeExams.map(exam => (
-                <div className="card" key={exam.id} style={{ border: `2px solid ${theme.accent}55` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                    <h3 style={{ margin: 0, fontSize: 20, color: theme.accent }}>{exam.exam_name}</h3>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <span className="badge-success" style={{ fontSize: 12 }}>
+                <div className="card card-accent-border" key={exam.id}>
+                  <div className="d-flex justify-between align-center mb-12">
+                    <h3 className="heading-md text-accent">{exam.exam_name}</h3>
+                    <div className="d-flex gap-8 align-center">
+                      <span className="badge-success caption">
                         {t('exams.status_active', lang)}
                       </span>
                       {isAdmin && (
-                        <button className="btn-danger" style={{ height: 32, padding: '0 12px', fontSize: 12 }} onClick={() => handleClose(exam.id)}>
+                        <button className="btn-danger btn-sm" onClick={() => handleClose(exam.id)}>
                           {t('exams.close', lang)}
                         </button>
                       )}
                     </div>
                   </div>
-                  <div style={{ fontSize: 14, color: theme.textSecondary, marginBottom: 12 }}>
+                  <div className="subtitle mb-12">
                     {exam.start_date} ~ {exam.end_date}
                     {exam.team && <span> | {t('exams.team', lang)}: {exam.team}</span>}
                   </div>
-                  <button className="btn-secondary" style={{ height: 32, padding: '0 12px', fontSize: 13 }} onClick={() => toggleExpand(exam.id)}>
+                  <button className="btn-secondary btn-sm" onClick={() => toggleExpand(exam.id)}>
                     {expandedId === exam.id ? t('exams.hide_results', lang) : t('exams.view_results', lang)} {expandedId === exam.id ? '\u25B2' : '\u25BC'}
                   </button>
 
                   {expandedId === exam.id && (
-                    <div style={{ marginTop: 20 }}>
+                    <div className="mt-20">
                       {resultsLoading[exam.id] ? (
-                        <div style={{ padding: 20, textAlign: 'center', color: theme.textSecondary }}>{t('common.loading', lang)}</div>
+                        <div className="empty-state text-center">{t('common.loading', lang)}</div>
                       ) : (
-                        <div style={{ overflowX: 'auto', borderRadius: 8, border: `1px solid ${theme.cardBorder}` }}>
+                        <div className="overflow-x-auto border rounded-8">
                           <table className="data-grid-table">
                             <thead>
                               <tr>
                                 <th>{t('exams.col_rank', lang)}</th>
                                 <th>{t('exams.col_name', lang)}</th>
                                 <th>{t('exams.col_team', lang)}</th>
-                                <th style={{ textAlign: 'right' }}>{t('exams.col_powder', lang)}</th>
-                                <th style={{ textAlign: 'right' }}>{t('exams.col_reply', lang)}</th>
-                                <th style={{ textAlign: 'right' }}>{t('exams.col_registered', lang)}</th>
-                                <th style={{ textAlign: 'right' }}>{t('exams.col_training', lang)}</th>
-                                <th style={{ textAlign: 'right' }}>{t('exams.col_withdrawals', lang)}</th>
-                                <th style={{ textAlign: 'right' }}>{t('exams.col_orders', lang)}</th>
-                                <th style={{ textAlign: 'right' }}>{t('exams.col_conversion', lang)}</th>
-                                <th style={{ textAlign: 'right' }}>{t('exams.col_kills', lang)}</th>
+                                <th className="text-right">{t('exams.col_powder', lang)}</th>
+                                <th className="text-right">{t('exams.col_reply', lang)}</th>
+                                <th className="text-right">{t('exams.col_registered', lang)}</th>
+                                <th className="text-right">{t('exams.col_training', lang)}</th>
+                                <th className="text-right">{t('exams.col_withdrawals', lang)}</th>
+                                <th className="text-right">{t('exams.col_orders', lang)}</th>
+                                <th className="text-right">{t('exams.col_conversion', lang)}</th>
+                                <th className="text-right">{t('exams.col_kills', lang)}</th>
                               </tr>
                             </thead>
                             <tbody>
                               {(results[exam.id] || []).map((r, idx) => (
                                 <tr key={idx}>
-                                  <td style={{ fontWeight: 700, color: idx === 0 ? '#fbbf24' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : theme.textPrimary }}>
+                                  <td className={`text-bold rank-${idx < 3 ? idx + 1 : 'default'}`}>
                                     {r.rank || idx + 1}
                                   </td>
-                                  <td style={{ fontWeight: 600, color: theme.textPrimary }}>{r.display_name}</td>
-                                  <td style={{ color: theme.textSecondary, fontSize: 12 }}>{r.team || '\u2014'}</td>
-                                  <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.accent }}>{r.powder}</td>
-                                  <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.success }}>{r.reply_rate}%</td>
-                                  <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.accent }}>{r.registered}</td>
-                                  <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.warning }}>{r.training}</td>
-                                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{r.withdrawals}</td>
-                                  <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: theme.success }}>{r.orders}</td>
-                                  <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.accent }}>{r.conversion_rate}%</td>
-                                  <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.danger }}>{r.kills}</td>
+                                  <td className="text-bold">{r.display_name}</td>
+                                  <td className="caption">{r.team || '\u2014'}</td>
+                                  <td className="text-right cell-mono text-accent">{r.powder}</td>
+                                  <td className="text-right cell-mono text-success">{r.reply_rate}%</td>
+                                  <td className="text-right cell-mono text-accent">{r.registered}</td>
+                                  <td className="text-right cell-mono text-warning">{r.training}</td>
+                                  <td className="text-right cell-mono">{r.withdrawals}</td>
+                                  <td className="text-right cell-mono text-bold text-success">{r.orders}</td>
+                                  <td className="text-right cell-mono text-accent">{r.conversion_rate}%</td>
+                                  <td className="text-right cell-mono text-danger">{r.kills}</td>
                                 </tr>
                               ))}
                               {(results[exam.id] || []).length === 0 && (
-                                <tr><td colSpan={11} style={{ textAlign: 'center', color: theme.textSecondary, padding: 20 }}>{t('exams.no_results', lang)}</td></tr>
+                                <tr><td colSpan={11} className="text-center p-20 caption">{t('exams.no_results', lang)}</td></tr>
                               )}
                             </tbody>
                           </table>
@@ -220,12 +220,12 @@ export default function Exams() {
 
           {/* Ended exams */}
           <div
-            style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: showEnded ? 20 : 0 }}
+            className="d-flex align-center gap-8 cursor-pointer"
             onClick={() => setShowEnded(!showEnded)}
           >
-            <h2 className="section-title" style={{ margin: 0 }}>{t('exams.ended', lang)}</h2>
-            <span style={{ fontSize: 12, color: theme.accent }}>{showEnded ? '\u25B2' : '\u25BC'}</span>
-            <span style={{ fontSize: 12, color: theme.textSecondary }}>({endedExams.length})</span>
+            <h2 className="section-title mb-0">{t('exams.ended', lang)}</h2>
+            <span className="caption text-accent">{showEnded ? '\u25B2' : '\u25BC'}</span>
+            <span className="caption">({endedExams.length})</span>
           </div>
 
           {showEnded && (
@@ -234,36 +234,36 @@ export default function Exams() {
                 <div className="empty-text">{t('exams.no_ended', lang)}</div>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20, marginTop: 12 }}>
+              <div className="grid-auto-280 gap-20 mt-12">
                 {endedExams.map(exam => (
-                  <div className="card" key={exam.id} style={{ opacity: 0.8 }}>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: theme.textPrimary, marginBottom: 8 }}>{exam.exam_name}</div>
-                    <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8 }}>{exam.start_date} ~ {exam.end_date}</div>
-                    {exam.team && <div style={{ fontSize: 12, color: theme.textSecondary }}>{t('exams.team', lang)}: {exam.team}</div>}
-                    <button className="btn-secondary" style={{ marginTop: 12, height: 32, padding: '0 12px', fontSize: 13 }} onClick={(e) => { e.stopPropagation(); toggleExpand(exam.id) }}>
+                  <div className="card opacity-80" key={exam.id}>
+                    <div className="heading-sm mb-8">{exam.exam_name}</div>
+                    <div className="caption mb-8">{exam.start_date} ~ {exam.end_date}</div>
+                    {exam.team && <div className="caption">{t('exams.team', lang)}: {exam.team}</div>}
+                    <button className="btn-secondary btn-sm mt-12" onClick={(e) => { e.stopPropagation(); toggleExpand(exam.id) }}>
                       {expandedId === exam.id ? t('exams.hide_results', lang) : t('exams.view_results', lang)}
                     </button>
                     {expandedId === exam.id && (
-                      <div style={{ marginTop: 12, fontSize: 13, color: theme.textSecondary }}>
+                      <div className="mt-12 caption">
                         {resultsLoading[exam.id] ? t('common.loading', lang) : (
                           (results[exam.id] || []).length === 0 ? t('exams.no_results', lang) : (
-                            <div style={{ overflowX: 'auto' }}>
-                              <table className="data-grid-table" style={{ fontSize: 12 }}>
+                            <div className="overflow-x-auto">
+                              <table className="data-grid-table table-sm">
                                 <thead>
                                   <tr>
                                     <th>#</th>
                                     <th>{t('exams.col_name', lang)}</th>
-                                    <th style={{ textAlign: 'right' }}>{t('exams.col_orders', lang)}</th>
-                                    <th style={{ textAlign: 'right' }}>{t('exams.col_kills', lang)}</th>
+                                    <th className="text-right">{t('exams.col_orders', lang)}</th>
+                                    <th className="text-right">{t('exams.col_kills', lang)}</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {(results[exam.id] || []).slice(0, 5).map((r, idx) => (
                                     <tr key={idx}>
-                                      <td style={{ fontWeight: 700, color: idx === 0 ? '#fbbf24' : theme.textPrimary }}>{r.rank || idx + 1}</td>
+                                      <td className={`text-bold rank-${idx === 0 ? '1' : 'default'}`}>{r.rank || idx + 1}</td>
                                       <td>{r.display_name}</td>
-                                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{r.orders}</td>
-                                      <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.danger }}>{r.kills}</td>
+                                      <td className="text-right cell-mono">{r.orders}</td>
+                                      <td className="text-right cell-mono text-danger">{r.kills}</td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -284,7 +284,7 @@ export default function Exams() {
       {/* Create Exam Modal */}
       {showModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ width: 480 }}>
+          <div className="modal-content modal-480">
             <h3 className="modal-title">{t('exams.create', lang)}</h3>
             <form onSubmit={handleSubmit} className="form-grid">
               <label>

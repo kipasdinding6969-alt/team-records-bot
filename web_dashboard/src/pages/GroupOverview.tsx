@@ -56,45 +56,45 @@ export default function GroupOverview() {
     totals.conversion_pct = totalPowder > 0 ? ((totals.orders / totalPowder) * 100) : 0
 
     return (
-      <div style={{ overflowX: 'auto' }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: tealAccent, textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>{label}</div>
+      <div className="overflow-x-auto">
+        <div className="label-sm text-accent mb-8">{label}</div>
         <table className="data-grid-table">
           <thead>
             <tr>
               <th>{t('perf.name', lang)}</th>
-              <th style={{ textAlign: 'right' }}>{t('perf.new_powder', lang)}</th>
-              <th style={{ textAlign: 'right' }}>{t('perf.reply_rate', lang)}</th>
-              <th style={{ textAlign: 'right' }}>{t('perf.register', lang)}</th>
-              <th style={{ textAlign: 'right' }}>{t('perf.training', lang)}</th>
-              <th style={{ textAlign: 'right' }}>{t('perf.withdraw', lang)}</th>
-              <th style={{ textAlign: 'right' }}>{t('perf.new_order', lang)}</th>
-              <th style={{ textAlign: 'right' }}>{t('perf.conversion', lang)}</th>
+              <th className="text-right">{t('perf.new_powder', lang)}</th>
+              <th className="text-right">{t('perf.reply_rate', lang)}</th>
+              <th className="text-right">{t('perf.register', lang)}</th>
+              <th className="text-right">{t('perf.training', lang)}</th>
+              <th className="text-right">{t('perf.withdraw', lang)}</th>
+              <th className="text-right">{t('perf.new_order', lang)}</th>
+              <th className="text-right">{t('perf.conversion', lang)}</th>
             </tr>
           </thead>
           <tbody>
             {members.map((m: any, idx: number) => (
               <tr key={m.staff_id || idx}>
-                <td style={{ fontWeight: 600 }}>{m.name || m.display_name || '-'}</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{m.powder || 0}</td>
-                <td style={{ textAlign: 'right' }}>{(m.reply_pct || 0).toFixed(0)}%</td>
-                <td style={{ textAlign: 'right', fontWeight: 600, color: theme.success }}>{m.register || 0}</td>
-                <td style={{ textAlign: 'right' }}>{m.training || 0}</td>
-                <td style={{ textAlign: 'right' }}>{m.withdraw || 0}</td>
-                <td style={{ textAlign: 'right', fontWeight: 600, color: tealAccent }}>{m.orders || 0}</td>
-                <td style={{ textAlign: 'right' }}>{(m.conversion_pct || 0).toFixed(1)}%</td>
+                <td className="text-bold">{m.name || m.display_name || '-'}</td>
+                <td className="text-right text-bold">{m.powder || 0}</td>
+                <td className="text-right">{(m.reply_pct || 0).toFixed(0)}%</td>
+                <td className="text-right text-bold text-success">{m.register || 0}</td>
+                <td className="text-right">{m.training || 0}</td>
+                <td className="text-right">{m.withdraw || 0}</td>
+                <td className="text-right text-bold text-accent">{m.orders || 0}</td>
+                <td className="text-right">{(m.conversion_pct || 0).toFixed(1)}%</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
-            <tr style={{ borderTop: `2px solid ${theme.cardBorder}`, background: `${tealAccent}08` }}>
-              <td style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase' }}>{t('common.total', lang)}</td>
-              <td style={{ textAlign: 'right', fontWeight: 700 }}>{totals.powder}</td>
-              <td style={{ textAlign: 'right', fontWeight: 700 }}>{totals.reply_pct.toFixed(0)}%</td>
-              <td style={{ textAlign: 'right', fontWeight: 700, color: theme.success }}>{totals.register}</td>
-              <td style={{ textAlign: 'right', fontWeight: 700 }}>{totals.training}</td>
-              <td style={{ textAlign: 'right', fontWeight: 700 }}>{totals.withdraw}</td>
-              <td style={{ textAlign: 'right', fontWeight: 700, color: tealAccent }}>{totals.orders}</td>
-              <td style={{ textAlign: 'right', fontWeight: 700 }}>{totals.conversion_pct.toFixed(1)}%</td>
+            <tr className="group-total-row">
+              <td className="text-bold label-sm text-uppercase">{t('common.total', lang)}</td>
+              <td className="text-right text-bold">{totals.powder}</td>
+              <td className="text-right text-bold">{totals.reply_pct.toFixed(0)}%</td>
+              <td className="text-right text-bold text-success">{totals.register}</td>
+              <td className="text-right text-bold">{totals.training}</td>
+              <td className="text-right text-bold">{totals.withdraw}</td>
+              <td className="text-right text-bold text-accent">{totals.orders}</td>
+              <td className="text-right text-bold">{totals.conversion_pct.toFixed(1)}%</td>
             </tr>
           </tfoot>
         </table>
@@ -119,38 +119,29 @@ export default function GroupOverview() {
       <PageHeader title={t('groups.title', lang)} />
 
       {message && (
-        <div style={{
-          padding: 12, marginBottom: 20, borderRadius: 8, fontSize: 13, fontWeight: 600,
-          background: message.type === 'error' ? theme.dangerBg : theme.successBg,
-          color: message.type === 'error' ? theme.danger : theme.success,
-          border: `1px solid ${message.type === 'error' ? theme.danger : theme.success}40`,
-        }}>
+        <div className={`alert ${message.type === 'error' ? 'alert-error' : 'alert-success'}`}>
           {message.text}
         </div>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <label style={{ fontSize: 14, fontWeight: 600, color: theme.textSecondary }}>{t('detail.date', lang)}:</label>
-        <input className="input" type="date" value={date} onChange={e => handleDateChange(e.target.value)} style={{ width: 'auto' }} />
+      <div className="d-flex align-center gap-12 mb-20">
+        <label className="field-label">{t('detail.date', lang)}:</label>
+        <input className="input width-auto" type="date" value={date} onChange={e => handleDateChange(e.target.value)} />
       </div>
 
       {loading ? <Spinner /> : groups.length === 0 ? <Empty label={t('common.no_data', lang)} /> : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(440px, 1fr))', gap: 20, marginBottom: 20 }}>
+          <div className="grid-auto-440 mb-20">
             {groups.map((g: any, idx: number) => (
-              <div className="card" key={g.group_name || idx} style={{ overflow: 'hidden' }}>
-                <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="card overflow-hidden" key={g.group_name || idx}>
+                <div className="group-card-header">
                   <div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: theme.textPrimary }}>{g.group_name || g.team || `Group ${idx + 1}`}</div>
-                    <div style={{ fontSize: 12, color: theme.textSecondary, marginTop: 4 }}>
-                      {t('groups.leader', lang)}: <span style={{ fontWeight: 600, color: tealAccent }}>{g.leader_name || '-'}</span>
+                    <div className="heading-sm">{g.group_name || g.team || `Group ${idx + 1}`}</div>
+                    <div className="caption mt-4">
+                      {t('groups.leader', lang)}: <span className="text-bold text-accent">{g.leader_name || '-'}</span>
                     </div>
                   </div>
-                  <div style={{
-                    width: 36, height: 36, borderRadius: '50%', background: `${tealAccent}20`,
-                    color: tealAccent, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: 700, fontSize: 14,
-                  }}>
+                  <div className="group-member-count">
                     {(g.today_members || g.members || []).length}
                   </div>
                 </div>
@@ -158,7 +149,7 @@ export default function GroupOverview() {
                 {renderStaffTable(g.today_members || g.members || [], t('groups.today_stats', lang))}
 
                 {g.cumulative_members && g.cumulative_members.length > 0 && (
-                  <div style={{ marginTop: 20, paddingTop: 20, borderTop: `1px solid ${theme.cardBorder}` }}>
+                  <div className="mt-20 pt-20 border-top">
                     {renderStaffTable(g.cumulative_members, t('groups.cumulative_stats', lang))}
                   </div>
                 )}
@@ -166,20 +157,20 @@ export default function GroupOverview() {
             ))}
           </div>
 
-          <div className="card" style={{ border: `2px solid ${tealAccent}40`, marginBottom: 20 }}>
-            <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700, color: tealAccent }}>{t('groups.grand_total', lang)} - {t('groups.all_teams', lang)}</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 12 }}>
+          <div className="card group-grand-total mb-20">
+            <h3 className="heading-sm text-accent mb-20">{t('groups.grand_total', lang)} - {t('groups.all_teams', lang)}</h3>
+            <div className="grand-total-grid">
               {[
-                { value: grandTotals.powder, label: t('perf.new_powder', lang), color: theme.textPrimary },
-                { value: grandTotals.register, label: t('perf.register', lang), color: theme.success },
-                { value: grandTotals.training, label: t('perf.training', lang), color: theme.textPrimary },
-                { value: grandTotals.withdraw, label: t('perf.withdraw', lang), color: theme.textPrimary },
-                { value: grandTotals.orders, label: t('perf.new_order', lang), color: tealAccent },
-                { value: grandTotals.powder > 0 ? ((grandTotals.orders / grandTotals.powder) * 100).toFixed(1) + '%' : '0.0%', label: t('perf.conversion', lang), color: theme.accent },
+                { value: grandTotals.powder, label: t('perf.new_powder', lang), cls: '' },
+                { value: grandTotals.register, label: t('perf.register', lang), cls: 'text-success' },
+                { value: grandTotals.training, label: t('perf.training', lang), cls: '' },
+                { value: grandTotals.withdraw, label: t('perf.withdraw', lang), cls: '' },
+                { value: grandTotals.orders, label: t('perf.new_order', lang), cls: 'text-accent' },
+                { value: grandTotals.powder > 0 ? ((grandTotals.orders / grandTotals.powder) * 100).toFixed(1) + '%' : '0.0%', label: t('perf.conversion', lang), cls: 'text-accent' },
               ].map((item, i) => (
-                <div key={i} style={{ background: theme.bg, borderRadius: 8, padding: 12, textAlign: 'center', border: `1px solid ${theme.cardBorder}` }}>
-                  <div style={{ fontSize: 24, fontWeight: 700, color: item.color }}>{item.value}</div>
-                  <div style={{ fontSize: 12, color: theme.textSecondary, textTransform: 'uppercase', fontWeight: 600, marginTop: 8 }}>{item.label}</div>
+                <div key={i} className="grand-total-item">
+                  <div className={`grand-total-value ${item.cls}`}>{item.value}</div>
+                  <div className="grand-total-label">{item.label}</div>
                 </div>
               ))}
             </div>

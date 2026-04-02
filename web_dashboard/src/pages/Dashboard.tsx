@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { PageHeader, SectionTitle, Spinner, Empty } from '../components/SharedUI'
-export { PageHeader, SectionTitle, Spinner, Empty, MessageBanner } from '../components/SharedUI'
 import {
   Bar,
   BarChart,
@@ -34,15 +33,14 @@ function StatCard({
   sub?: string
   accent?: string
 }) {
-  const { theme } = useTheme()
   return (
-    <div className="stat-card" style={{ cursor: 'default' }}>
-      <div className="stat-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 0 }}>
-        {accent && <div style={{ width: 8, height: 8, borderRadius: '50%', background: accent, flexShrink: 0 }} />}
+    <div className="stat-card">
+      <div className="stat-label">
+        {accent && <div className="accent-dot" style={{ background: accent }} />}
         {label}
       </div>
       <div className="stat-value">{value}</div>
-      {sub && <div style={{ fontSize: 12, color: theme.textSecondary, fontWeight: 500 }}>{sub}</div>}
+      {sub && <div className="stat-sub">{sub}</div>}
     </div>
   )
 }
@@ -147,36 +145,24 @@ export default function Dashboard() {
       {/* Activity feed */}
       <div className="card">
         <SectionTitle theme={theme}>{t('dash.recent_activity', lang)}</SectionTitle>
-        {error && <div className="badge-danger" style={{ padding: 12, marginBottom: 20, fontSize: 13, display: 'block' }}>{error}</div>}
+        {error && <div className="alert alert-error">{error}</div>}
         {activity.length === 0 ? (
           <Empty color={theme.textSecondary} />
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div className="flex-col gap-4">
             {activity.map(a => (
-              <div key={a.id} style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '10px 12px', background: theme.bg, borderRadius: 8,
-                borderBottom: `1px solid ${theme.cardBorder}`,
-              }}>
-                <div style={{
-                  width: 8, height: 8, borderRadius: '50%',
-                  background: theme.accent, flexShrink: 0,
-                  boxShadow: `0 0 0 4px ${theme.accentLight}`
-                }} />
-                <div style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                  <div style={{ fontSize: 14, color: theme.textPrimary, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                    <span style={{ color: theme.textPrimary, fontWeight: 600, flexShrink: 0 }}>{a.staff_name || 'System'}</span>
-                    <span style={{ color: theme.textMuted }}>·</span>
-                    <span className="pill-badge" style={{ color: theme.accent, fontFamily: 'monospace', fontWeight: 600, background: theme.accentLight, padding: '4px 12px', flexShrink: 0 }}>{a.client_phone || 'N/A'}</span>
+              <div key={a.id} className="activity-item">
+                <div className="activity-dot" />
+                <div className="activity-body">
+                  <div className="activity-main">
+                    <span className="activity-staff">{a.staff_name || 'System'}</span>
+                    <span className="activity-sep">&middot;</span>
+                    <span className="pill-badge badge-accent phone-mono">{a.client_phone || 'N/A'}</span>
                     {a.content && (
-                      <span style={{
-                        color: theme.textSecondary, fontSize: 13,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        maxWidth: 400, display: 'inline-block',
-                      }}>{a.content}</span>
+                      <span className="activity-content">{a.content}</span>
                     )}
                   </div>
-                  <div style={{ fontSize: 12, color: theme.textSecondary, fontWeight: 500, flexShrink: 0 }}>
+                  <div className="activity-time">
                     {a.created_at ? new Date(a.created_at).toLocaleString() : ''}
                   </div>
                 </div>

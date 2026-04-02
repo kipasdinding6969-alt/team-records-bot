@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { getAuthState, isAuthenticated } from './api'
+import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
 import ClientDetail from './pages/ClientDetail'
 import Clients from './pages/Clients'
@@ -45,7 +46,9 @@ export default function App() {
           path="/"
           element={
             <ProtectedRoute>
-              <Layout />
+              <ErrorBoundary>
+                <Layout />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         >

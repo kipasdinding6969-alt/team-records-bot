@@ -96,7 +96,7 @@ export default function Clients() {
   }
 
   return (
-    <div className="page-container" style={{ maxWidth: 1400, margin: '0 auto' }}>
+    <div className="page-container">
       <PageHeader title={t('clients.title', getLang())} sub={t('clients.manage_sub', getLang())} />
 
       {/* Filter bar */}
@@ -135,7 +135,7 @@ export default function Clients() {
         </button>
         <div className="toolbar-spacer" />
         {data && (
-          <span style={{ fontSize: 14, fontWeight: 600, color: theme.textSecondary }}>
+          <span className="pagination-info">
             {t('clients.total_records', getLang()).replace('{count}', data.total.toLocaleString())}
           </span>
         )}
@@ -166,27 +166,21 @@ export default function Clients() {
               />
               {/* Pagination */}
               {totalPages > 1 && (
-                <div style={{
-                  display: 'flex', gap: 12, padding: '12px 20px',
-                  borderTop: `1px solid ${theme.cardBorder}`,
-                  alignItems: 'center', justifyContent: 'center',
-                }}>
+                <div className="pagination">
                   <button
                     className="btn-secondary"
                     onClick={() => setParam('page', String(page - 1))}
                     disabled={page <= 1}
-                    style={{ opacity: page <= 1 ? 0.4 : 1, minWidth: 80 }}
                   >
                     {t('clients.prev', getLang())}
                   </button>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: theme.textSecondary, minWidth: 120, textAlign: 'center' }}>
+                  <span className="pagination-info">
                     {t('clients.page_info', getLang()).replace('{page}', String(page)).replace('{total}', String(totalPages))}
                   </span>
                   <button
                     className="btn-secondary"
                     onClick={() => setParam('page', String(page + 1))}
                     disabled={page >= totalPages}
-                    style={{ opacity: page >= totalPages ? 0.4 : 1, minWidth: 80 }}
                   >
                     {t('clients.next', getLang())}
                   </button>
@@ -205,7 +199,7 @@ export default function Clients() {
 
             {/* Phone input with live check */}
             <div style={{ marginBottom: 20 }}>
-              <label className="form-grid" style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 8 }}>{t('clients.phone_input', getLang())}</label>
+              <label className="field-label">{t('clients.phone_input', getLang())}</label>
               <div style={{ display: 'flex', gap: 12 }}>
                 <input
                   className="input"
@@ -219,21 +213,16 @@ export default function Clients() {
                 </button>
               </div>
               {phoneStatus && (
-                <div style={{
-                  marginTop: 8, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '8px 12px', borderRadius: 8,
-                  background: phoneStatus.status === 'taken' ? theme.dangerBg : phoneStatus.status === 'available' ? theme.successBg : theme.warningBg,
-                  border: `1px solid ${phoneStatus.status === 'taken' ? theme.danger : phoneStatus.status === 'available' ? theme.success : theme.warning}40`,
-                }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: phoneStatus.status === 'taken' ? theme.danger : phoneStatus.status === 'available' ? theme.success : theme.warning }} />
+                <div className={`phone-check-result ${phoneStatus.status === 'taken' ? 'badge-danger' : phoneStatus.status === 'available' ? 'badge-success' : 'badge-warning'}`}>
+                  <div className="dot" style={{ background: phoneStatus.status === 'taken' ? 'var(--danger)' : phoneStatus.status === 'available' ? 'var(--success)' : 'var(--warning)' }} />
                   {phoneStatus.status === 'available' && (
-                    <span style={{ color: theme.success, fontWeight: 600 }}>{t('clients.phone_available', getLang())}</span>
+                    <span style={{ fontWeight: 600 }}>{t('clients.phone_available', getLang())}</span>
                   )}
                   {phoneStatus.status === 'own' && (
-                    <span style={{ color: theme.warning, fontWeight: 600 }}>{t('clients.phone_own', getLang())}</span>
+                    <span style={{ fontWeight: 600 }}>{t('clients.phone_own', getLang())}</span>
                   )}
                   {phoneStatus.status === 'taken' && (
-                    <span style={{ color: theme.danger, fontWeight: 600 }}>
+                    <span style={{ fontWeight: 600 }}>
                       {t('clients.phone_taken', getLang()).replace('{owner}', phoneStatus.owner)} ({phoneStatus.submitted_at?.split('T')[0]})
                     </span>
                   )}
@@ -245,7 +234,7 @@ export default function Clients() {
             <div className="form-grid-2col" style={{ marginBottom: 20 }}>
               {/* Source */}
               <div>
-                <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>{t('clients.source_label', getLang())}</label>
+                <label className="field-label">{t('clients.source_label', getLang())}</label>
                 <select
                   className="input"
                   value={addSource}
@@ -260,7 +249,7 @@ export default function Clients() {
 
               {/* Platform */}
               <div>
-                <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>{t('clients.platform_label', getLang())}</label>
+                <label className="field-label">{t('clients.platform_label', getLang())}</label>
                 <select className="input" value={addPlatform} onChange={e => setAddPlatform(e.target.value)}
                   style={{ width: '100%' }}>
                   <option value="">{t('clients.select', getLang())}</option>
@@ -272,52 +261,42 @@ export default function Clients() {
 
               {/* Nickname */}
               <div>
-                <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>{t('clients.nickname_label', getLang())}</label>
+                <label className="field-label">{t('clients.nickname_label', getLang())}</label>
                 <input className="input" value={addNickname} onChange={e => setAddNickname(e.target.value)}
                   placeholder={t('clients.optional', getLang())} style={{ width: '100%' }} />
               </div>
 
               {/* Account ID */}
               <div>
-                <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>{t('clients.account_id_label', getLang())}</label>
+                <label className="field-label">{t('clients.account_id_label', getLang())}</label>
                 <input className="input" value={addAccountId} onChange={e => setAddAccountId(e.target.value)}
                   placeholder={t('clients.optional', getLang())} style={{ width: '100%' }} />
               </div>
 
               {/* Category */}
               <div>
-                <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>{t('clients.category_label', getLang())}</label>
-                <div style={{ position: 'relative' }}>
-                  <select className="input" value={addCategory} onChange={e => setAddCategory(e.target.value)}
-                    style={{ width: '100%', appearance: 'none' }}>
-                    <option value="">{t('clients.select', getLang())}</option>
-                    {['UK表单粉', 'CA表单粉', 'AU表单粉', 'EU表单粉', 'US表单粉', 'SEA表单粉', 'Other'].map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                  {addCategory && (
-                    <span className="pill-badge" style={{
-                      position: 'absolute', right: 30, top: '50%', transform: 'translateY(-50%)',
-                      background: theme.accentLight, color: theme.accent, fontSize: 10, padding: '2px 8px', borderRadius: 8, pointerEvents: 'none'
-                    }}>
-                      {addCategory}
-                    </span>
-                  )}
-                </div>
+                <label className="field-label">{t('clients.category_label', getLang())}</label>
+                <select className="input" value={addCategory} onChange={e => setAddCategory(e.target.value)}
+                  style={{ width: '100%' }}>
+                  <option value="">{t('clients.select', getLang())}</option>
+                  {['UK表单粉', 'CA表单粉', 'AU表单粉', 'EU表单粉', 'US表单粉', 'SEA表单粉', 'Other'].map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Recruiter */}
               <div>
-                <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>{t('clients.recruiter_label', getLang())}</label>
+                <label className="field-label">{t('clients.recruiter_label', getLang())}</label>
                 <input className="input" value={addRecruiter} onChange={e => setAddRecruiter(e.target.value)}
                   placeholder={t('clients.optional', getLang())} style={{ width: '100%' }} />
               </div>
             </div>
 
-            {addError && <div style={{ color: theme.danger, fontSize: 13, marginBottom: 20, background: theme.dangerBg, padding: '12px', borderRadius: 8 }}>{addError}</div>}
-            {addSuccess && <div style={{ color: theme.success, fontSize: 13, marginBottom: 20, background: theme.successBg, padding: '12px', borderRadius: 8 }}>{addSuccess}</div>}
+            {addError && <div className="alert alert-error">{addError}</div>}
+            {addSuccess && <div className="alert alert-success">{addSuccess}</div>}
 
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 20 }}>
+            <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setShowAdd(false)}>
                 {t('common.cancel', getLang())}
               </button>
@@ -325,9 +304,6 @@ export default function Clients() {
                 className="btn-primary"
                 onClick={submitNewClient}
                 disabled={addSubmitting || phoneStatus?.status === 'taken'}
-                style={{
-                  opacity: addSubmitting || phoneStatus?.status === 'taken' ? 0.6 : 1,
-                }}
               >
                 {addSubmitting ? '...' : t('clients.submit', getLang())}
               </button>

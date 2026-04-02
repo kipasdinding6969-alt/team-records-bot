@@ -15,11 +15,10 @@ const MILESTONES = [
 ] as const
 
 function Field({ label, value, accent }: { label: string; value: string | number | null | undefined; accent?: string }) {
-  const { theme } = useTheme()
   return (
     <div>
       <div className="field-label">{label}</div>
-      <div style={{ fontSize: 15, fontWeight: 500, color: accent || theme.textPrimary }}>{value || '—'}</div>
+      <div className="fs-14 fw-600" style={{ color: accent || undefined }}>{value || '—'}</div>
     </div>
   )
 }
@@ -168,53 +167,49 @@ export default function ClientDetail() {
     }))
   }
 
-  if (loading) return <div style={{ color: theme.textSecondary, padding: 20, fontSize: 15, fontWeight: 500 }}>{t('common.loading', lang)}...</div>
-  if (error) return <div style={{ color: theme.danger, padding: 20, fontSize: 15, fontWeight: 500 }}>{error}</div>
+  if (loading) return <div className="text-secondary p-20 fs-14 fw-600">{t('common.loading', lang)}...</div>
+  if (error) return <div className="alert alert-error">{error}</div>
   if (!client) return null
 
   const statusColor = STATUS_COLORS[client.status] || theme.textSecondary
   const totalDeposits = client.deposits.reduce((s, d) => s + d.amount, 0)
 
   return (
-    <div className="page-container" style={{ maxWidth: 1400, margin: '0 auto', color: theme.textPrimary }}>
+    <div className="page-container">
       {message && (
-        <div style={{ padding: '12px', marginBottom: 20, background: theme.dangerBg, color: theme.danger, borderRadius: 8, fontSize: 13, border: `1px solid ${theme.danger}40` }}>
-          {message}
-        </div>
+        <div className="alert alert-error">{message}</div>
       )}
 
       {/* Client header card */}
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div className="card mb-20">
+        <div className="d-flex items-center gap-12 flex-wrap">
           <button
             className="btn-secondary"
             onClick={() => nav(-1)}
           >
             {t('detail.back', lang)}
           </button>
-          <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0, letterSpacing: '-0.02em' }}>{client.phone}</h1>
-          <span style={{
-            padding: '4px 12px', borderRadius: 8,
+          <h1 className="page-title">{client.phone}</h1>
+          <span className="status-badge" style={{
             background: `${statusColor}20`, color: statusColor, border: `1px solid ${statusColor}40`,
-            fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5,
           }}>
             {t(`status.${client.status}`, lang) !== `status.${client.status}` ? t(`status.${client.status}`, lang) : (STATUS_LABELS[client.status] || client.status)}
           </span>
           {client.source && (
-            <span style={{ color: theme.textSecondary, fontSize: 14 }}>{client.source}</span>
+            <span className="text-secondary fs-14">{client.source}</span>
           )}
         </div>
       </div>
 
-      {/* Two-column layout: 65% left, 35% right */}
-      <div style={{ display: 'grid', gridTemplateColumns: '65% 35%', gap: 20 }}>
+      {/* Two-column layout */}
+      <div className="detail-grid">
         {/* LEFT COLUMN: Info + Milestones + Notes + Timeline + Comments */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div className="flex-col gap-20">
 
           {/* Client Info Card */}
           <div className="card">
-            <h3 className="field-label" style={{ fontSize: 14, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>{t('detail.info', lang)}</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <h3 className="section-title">{t('detail.info', lang)}</h3>
+            <div className="form-grid-2col">
               <Field label={t('detail.phone', lang)} value={client.phone} accent={theme.accent} />
               <Field label={t('detail.source', lang)} value={client.source} />
               <Field label={t('detail.frontdesk', lang)} value={client.frontdesk_name} />
@@ -226,31 +221,26 @@ export default function ClientDetail() {
 
           {/* Milestones: horizontal timeline dots */}
           <div className="card">
-            <h3 className="field-label" style={{ fontSize: 14, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>{t('detail.milestones', lang)}</h3>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, overflow: 'auto' }}>
+            <h3 className="section-title">{t('detail.milestones', lang)}</h3>
+            <div className="milestone-row">
               {MILESTONES.map((m, i) => {
                 const val = (client as any)[m.key]
                 const isActive = !!val
                 return (
-                  <div key={m.key} style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-                      <div style={{
-                        width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
-                        background: isActive ? theme.success : theme.cardBorder,
-                        border: `2px solid ${isActive ? theme.success : theme.cardBorder}`,
-                        marginBottom: 8,
-                      }} />
-                      <div style={{ fontSize: 11, fontWeight: 600, color: isActive ? theme.textPrimary : theme.textSecondary, textAlign: 'center', lineHeight: 1.3 }}>
+                  <div key={m.key} className="milestone-step">
+                    <div className="milestone-content">
+                      <div className={`milestone-dot ${isActive ? 'active' : 'inactive'}`} />
+                      <div className={`milestone-label ${isActive ? 'text-primary' : 'text-secondary'}`}>
                         {t(m.label, lang)}
                       </div>
                       {val && (
-                        <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
+                        <div className="milestone-date">
                           {new Date(val).toLocaleDateString()}
                         </div>
                       )}
                     </div>
                     {i < MILESTONES.length - 1 && (
-                      <div style={{ height: 2, flex: 1, background: isActive ? theme.success : theme.cardBorder, marginTop: -20, minWidth: 12 }} />
+                      <div className={`milestone-line ${isActive ? 'active' : 'inactive'}`} />
                     )}
                   </div>
                 )
@@ -260,8 +250,8 @@ export default function ClientDetail() {
 
           {/* Add Note */}
           <div className="card">
-            <h3 className="field-label" style={{ fontSize: 14, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>{t('detail.add_note', lang)}</h3>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+            <h3 className="section-title">{t('detail.add_note', lang)}</h3>
+            <div className="inline-form">
               <select
                 className="input"
                 value={noteType}
@@ -273,18 +263,18 @@ export default function ClientDetail() {
                 <option value="link_note">{t('note_type.link_note', lang)}</option>
               </select>
               <textarea
-                className="input"
+                className="input flex-1"
                 placeholder={t('detail.note_placeholder', lang)}
                 value={noteContent}
                 onChange={e => setNoteContent(e.target.value)}
                 rows={2}
-                style={{ flex: 1, resize: 'vertical', fontFamily: 'inherit' }}
+                style={{ resize: 'vertical' }}
               />
               <button
-                className="btn-primary"
+                className="btn-primary self-start"
                 onClick={handleAddNote}
                 disabled={noteSaving || !noteContent.trim()}
-                style={{ opacity: noteSaving || !noteContent.trim() ? 0.5 : 1, alignSelf: 'flex-start' }}
+                style={{ opacity: noteSaving || !noteContent.trim() ? 0.5 : 1 }}
               >
                 {noteSaving ? t('common.saving', lang) : t('common.save', lang)}
               </button>
@@ -293,41 +283,34 @@ export default function ClientDetail() {
 
           {/* Linked Timeline Toggle */}
           {links.length > 0 && (
-            <div className="card" style={{ cursor: 'pointer' }} onClick={() => {
+            <div className="card pointer" onClick={() => {
               if (!linkedTimeline) {
                 api.linkedTimeline(clientId).then(setLinkedTimeline).catch(() => {})
               }
               setShowLinked(!showLinked)
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div className="field-label" style={{ marginBottom: 0 }}>
+              <div className="flex-between">
+                <div className="section-title" style={{ margin: 0 }}>
                   {t('detail.linked_timeline', lang)} {linkedTimeline ? `(${linkedTimeline.timeline?.length || 0})` : ''}
                 </div>
-                <span style={{ fontSize: 12, color: theme.accent }}>{showLinked ? t('common.close', lang) : t('detail.linked_timeline', lang)}</span>
+                <span className="fs-12 text-accent">{showLinked ? t('common.close', lang) : t('detail.linked_timeline', lang)}</span>
               </div>
               {showLinked && linkedTimeline && (
-                <div style={{ marginTop: 12 }}>
+                <div className="mt-12">
                   {linkedTimeline.linked_client_ids?.length > 0 && (
-                    <div style={{ marginBottom: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <span style={{ fontSize: 11, color: theme.textSecondary }}>{t('detail.linked_clients', lang)}:</span>
+                    <div className="mb-12 d-flex gap-8 flex-wrap items-center">
+                      <span className="fs-11 text-secondary">{t('detail.linked_clients', lang)}:</span>
                       {linkedTimeline.linked_client_ids.map((lid: number) => (
                         <span key={lid} onClick={e => { e.stopPropagation(); nav(`/clients/${lid}`) }}
-                          style={{
-                            fontSize: 11, padding: '4px 8px', borderRadius: 8,
-                            background: `${theme.accent}20`, color: theme.accent, cursor: 'pointer', fontWeight: 600,
-                          }}>
+                          className="linked-chip">
                           #{lid}
                         </span>
                       ))}
                     </div>
                   )}
                   {(linkedTimeline.timeline || []).map((item: any, i: number) => (
-                    <div key={`lt-${i}`} style={{
-                      padding: '8px 0', borderBottom: i < linkedTimeline.timeline.length - 1 ? `1px solid ${theme.cardBorder}` : 'none',
-                      display: 'flex', gap: 12, alignItems: 'flex-start',
-                    }}>
-                      <span style={{
-                        fontSize: 9, padding: '2px 8px', borderRadius: 8, fontWeight: 700, flexShrink: 0, marginTop: 4,
+                    <div key={`lt-${i}`} className="timeline-entry">
+                      <span className="timeline-dot" style={{
                         ...(item.timeline_type === 'deposit' ? { background: theme.successBg, color: theme.success }
                           : item.timeline_type === 'link' ? { background: `${theme.accent}20`, color: theme.accent }
                           : item.client_id !== clientId ? { background: theme.warningBg, color: theme.warning }
@@ -335,22 +318,22 @@ export default function ClientDetail() {
                       }}>
                         {item.timeline_type === 'deposit' ? '$' : item.timeline_type === 'link' ? '~' : item.client_id !== clientId ? `#${item.client_id}` : '-'}
                       </span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 12, color: theme.textSecondary, display: 'flex', justifyContent: 'space-between' }}>
+                      <div className="flex-1">
+                        <div className="fs-12 text-secondary d-flex justify-between">
                           <span>
                             {item.staff_name || item.author_name || '-'}
                             {item.client_phone && item.client_id !== clientId && (
-                              <span style={{ marginLeft: 8, fontSize: 10, color: theme.accent }}>({item.client_phone})</span>
+                              <span className="text-accent" style={{ marginLeft: 8, fontSize: 10 }}>({item.client_phone})</span>
                             )}
                           </span>
-                          <span style={{ fontSize: 11 }}>{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</span>
+                          <span className="fs-11">{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</span>
                         </div>
-                        {item.content && <div style={{ fontSize: 13, color: theme.textPrimary, marginTop: 4 }}>{item.content}</div>}
+                        {item.content && <div className="fs-13 text-primary mt-8">{item.content}</div>}
                       </div>
                     </div>
                   ))}
                   {(linkedTimeline.timeline || []).length === 0 && (
-                    <div style={{ color: theme.textSecondary, fontSize: 13 }}>{t('detail.no_notes', lang)}</div>
+                    <div className="text-secondary fs-13">{t('detail.no_notes', lang)}</div>
                   )}
                 </div>
               )}
@@ -359,60 +342,51 @@ export default function ClientDetail() {
 
           {/* Timeline */}
           <div className="card">
-            <h3 className="field-label" style={{ fontSize: 14, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-              {t('detail.timeline', lang)} <span style={{ color: theme.textMuted, fontWeight: 500 }}>({timeline.length})</span>
+            <h3 className="section-title">
+              {t('detail.timeline', lang)} <span className="text-muted fw-600">({timeline.length})</span>
             </h3>
             {timeline.length === 0 ? (
-              <div style={{ color: theme.textSecondary, fontSize: 14 }}>{t('detail.no_notes', lang)}</div>
+              <div className="text-secondary fs-14">{t('detail.no_notes', lang)}</div>
             ) : (
-              <div style={{ borderLeft: `2px solid ${theme.cardBorder}`, paddingLeft: 20, marginLeft: 8 }}>
+              <div className="timeline-vertical">
                 {timeline.map((n, i) => (
                   <div
                     key={`${n.timeline_type || 'note'}-${n.id}-${i}`}
-                    style={{
-                      paddingBottom: i < timeline.length - 1 ? 20 : 0,
-                      marginBottom: i < timeline.length - 1 ? 20 : 0,
-                      borderBottom: i < timeline.length - 1 ? `1px solid ${theme.cardBorder}` : 'none',
-                      position: 'relative',
-                    }}
+                    className="timeline-entry"
                   >
                     {/* Dot on the left border */}
-                    <div style={{
-                      position: 'absolute', left: -27, top: 4,
-                      width: 12, height: 12, borderRadius: '50%',
+                    <div className="timeline-dot" style={{
                       background: n.timeline_type === 'link' ? theme.accent
                         : n.note_type === 'status_change' ? theme.success
                         : n.note_type === 'flag' ? theme.warning
                         : theme.textMuted,
-                      border: `2px solid ${theme.cardBg}`,
-                      boxShadow: `0 0 0 1px ${theme.cardBorder}`,
                     }} />
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: theme.textPrimary, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div className="timeline-header">
+                      <span className="fs-13 fw-600 text-primary d-flex items-center gap-8">
                         {n.staff_name || n.author_name || t('detail.system', lang)}
                         {n.timeline_type === 'link' && (
-                          <span style={{ fontSize: 10, background: theme.warningBg, color: theme.warning, border: `1px solid ${theme.warning}40`, padding: '2px 8px', borderRadius: 8, fontWeight: 700, letterSpacing: 0.5 }}>
+                          <span className="pill-badge badge-warning fs-11">
                             LINK
                           </span>
                         )}
                         {n.note_type === 'status_change' && n.old_status && n.new_status && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-                            <span style={{ color: STATUS_COLORS[n.old_status] || theme.textSecondary, fontWeight: 600, background: `${STATUS_COLORS[n.old_status] || theme.textSecondary}20`, padding: '2px 8px', borderRadius: 8 }}>
+                          <span className="d-flex items-center gap-8 fs-12">
+                            <span className="status-badge" style={{ color: STATUS_COLORS[n.old_status] || 'var(--text-secondary)', background: `${STATUS_COLORS[n.old_status] || 'var(--text-secondary)'}20` }}>
                               {t(`status.${n.old_status}`, lang) !== `status.${n.old_status}` ? t(`status.${n.old_status}`, lang) : (STATUS_LABELS[n.old_status] || n.old_status)}
                             </span>
-                            <span style={{ color: theme.textMuted }}>{'->'}</span>
-                            <span style={{ color: STATUS_COLORS[n.new_status] || theme.textPrimary, fontWeight: 600, background: `${STATUS_COLORS[n.new_status] || theme.textSecondary}20`, padding: '2px 8px', borderRadius: 8 }}>
+                            <span className="text-muted">{'->'}</span>
+                            <span className="status-badge" style={{ color: STATUS_COLORS[n.new_status] || 'var(--text-primary)', background: `${STATUS_COLORS[n.new_status] || 'var(--text-secondary)'}20` }}>
                               {t(`status.${n.new_status}`, lang) !== `status.${n.new_status}` ? t(`status.${n.new_status}`, lang) : (STATUS_LABELS[n.new_status] || n.new_status)}
                             </span>
                           </span>
                         )}
                       </span>
-                      <span style={{ fontSize: 12, color: theme.textSecondary, fontWeight: 500 }}>
+                      <span className="fs-12 text-secondary fw-600">
                         {n.created_at ? new Date(n.created_at).toLocaleString() : ''}
                       </span>
                     </div>
                     {n.content && (
-                      <div style={{ fontSize: 14, color: theme.textSecondary, lineHeight: 1.6, background: theme.bgElevated, padding: '12px', borderRadius: 8, border: `1px solid ${theme.cardBorder}` }}>
+                      <div className="timeline-content-block">
                         {n.content}
                       </div>
                     )}
@@ -424,41 +398,37 @@ export default function ClientDetail() {
 
           {/* Comment Thread */}
           <div className="card">
-            <h3 className="field-label" style={{ fontSize: 14, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-              {t('comments.title', lang)} <span style={{ color: theme.textMuted, fontWeight: 500 }}>({comments.length})</span>
+            <h3 className="section-title">
+              {t('comments.title', lang)} <span className="text-muted fw-600">({comments.length})</span>
             </h3>
 
             {/* Add comment form */}
-            <div style={{ marginBottom: 20 }}>
+            <div className="mb-20">
               {replyTo && (
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
-                  padding: '8px 12px', background: theme.accentLight, borderRadius: 8,
-                  fontSize: 12, color: theme.accent, fontWeight: 600,
-                }}>
+                <div className="pill-badge badge-accent mb-8 d-flex items-center gap-8 p-12 rounded-8">
                   <span>{t('comments.reply', lang)}: #{replyTo}</span>
                   <button
                     onClick={() => setReplyTo(null)}
-                    style={{ background: 'none', border: 'none', color: theme.textSecondary, cursor: 'pointer', fontSize: 14, fontWeight: 700, padding: '0 4px' }}
+                    className="comment-action-btn delete-btn fw-700 fs-14"
                   >
                     x
                   </button>
                 </div>
               )}
-              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              <div className="inline-form">
                 <textarea
-                  className="input"
+                  className="input flex-1"
                   placeholder={t('comments.placeholder', lang)}
                   value={commentContent}
                   onChange={e => setCommentContent(e.target.value)}
                   rows={2}
-                  style={{ flex: 1, resize: 'vertical', fontFamily: 'inherit' }}
+                  style={{ resize: 'vertical' }}
                 />
                 <button
-                  className="btn-primary"
+                  className="btn-primary self-start"
                   onClick={handleAddComment}
                   disabled={commentSaving || !commentContent.trim()}
-                  style={{ alignSelf: 'flex-start', opacity: commentSaving || !commentContent.trim() ? 0.5 : 1 }}
+                  style={{ opacity: commentSaving || !commentContent.trim() ? 0.5 : 1 }}
                 >
                   {commentSaving ? t('common.saving', lang) : t('comments.submit', lang)}
                 </button>
@@ -467,9 +437,9 @@ export default function ClientDetail() {
 
             {/* Comment list */}
             {comments.length === 0 ? (
-              <div style={{ color: theme.textSecondary, fontSize: 14 }}>{t('comments.no_comments', lang)}</div>
+              <div className="text-secondary fs-14">{t('comments.no_comments', lang)}</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="flex-col gap-12">
                 {buildThreaded(comments).map(({ comment: c, replies }) => (
                   <div key={c.id}>
                     <CommentItem
@@ -513,18 +483,18 @@ export default function ClientDetail() {
         </div>
 
         {/* RIGHT COLUMN: Deposits + Links */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div className="flex-col gap-20">
 
           {/* Deposits */}
           <div className="card">
-            <h3 className="field-label" style={{ fontSize: 14, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-              {t('detail.deposits', lang)} <span style={{ color: theme.textMuted, fontWeight: 500 }}>({client.deposits.length})</span>
+            <h3 className="section-title">
+              {t('detail.deposits', lang)} <span className="text-muted fw-600">({client.deposits.length})</span>
             </h3>
             {client.deposits.length === 0 ? (
-              <div style={{ color: theme.textSecondary, fontSize: 14 }}>{t('detail.no_deposits', lang)}</div>
+              <div className="text-secondary fs-14">{t('detail.no_deposits', lang)}</div>
             ) : (
-              <div style={{ overflow: 'hidden', borderRadius: 8, border: `1px solid ${theme.cardBorder}` }}>
-                <table className="data-grid-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <div className="rounded-8 border-card" style={{ overflow: 'hidden' }}>
+                <table className="data-grid-table w-full">
                   <thead>
                     <tr>
                       {[t('detail.amount', lang), t('detail.platform', lang), t('detail.date', lang)].map(h => (
@@ -535,9 +505,9 @@ export default function ClientDetail() {
                   <tbody>
                     {client.deposits.map((d, i) => (
                       <tr key={d.id}>
-                        <td style={{ color: theme.success, fontWeight: 600, fontFamily: 'monospace' }}>${d.amount.toFixed(2)} {d.currency}</td>
-                        <td style={{ color: theme.textPrimary, fontWeight: 500 }}>{d.platform || '—'}</td>
-                        <td style={{ color: theme.textSecondary, fontSize: 12, fontFamily: 'monospace' }}>{d.deposit_date ? new Date(d.deposit_date).toLocaleDateString() : '—'}</td>
+                        <td className="cell-mono text-success fw-600">${d.amount.toFixed(2)} {d.currency}</td>
+                        <td className="text-primary fw-600">{d.platform || '—'}</td>
+                        <td className="cell-mono text-secondary fs-12">{d.deposit_date ? new Date(d.deposit_date).toLocaleDateString() : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -548,9 +518,9 @@ export default function ClientDetail() {
 
           {/* Linked Clients */}
           <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 className="field-label" style={{ fontSize: 14, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                {t('detail.links', lang)} <span style={{ color: theme.textMuted, fontWeight: 500 }}>({links.length})</span>
+            <div className="flex-between mb-20">
+              <h3 className="section-title" style={{ margin: 0 }}>
+                {t('detail.links', lang)} <span className="text-muted fw-600">({links.length})</span>
               </h3>
               <button
                 className={showLinkForm ? 'btn-secondary' : 'btn-primary'}
@@ -561,31 +531,28 @@ export default function ClientDetail() {
             </div>
 
             {showLinkForm && (
-              <div style={{ background: theme.bgElevated, borderRadius: 8, border: `1px solid ${theme.cardBorder}`, padding: 20, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="inline-form flex-col gap-12 bg-elevated rounded-8 border-card p-20 mb-20">
                 <input
-                  className="input"
+                  className="input w-full"
                   type="number"
                   placeholder={t('detail.target_client_id', lang)}
                   value={linkTargetId}
                   onChange={e => setLinkTargetId(e.target.value)}
-                  style={{ width: '100%' }}
                 />
                 <select
-                  className="input"
+                  className="input w-full"
                   value={linkType}
                   onChange={e => setLinkType(e.target.value)}
-                  style={{ width: '100%' }}
                 >
                   {['related', 'same_person', 'referral', 'family'].map(lt => (
                     <option key={lt} value={lt}>{t(`link_type.${lt}`, lang)}</option>
                   ))}
                 </select>
                 <input
-                  className="input"
+                  className="input w-full"
                   placeholder={t('detail.link_note', lang)}
                   value={linkNote}
                   onChange={e => setLinkNote(e.target.value)}
-                  style={{ width: '100%' }}
                 />
                 <button
                   className="btn-primary"
@@ -599,32 +566,29 @@ export default function ClientDetail() {
             )}
 
             {links.length === 0 ? (
-              <div style={{ color: theme.textSecondary, fontSize: 14 }}>{t('detail.no_links', lang)}</div>
+              <div className="text-secondary fs-14">{t('detail.no_links', lang)}</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="flex-col gap-8">
                 {links.map(lnk => {
                   const otherId = lnk.client_id_a === clientId ? lnk.client_id_b : lnk.client_id_a
                   const otherPhone = lnk.client_id_a === clientId ? lnk.phone_b : lnk.phone_a
                   return (
-                    <div key={lnk.id} style={{ display: 'flex', gap: 8, padding: 12, background: theme.bgElevated, borderRadius: 8, border: `1px solid ${theme.cardBorder}`, fontSize: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div key={lnk.id} className="link-card">
                       <span
-                        style={{ color: theme.accent, cursor: 'pointer', fontWeight: 700, fontSize: 14 }}
+                        className="text-accent pointer fw-700 fs-14"
                         onClick={() => nav(`/clients/${otherId}`)}
                       >
                         #{otherId}
                       </span>
-                      <span style={{ color: theme.textPrimary }}>{otherPhone}</span>
-                      <span style={{
-                        fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8,
-                        background: theme.warningBg, color: theme.warning, border: `1px solid ${theme.warning}40`, letterSpacing: 0.5, textTransform: 'uppercase',
-                      }}>
+                      <span className="text-primary">{otherPhone}</span>
+                      <span className="pill-badge badge-warning fs-11" style={{ textTransform: 'uppercase' }}>
                         {t(`link_type.${lnk.link_type}`, lang)}
                       </span>
-                      <span style={{ color: theme.textSecondary, flex: 1, fontSize: 13 }}>{lnk.note || ''}</span>
+                      <span className="text-secondary flex-1 fs-13">{lnk.note || ''}</span>
                       <button
-                        className="btn-secondary"
+                        className="btn-secondary text-danger fs-12"
                         onClick={() => handleRemoveLink(lnk.id)}
-                        style={{ color: theme.danger, fontSize: 12, padding: '4px 12px' }}
+                        style={{ padding: '4px 12px' }}
                       >
                         {t('detail.remove_link', lang)}
                       </button>
@@ -636,15 +600,6 @@ export default function ClientDetail() {
           </div>
         </div>
       </div>
-
-      {/* Responsive: stack on mobile */}
-      <style>{`
-        @media (max-width: 768px) {
-          .page-container > div:nth-child(3) {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
     </div>
   )
 }
@@ -684,79 +639,76 @@ function CommentItem({
   const isEditing = editingComment === c.id
 
   return (
-    <div style={{
-      marginLeft: indent * 20,
-      marginTop: indent > 0 ? 8 : 0,
-      padding: 16,
-      background: isSystem ? theme.bg : theme.cardBg,
-      border: `1px solid ${theme.cardBorder}`,
-      borderLeft: indent > 0 ? `3px solid ${theme.accent}` : `1px solid ${theme.cardBorder}`,
-      borderRadius: 8,
-      opacity: isSystem ? 0.75 : 1,
-    }}>
+    <div
+      className={`comment-item ${isSystem ? 'system' : ''} ${indent > 0 ? 'reply' : ''}`}
+      style={{
+        marginLeft: indent * 20,
+        marginTop: indent > 0 ? 8 : 0,
+        opacity: isSystem ? 0.75 : 1,
+        borderLeftColor: indent > 0 ? theme.accent : undefined,
+      }}
+    >
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: isSystem ? theme.textMuted : theme.textPrimary }}>
+      <div className="comment-header">
+        <div className="d-flex items-center gap-8">
+          <span className={`fs-13 fw-700 ${isSystem ? 'text-muted' : 'text-primary'}`}>
             {isSystem ? t('comments.system', lang) : c.staff_name}
           </span>
           {indent > 0 && (
-            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 8, background: theme.accentLight, color: theme.accent, fontWeight: 600 }}>
+            <span className="pill-badge badge-accent fs-11">
               {t('comments.reply', lang)}
             </span>
           )}
           {c.updated_at && !isDeleted && (
-            <span style={{ fontSize: 11, color: theme.textMuted, fontStyle: 'italic' }}>{t('comments.edited', lang)}</span>
+            <span className="fs-11 text-muted" style={{ fontStyle: 'italic' }}>{t('comments.edited', lang)}</span>
           )}
         </div>
-        <span style={{ fontSize: 12, color: theme.textSecondary, fontWeight: 500 }}>
+        <span className="fs-12 text-secondary fw-600">
           {c.created_at ? new Date(c.created_at).toLocaleString() : ''}
         </span>
       </div>
 
       {/* Content */}
       {isEditing ? (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+        <div className="d-flex gap-8 items-start">
           <textarea
-            className="input"
+            className="input flex-1"
             value={editContent}
             onChange={e => onEditContentChange(e.target.value)}
             rows={2}
-            style={{ flex: 1, resize: 'vertical', fontFamily: 'inherit' }}
+            style={{ resize: 'vertical' }}
           />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <button className="btn-primary" onClick={onSaveEdit}
-              style={{ padding: '8px 12px', fontSize: 12 }}>
+          <div className="flex-col gap-4">
+            <button className="btn-primary fs-12 p-12" onClick={onSaveEdit}>
               {t('common.save', lang)}
             </button>
-            <button className="btn-secondary" onClick={onCancelEdit}
-              style={{ padding: '8px 12px', fontSize: 12 }}>
+            <button className="btn-secondary fs-12 p-12" onClick={onCancelEdit}>
               {t('common.cancel', lang)}
             </button>
           </div>
         </div>
       ) : (
-        <div style={{
-          fontSize: 14, lineHeight: 1.6,
-          color: isDeleted ? theme.textMuted : (isSystem ? theme.textSecondary : theme.textPrimary),
-          fontStyle: isDeleted ? 'italic' : 'normal',
-        }}>
+        <div className={`fs-14 ${isDeleted ? 'text-muted' : (isSystem ? 'text-secondary' : 'text-primary')}`}
+          style={{
+            lineHeight: 1.6,
+            fontStyle: isDeleted ? 'italic' : 'normal',
+          }}>
           {isDeleted ? t('comments.deleted', lang) : c.content}
         </div>
       )}
 
       {/* Actions */}
       {!isSystem && !isDeleted && !isEditing && (
-        <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
-          <button onClick={onReply} style={{ background: 'none', border: 'none', color: theme.accent, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+        <div className="comment-actions">
+          <button onClick={onReply} className="comment-action-btn reply-btn">
             {t('comments.reply', lang)}
           </button>
           {isOwn && (
             <>
-              <button onClick={onStartEdit} style={{ background: 'none', border: 'none', color: theme.textSecondary, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+              <button onClick={onStartEdit} className="comment-action-btn edit-btn">
                 {t('comments.edit', lang)}
               </button>
-              <button onClick={onDelete} style={{ background: 'none', border: 'none', color: theme.danger, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+              <button onClick={onDelete} className="comment-action-btn delete-btn">
                 {t('comments.delete', lang)}
               </button>
             </>

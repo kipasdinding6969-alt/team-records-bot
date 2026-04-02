@@ -178,9 +178,9 @@ export default function PermissionManager() {
         <div className="alert alert-success">{success}</div>
       )}
 
-      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+      <div className="content-split">
         {/* Staff selector sidebar */}
-        <div className="card" style={{ width: 280, minWidth: 280 }}>
+        <div className="card content-split-sidebar">
           <h3 className="section-title">
             {t('perm.hierarchy', lang)}
           </h3>
@@ -190,11 +190,11 @@ export default function PermissionManager() {
             )
             if (roleStaff.length === 0) return null
             return (
-              <div key={roleLevel} style={{ marginBottom: 12 }}>
-                <div className="field-label" style={{ marginBottom: 8 }}>
+              <div key={roleLevel} className="mb-12">
+                <div className="field-label mb-8">
                   {roleLevel}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div className="d-flex flex-col gap-4">
                   {roleStaff.map(s => {
                     const sLevel = getLevel(s.role)
                     const canEdit = myLevel > sLevel || auth?.role === 'owner'
@@ -202,20 +202,11 @@ export default function PermissionManager() {
                       <div
                         key={s.id}
                         onClick={() => canEdit && setSelectedStaff(s)}
-                        style={{
-                          padding: '8px 12px', borderRadius: 8,
-                          cursor: canEdit ? 'pointer' : 'not-allowed',
-                          background: selectedStaff?.id === s.id ? theme.accentLight : 'transparent',
-                          opacity: canEdit ? 1 : 0.5,
-                          border: `1px solid ${selectedStaff?.id === s.id ? theme.accent : 'transparent'}`,
-                          transition: 'all 0.2s',
-                        }}
+                        className={`search-result-item ${selectedStaff?.id === s.id ? 'active' : ''} ${!canEdit ? 'disabled' : ''}`}
                       >
-                        <div style={{ fontWeight: 600, color: theme.textPrimary, fontSize: 14 }}>
-                          {s.display_name}
-                        </div>
-                        <div style={{ fontSize: 12, color: theme.textSecondary }}>
-                          {s.team || t('perm.unassigned', lang)}
+                        <div>
+                          <div className="label-sm">{s.display_name}</div>
+                          <div className="caption">{s.team || t('perm.unassigned', lang)}</div>
                         </div>
                       </div>
                     )
@@ -227,60 +218,44 @@ export default function PermissionManager() {
         </div>
 
         {/* Permission grid */}
-        <div className="card" style={{ flex: 1, minWidth: 0 }}>
+        <div className="card content-split-main">
           {selectedStaff ? (
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+              <div className="d-flex justify-between align-center mb-20 flex-wrap gap-12">
                 <div>
-                  <h2 style={{ margin: '0 0 4px', fontSize: 20, color: theme.textPrimary, fontWeight: 700 }}>
-                    {selectedStaff.display_name}
-                  </h2>
-                  <div style={{ fontSize: 13, color: theme.textSecondary }}>
+                  <h2 className="heading-md mb-4">{selectedStaff.display_name}</h2>
+                  <div className="caption">
                     {selectedStaff.role} {selectedStaff.team ? `\u2022 ${selectedStaff.team}` : `\u2022 ${t('perm.unassigned', lang)}`}
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <div className="d-flex gap-8 flex-wrap">
                   {['frontdesk', 'leader', 'cs'].map(tmpl => (
-                    <button key={tmpl} className="btn-secondary" style={{ height: 32, padding: '0 12px', fontSize: 12, borderRadius: 20 }} onClick={() => applyTemplate(tmpl)}>
+                    <button key={tmpl} className="btn-secondary btn-sm btn-pill" onClick={() => applyTemplate(tmpl)}>
                       {t(`perm.template.${tmpl}`, lang)}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="d-flex flex-col gap-12">
                 {PERM_SECTIONS.map(section => (
-                  <div key={section.key} style={{ background: theme.bgElevated, borderRadius: 8, padding: 20, border: `1px solid ${theme.cardBorder}` }}>
-                    <h3 className="section-title" style={{ margin: '0 0 12px' }}>
+                  <div key={section.key} className="form-section">
+                    <h3 className="section-title mb-12">
                       {t(section.labelKey, lang)}
                     </h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+                    <div className="perm-grid">
                       {section.permissions.map(perm => {
                         const isAllowed = localPerms[perm.cmd] ?? true
                         return (
                           <div
                             key={perm.cmd}
                             onClick={() => handleToggle(perm.cmd)}
-                            style={{
-                              display: 'flex', alignItems: 'center', gap: 12,
-                              padding: '8px 12px', borderRadius: 8,
-                              cursor: 'pointer', transition: 'all 0.2s',
-                              border: `1px solid ${isAllowed ? theme.success : theme.danger}40`,
-                              background: isAllowed ? `${theme.success}10` : `${theme.danger}10`,
-                            }}
+                            className={`perm-toggle ${isAllowed ? 'allowed' : 'denied'}`}
                           >
-                            <div style={{
-                              width: 36, height: 20, borderRadius: 10,
-                              background: isAllowed ? theme.success : theme.cardBorder,
-                              position: 'relative', transition: 'all 0.2s', flexShrink: 0,
-                            }}>
-                              <div style={{
-                                width: 16, height: 16, borderRadius: '50%', background: '#fff',
-                                position: 'absolute', top: 2,
-                                left: isAllowed ? 18 : 2, transition: 'all 0.2s',
-                              }} />
+                            <div className={`toggle-track ${isAllowed ? 'on' : 'off'}`}>
+                              <div className={`toggle-knob ${isAllowed ? 'on' : 'off'}`} />
                             </div>
-                            <span style={{ fontSize: 13, fontWeight: 600, color: theme.textPrimary }}>
+                            <span className="label-sm">
                               {t(perm.labelKey, lang)}
                             </span>
                           </div>
@@ -291,7 +266,7 @@ export default function PermissionManager() {
                 ))}
               </div>
 
-              <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
+              <div className="modal-actions mt-20">
                 <button className="btn-primary" onClick={handleSave} disabled={saving}>
                   {saving ? t('common.saving', lang) : t('common.save', lang)}
                 </button>

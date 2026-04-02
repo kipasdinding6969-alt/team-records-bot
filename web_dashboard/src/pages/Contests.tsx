@@ -89,7 +89,7 @@ export default function Contests() {
     <div className="page-container">
       {error && <div className="alert alert-error">{error}</div>}
 
-      <div className="toolbar" style={{ marginBottom: 24 }}>
+      <div className="toolbar mb-24">
         <h1 className="page-title">{t('contests.title', lang)}</h1>
         <div className="toolbar-spacer" />
         {(auth?.role === 'admin' || auth?.role === 'owner') && (
@@ -105,21 +105,21 @@ export default function Contests() {
         <>
           <h2 className="section-title">{t('contests.active', lang)}</h2>
           {activeContests.length === 0 ? (
-            <div className="empty-state" style={{ marginBottom: 24 }}>{t('contests.no_active', lang)}</div>
+            <div className="empty-state mb-24">{t('contests.no_active', lang)}</div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 20, marginBottom: 24 }}>
+            <div className="grid-auto-360 gap-20 mb-24">
               {activeContests.map(c => {
                 const lb = leaderboards[c.id] || []
                 const topScore = lb.length > 0 ? lb[0].score : 0
                 return (
                   <div key={c.id} className="card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                      <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: theme.accent }}>{c.title}</h3>
-                      <span className="badge-warning" style={{ fontSize: 12 }}>
+                    <div className="d-flex justify-between align-center mb-12">
+                      <h3 className="heading-sm text-accent">{c.title}</h3>
+                      <span className="badge-warning caption">
                         {t('contests.ends', lang)} {c.end_date}
                       </span>
                     </div>
-                    <div style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 20 }}>
+                    <div className="caption mb-20">
                       {t('contests.metric', lang)}: <strong>{MetricLabels[c.metric] || c.metric}</strong> | {t('contests.target', lang)}: <strong>{c.target}</strong>
                       {c.team && <span> | {t('contests.team_optional', lang)}: {c.team}</span>}
                     </div>
@@ -129,26 +129,26 @@ export default function Contests() {
                         <tr>
                           <th>#</th>
                           <th>{t('team.name', lang)}</th>
-                          <th style={{ textAlign: 'right' }}>{t('contests.metric', lang)}</th>
-                          <th style={{ width: 120 }}></th>
+                          <th className="text-right">{t('contests.metric', lang)}</th>
+                          <th className="w-120"></th>
                         </tr>
                       </thead>
                       <tbody>
                         {lb.slice(0, 5).map((entry, idx) => (
                           <tr key={entry.staff_id}>
-                            <td style={{ fontWeight: idx < 3 ? 700 : 400, color: idx === 0 ? '#fbbf24' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : theme.textSecondary }}>{idx + 1}</td>
-                            <td style={{ fontWeight: 500, color: theme.textPrimary }}>{entry.display_name} <span style={{ fontSize: 12, color: theme.textSecondary }}>{entry.team}</span></td>
-                            <td style={{ textAlign: 'right', fontWeight: 700, color: theme.accent }}>{entry.score}</td>
+                            <td className={`text-bold rank-${idx < 3 ? idx + 1 : 'default'}`}>{idx + 1}</td>
+                            <td className="text-bold">{entry.display_name} <span className="caption">{entry.team}</span></td>
+                            <td className="text-right text-bold text-accent">{entry.score}</td>
                             <td>
-                              <div style={{ width: '100%', height: 8, background: theme.bg, borderRadius: 4, overflow: 'hidden' }}>
-                                <div style={{ height: '100%', background: idx === 0 ? theme.success : theme.accent, width: `${Math.min(100, (entry.score / Math.max(c.target, topScore)) * 100)}%`, borderRadius: 4 }} />
+                              <div className="progress-bar-track">
+                                <div className={`progress-bar-fill ${idx === 0 ? 'success' : 'accent'}`} style={{ width: `${Math.min(100, (entry.score / Math.max(c.target, topScore)) * 100)}%` }} />
                               </div>
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                    {lb.length === 0 && <div style={{ fontSize: 13, color: theme.textSecondary, padding: '12px 0' }}>{t('contests.no_data', lang)}</div>}
+                    {lb.length === 0 && <div className="caption p-12-0">{t('contests.no_data', lang)}</div>}
                   </div>
                 )
               })}
@@ -159,13 +159,13 @@ export default function Contests() {
           {pastContests.length === 0 ? (
              <div className="empty-state">{t('contests.no_past', lang)}</div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 20 }}>
+            <div className="grid-auto-260 gap-20">
               {pastContests.map(c => (
-                <div key={c.id} className="card" style={{ opacity: 0.85 }}>
-                  <div style={{ fontSize: 16, fontWeight: 600, color: theme.textPrimary, marginBottom: 8 }}>{c.title}</div>
-                  <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 12 }}>{c.start_date} to {c.end_date}</div>
-                  <div style={{ fontSize: 14, color: theme.textPrimary }}>
-                    {t('contests.winner', lang)}: <strong style={{ color: theme.warning }}>{c.winner_name || 'N/A'}</strong>
+                <div key={c.id} className="card opacity-85">
+                  <div className="heading-sm mb-8">{c.title}</div>
+                  <div className="caption mb-12">{c.start_date} to {c.end_date}</div>
+                  <div className="subtitle">
+                    {t('contests.winner', lang)}: <strong className="text-warning">{c.winner_name || 'N/A'}</strong>
                   </div>
                 </div>
               ))}

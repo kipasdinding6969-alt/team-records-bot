@@ -422,6 +422,8 @@ export const api = {
   },
   createMaintainerDeposit: (data: Record<string, any>) =>
     req<{ ok: boolean; id: number }>('/api/maintainer/deposits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
+  maintainerReassign: (fromStaffId: number, toStaffId: number) =>
+    req<{ ok: boolean }>('/api/maintainer/reassign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from_staff_id: fromStaffId, to_staff_id: toStaffId }) }),
 
   // Phase 22: Crypto & Financial
   cryptoLedger: (from?: string, to?: string) => {

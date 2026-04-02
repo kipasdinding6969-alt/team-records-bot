@@ -132,7 +132,6 @@ export default function FrontdeskEntry() {
   }
 
   const phoneStatusColor = phoneStatus?.status === 'taken' ? theme.danger : phoneStatus?.status === 'own' ? theme.warning : theme.success
-  const phoneStatusIcon = phoneStatus?.status === 'taken' ? 'X' : phoneStatus?.status === 'own' ? '!' : phoneStatus?.status === 'available' ? '/' : null
 
   const getDayColor = (status: string) =>
     status === 'register' ? theme.success : status === 'no_register' ? theme.danger : undefined
@@ -142,16 +141,15 @@ export default function FrontdeskEntry() {
       <PageHeader title={t('frontdesk.title', lang)} />
 
       {message && (
-        <div className={`alert ${message.type === 'error' ? 'alert-error' : 'alert-success'}`} style={{ marginBottom: 20 }}>
+        <div className={`alert ${message.type === 'error' ? 'alert-error' : 'alert-success'} mb-20`}>
           {message.text}
         </div>
       )}
 
-      <div className="frontdesk-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 3fr) minmax(280px, 2fr)', gap: 20, alignItems: 'start' }}>
-        <style>{`@media (max-width: 768px) { .frontdesk-grid { grid-template-columns: 1fr !important; } }`}</style>
+      <div className="frontdesk-layout">
         {/* LEFT: Entry form */}
         <div className="card">
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <form onSubmit={handleSubmit} className="flex-col gap-20">
             {/* Phone input - LARGE and prominent */}
             <div>
               <label className="field-label">
@@ -171,25 +169,17 @@ export default function FrontdeskEntry() {
               {/* Duplicate check banner */}
               {phoneStatus && (
                 <div
+                  className="phone-status-banner mt-8"
                   style={{
-                    marginTop: 8,
-                    padding: '12px 20px',
-                    borderRadius: 8,
-                    fontSize: 14,
-                    fontWeight: 600,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
                     background: phoneStatus.status === 'taken' ? theme.dangerBg : phoneStatus.status === 'own' ? theme.warningBg : theme.successBg,
                     color: phoneStatusColor,
                     border: `2px solid ${phoneStatusColor}40`,
                   }}
                 >
-                  <span style={{
-                    width: 24, height: 24, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    background: phoneStatusColor, color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0,
+                  <span className="phone-status-icon" style={{
+                    background: phoneStatusColor,
                   }}>
-                    {phoneStatusIcon}
+                    {phoneStatus?.status === 'taken' ? 'X' : phoneStatus?.status === 'own' ? '!' : phoneStatus?.status === 'available' ? '/' : null}
                   </span>
                   <span>
                     {phoneStatus.status === 'taken' && `${t('frontdesk.duplicate_other', lang).replace('{owner}', phoneStatus.owner).replace('{team}', phoneStatus.team || '').replace('{date}', phoneStatus.submitted_at?.slice(0, 10) || '')}`}
@@ -205,20 +195,19 @@ export default function FrontdeskEntry() {
               <label className="field-label">
                 {t('frontdesk.category', lang)} *
               </label>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: 8,
-                border: formErrors.category ? `2px solid ${theme.danger}` : undefined,
-                borderRadius: 8,
-                padding: formErrors.category ? 4 : 0,
-              }}>
+              <div
+                className="category-grid"
+                style={{
+                  border: formErrors.category ? `2px solid ${theme.danger}` : undefined,
+                  borderRadius: formErrors.category ? 8 : undefined,
+                  padding: formErrors.category ? 4 : undefined,
+                }}
+              >
                 {CATEGORIES.map(c => (
                   <button
                     key={c.value}
                     type="button"
-                    className={category === c.value ? 'btn-primary' : 'btn-secondary'}
-                    style={{ height: 44, fontSize: 14, fontWeight: 600, width: '100%' }}
+                    className={`category-btn ${category === c.value ? 'btn-primary' : 'btn-secondary'}`}
                     onClick={() => { setCategory(c.value); setFormErrors(p => ({ ...p, category: false })) }}
                   >
                     {t(c.key, lang)}
@@ -272,16 +261,16 @@ export default function FrontdeskEntry() {
             </div>
 
             {/* Day status toggles */}
-            <div className="card" style={{ background: theme.bgElevated, padding: 20 }}>
-              <label className="field-label" style={{ marginBottom: 12 }}>
+            <div className="card bg-elevated p-20">
+              <label className="field-label mb-12">
                 {t('frontdesk.day_status', lang)}
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="day-status-grid">
                 <div>
-                  <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  <div className="field-label mb-8">
                     {t('day_status.first_day', lang)}
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div className="day-status-buttons">
                     {DAY_STATUSES.map(ds => {
                       const isActive = day1Status === ds.value
                       const color = getDayColor(ds.value)
@@ -289,13 +278,8 @@ export default function FrontdeskEntry() {
                         <button
                           key={ds.value}
                           type="button"
-                          className={isActive ? 'btn-primary' : 'btn-secondary'}
+                          className={`day-status-btn ${isActive ? 'btn-primary' : 'btn-secondary'}`}
                           style={{
-                            flex: 1,
-                            height: 36,
-                            fontSize: 12,
-                            fontWeight: 700,
-                            padding: '0 8px',
                             background: isActive ? (color || undefined) : undefined,
                             borderColor: isActive && color ? color : undefined,
                           }}
@@ -308,10 +292,10 @@ export default function FrontdeskEntry() {
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  <div className="field-label mb-8">
                     {t('day_status.second_day', lang)}
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div className="day-status-buttons">
                     {DAY_STATUSES.map(ds => {
                       const isActive = day2Status === ds.value
                       const color = getDayColor(ds.value)
@@ -319,13 +303,8 @@ export default function FrontdeskEntry() {
                         <button
                           key={ds.value}
                           type="button"
-                          className={isActive ? 'btn-primary' : 'btn-secondary'}
+                          className={`day-status-btn ${isActive ? 'btn-primary' : 'btn-secondary'}`}
                           style={{
-                            flex: 1,
-                            height: 36,
-                            fontSize: 12,
-                            fontWeight: 700,
-                            padding: '0 8px',
                             background: isActive ? (color || undefined) : undefined,
                             borderColor: isActive && color ? color : undefined,
                           }}
@@ -342,28 +321,25 @@ export default function FrontdeskEntry() {
 
             {/* Client condition */}
             <div>
-              <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>
+              <label className="field-label">
                 {t('frontdesk.client_condition', lang)}
               </label>
               <textarea
                 className="input"
                 value={clientCondition}
                 onChange={e => setClientCondition(e.target.value)}
-                style={{ resize: 'vertical', minHeight: 80, height: 'auto', padding: '12px 14px' }}
+                style={{ resize: 'vertical', minHeight: 80 }}
                 placeholder={t('frontdesk.client_condition', lang) + '...'}
               />
             </div>
 
-            {/* Submit button - full width, 48px */}
+            {/* Submit button - full width */}
             <button
               type="submit"
-              className="btn-primary"
+              className="btn-primary w-full fw-700 fs-16"
               disabled={submitting || phoneStatus?.status === 'taken'}
               style={{
-                width: '100%',
                 height: 48,
-                fontSize: 16,
-                fontWeight: 700,
                 background: phoneStatus?.status === 'taken' ? theme.cardBorder : undefined,
                 cursor: phoneStatus?.status === 'taken' ? 'not-allowed' : undefined,
                 opacity: submitting ? 0.7 : 1,
@@ -374,18 +350,15 @@ export default function FrontdeskEntry() {
           </form>
 
           {/* Recent entries below form */}
-          <h3 style={{ margin: '24px 0 12px', fontSize: 16, fontWeight: 700, color: theme.textPrimary }}>
+          <h3 className="heading-sm mt-20 mb-12">
             {t('frontdesk.recent', lang)}
           </h3>
           {recent.length === 0 ? <Empty label={t('frontdesk.no_entries', lang)} /> : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="flex-col gap-8">
               {recent.map(c => (
-                <div key={c.id} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '12px 20px', background: theme.bg, borderRadius: 8, border: `1px solid ${theme.cardBorder}`,
-                }}>
-                  <span style={{ fontWeight: 600, fontSize: 14, color: theme.textPrimary, fontFamily: 'monospace' }}>{c.phone}</span>
-                  <span style={{ color: theme.textSecondary, fontSize: 12 }}>{c.source} | {c.created_at?.slice(11, 16)}</span>
+                <div key={c.id} className="recent-entry">
+                  <span className="fw-600 fs-14 text-primary cell-mono">{c.phone}</span>
+                  <span className="text-secondary fs-12">{c.source} | {c.created_at?.slice(11, 16)}</span>
                 </div>
               ))}
             </div>
@@ -393,13 +366,13 @@ export default function FrontdeskEntry() {
         </div>
 
         {/* RIGHT: Stats + Search */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div className="flex-col gap-20">
           {/* Stats panel */}
           <div className="card">
-            <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700, color: theme.textPrimary }}>
+            <h3 className="heading-sm mb-20">
               {t('frontdesk.stats', lang)}
             </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            <div className="form-grid-3col">
               {[
                 { label: t('phone.total_numbers', lang), value: stats?.total_registered || 0, color: theme.textPrimary },
                 { label: t('phone.duplicates_blocked', lang), value: stats?.duplicates_blocked || 0, color: theme.danger },
@@ -415,7 +388,7 @@ export default function FrontdeskEntry() {
 
           {/* Search panel */}
           <div className="card">
-            <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700, color: theme.textPrimary }}>
+            <h3 className="heading-sm mb-12">
               {t('common.search', lang)}
             </h3>
             <input
@@ -440,7 +413,7 @@ export default function FrontdeskEntry() {
               }}
             />
             {searchMessage && (
-              <div className={`alert ${searchMessage.type === 'error' ? 'alert-error' : 'alert-success'}`} style={{ marginTop: 8 }}>
+              <div className={`alert ${searchMessage.type === 'error' ? 'alert-error' : 'alert-success'} mt-8`}>
                 {searchMessage.text}
               </div>
             )}
@@ -449,12 +422,12 @@ export default function FrontdeskEntry() {
       </div>
 
       {/* Entry History Table */}
-      <div className="card" style={{ marginTop: 20 }}>
-        <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700, color: theme.textPrimary }}>
+      <div className="card mt-20">
+        <h3 className="heading-lg mb-20">
           {t('frontdesk.history', lang)}
         </h3>
         {historyLoading ? <Spinner /> : history.length === 0 ? <Empty label={t('frontdesk.no_entries', lang)} /> : (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="overflow-x">
             <table className="data-grid-table">
               <thead>
                 <tr>
@@ -470,7 +443,7 @@ export default function FrontdeskEntry() {
               <tbody>
                 {history.map((entry: any, idx: number) => (
                   <tr key={entry.id || idx}>
-                    <td style={{ fontWeight: 600, fontFamily: 'monospace' }}>{entry.phone}</td>
+                    <td className="fw-600 cell-mono">{entry.phone}</td>
                     <td>{entry.category || '-'}</td>
                     <td>
                       <span className={`pill-badge ${entry.day1_status === 'register' ? 'badge-success' : entry.day1_status === 'no_register' ? 'badge-danger' : 'badge-warning'}`}>
@@ -482,7 +455,7 @@ export default function FrontdeskEntry() {
                         {entry.day2_status || t('day_status.pending', lang)}
                       </span>
                     </td>
-                    <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td className="truncate" style={{ maxWidth: 200 }}>
                       {entry.condition || entry.phone_remark || '-'}
                     </td>
                     <td>
@@ -490,7 +463,7 @@ export default function FrontdeskEntry() {
                         {entry.status || 'new'}
                       </span>
                     </td>
-                    <td style={{ fontSize: 12, color: theme.textSecondary }}>{entry.created_at?.slice(0, 10) || '-'}</td>
+                    <td className="fs-12 text-secondary">{entry.created_at?.slice(0, 10) || '-'}</td>
                   </tr>
                 ))}
               </tbody>

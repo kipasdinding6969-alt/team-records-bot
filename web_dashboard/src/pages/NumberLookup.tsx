@@ -54,11 +54,11 @@ function NoteForm({ clientId, lang }: { clientId: number; lang: any }) {
   }
 
   return (
-    <div className="card" style={{ marginBottom: 20 }}>
-      <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="card mb-20">
+      <div className="section-title d-flex align-center gap-8">
         {t('detail.add_note', lang)}
       </div>
-      <div style={{ display: 'flex', gap: 12 }}>
+      <div className="d-flex gap-12">
         <input
           className="input"
           placeholder={t('detail.note_placeholder', lang)}
@@ -70,7 +70,7 @@ function NoteForm({ clientId, lang }: { clientId: number; lang: any }) {
           {saving ? '...' : t('common.save', lang)}
         </button>
       </div>
-      {msg && <div className={`alert ${msgType === 'error' ? 'alert-error' : 'alert-success'}`} style={{ marginTop: 8, marginBottom: 0, padding: '8px 12px', fontSize: 13 }}>{msg}</div>}
+      {msg && <div className={`alert ${msgType === 'error' ? 'alert-error' : 'alert-success'} mt-8 mb-0 p-8-12 caption`}>{msg}</div>}
     </div>
   )
 }
@@ -142,19 +142,18 @@ export default function NumberLookup() {
 
   return (
     <div className="page-container">
-      <div style={{ marginBottom: 24 }}>
+      <div className="mb-24">
         <h1 className="page-title">{t('phone.title', lang)}</h1>
         <p className="page-subtitle">{t('phone.description', lang)}</p>
       </div>
 
       {/* Prominent search bar */}
-      <div className="card" style={{ marginBottom: 24, padding: 24 }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <div style={{ position: 'relative', flex: 1 }}>
-            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 20, color: theme.textMuted }}>&#x2315;</span>
+      <div className="card mb-24 p-24">
+        <div className="d-flex gap-12 align-center">
+          <div className="search-icon-wrapper flex-1">
+            <span className="search-icon-prefix">&#x2315;</span>
             <input
-              className="input"
-              style={{ fontSize: 16, paddingLeft: 40, height: 48 }}
+              className="input input-lg search-input-padded"
               placeholder={t('phone.search_placeholder', lang)}
               value={phone}
               onChange={e => setPhone(e.target.value)}
@@ -162,7 +161,7 @@ export default function NumberLookup() {
               autoFocus
             />
           </div>
-          <button className="btn-primary" style={{ height: 48, padding: '0 32px', fontSize: 14 }} onClick={handleSearch} disabled={loading}>
+          <button className="btn-primary btn-lg" onClick={handleSearch} disabled={loading}>
             {loading ? t('phone.searching', lang) : t('common.search', lang)}
           </button>
         </div>
@@ -182,62 +181,55 @@ export default function NumberLookup() {
 
       {result?.found && (
         <>
-          <div className="card" style={{
-            marginBottom: 20,
-            border: `2px solid ${isOwnedByMe ? theme.success : theme.danger}`,
-            background: isOwnedByMe ? theme.successBg : theme.dangerBg,
-            boxShadow: `0 8px 24px -4px ${isOwnedByMe ? theme.success : theme.danger}20`,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: isOwnedByMe ? theme.success : theme.danger }}>
+          <div className={`card mb-20 lookup-result-card ${isOwnedByMe ? 'owned' : 'locked'}`}>
+            <div className="d-flex align-center justify-between mb-20">
+              <div className={`heading-sm ${isOwnedByMe ? 'text-success' : 'text-danger'}`}>
                 {isOwnedByMe ? t('phone.owned_self', lang) : t('phone.owned_other', lang)}
               </div>
-              <span className={isOwnedByMe ? 'badge-success' : 'badge-danger'} style={{ fontSize: 13, fontWeight: 600, padding: '4px 12px' }}>
+              <span className={`${isOwnedByMe ? 'badge-success' : 'badge-danger'} badge-lg`}>
                 {isOwnedByMe ? t('phone.editable', lang) : t('phone.locked', lang)}
               </span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20, marginBottom: 12 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span className="field-label" style={{ color: isOwnedByMe ? theme.success : theme.danger }}>{t('phone.owner', lang)}</span>
-                <span style={{ fontSize: 16, fontWeight: 700, color: theme.textPrimary }}>{result.submitter_name}</span>
+            <div className="grid-auto-200 gap-20 mb-12">
+              <div className="d-flex flex-col gap-4">
+                <span className={`field-label ${isOwnedByMe ? 'text-success' : 'text-danger'}`}>{t('phone.owner', lang)}</span>
+                <span className="heading-sm">{result.submitter_name}</span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span className="field-label" style={{ color: isOwnedByMe ? theme.success : theme.danger }}>{t('clients.phone', lang)}</span>
-                <span style={{ fontSize: 14, fontWeight: 500, color: theme.textPrimary }}>{result.phone}</span>
+              <div className="d-flex flex-col gap-4">
+                <span className={`field-label ${isOwnedByMe ? 'text-success' : 'text-danger'}`}>{t('clients.phone', lang)}</span>
+                <span className="subtitle text-bold">{result.phone}</span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span className="field-label" style={{ color: isOwnedByMe ? theme.success : theme.danger }}>{t('phone.normalized', lang)}</span>
-                <span style={{ fontSize: 14, fontWeight: 500, color: theme.textPrimary }}>{result.phone_normalized}</span>
+              <div className="d-flex flex-col gap-4">
+                <span className={`field-label ${isOwnedByMe ? 'text-success' : 'text-danger'}`}>{t('phone.normalized', lang)}</span>
+                <span className="subtitle text-bold">{result.phone_normalized}</span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span className="field-label" style={{ color: isOwnedByMe ? theme.success : theme.danger }}>{t('clients.source', lang)}</span>
-                <span style={{ fontSize: 14, fontWeight: 500, color: theme.textPrimary }}>{result.source}</span>
+              <div className="d-flex flex-col gap-4">
+                <span className={`field-label ${isOwnedByMe ? 'text-success' : 'text-danger'}`}>{t('clients.source', lang)}</span>
+                <span className="subtitle text-bold">{result.source}</span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span className="field-label" style={{ color: isOwnedByMe ? theme.success : theme.danger }}>{t('phone.registered_on', lang)}</span>
-                <span style={{ fontSize: 14, fontWeight: 500, color: theme.textPrimary }}>{result.submitted_at ? formatDate(result.submitted_at) : '—'}</span>
+              <div className="d-flex flex-col gap-4">
+                <span className={`field-label ${isOwnedByMe ? 'text-success' : 'text-danger'}`}>{t('phone.registered_on', lang)}</span>
+                <span className="subtitle text-bold">{result.submitted_at ? formatDate(result.submitted_at) : '\u2014'}</span>
               </div>
             </div>
 
             {isAdmin && (
-              <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${isOwnedByMe ? theme.success : theme.danger}30`, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className={`mt-24 pt-20 border-top-status ${isOwnedByMe ? 'owned' : 'locked'} d-flex gap-12 align-center flex-wrap`}>
                 {!overrideMode ? (
-                  <button className="btn-secondary" style={{ borderColor: isOwnedByMe ? theme.success : theme.danger, color: isOwnedByMe ? theme.success : theme.danger }} onClick={() => setOverrideMode(true)}>
+                  <button className={`btn-secondary ${isOwnedByMe ? 'btn-outline-success' : 'btn-outline-danger'}`} onClick={() => setOverrideMode(true)}>
                     {t('phone.admin_override', lang)}
                   </button>
                 ) : (
-                  <div className="card" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', width: '100%', padding: 20 }}>
+                  <div className="card d-flex gap-12 flex-wrap w-full p-20">
                     <input
-                      className="input"
-                      style={{ flex: 1, minWidth: 200 }}
+                      className="input flex-1 min-w-200"
                       placeholder={t("phone.new_owner", lang)}
                       value={overrideSubmitter}
                       onChange={e => setOverrideSubmitter(e.target.value)}
                     />
                     <input
-                      className="input"
-                      style={{ width: 140 }}
+                      className="input w-140"
                       placeholder={t("phone.staff_id_opt", lang)}
                       value={overrideStaffId}
                       onChange={e => setOverrideStaffId(e.target.value)}
@@ -252,7 +244,7 @@ export default function NumberLookup() {
                   </div>
                 )}
                 {overrideMsg && (
-                  <span style={{ fontSize: 13, fontWeight: 600, color: overrideMsg.includes('failed') ? theme.danger : theme.success }}>
+                  <span className={`caption text-bold ${overrideMsg.includes('failed') ? 'text-danger' : 'text-success'}`}>
                     {overrideMsg}
                   </span>
                 )}
@@ -264,31 +256,31 @@ export default function NumberLookup() {
             <NoteForm clientId={result.linked_clients[0].id} lang={lang} />
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 20 }}>
+          <div className="grid-auto-400 gap-20">
             {result.linked_clients !== undefined && (
               <div className="card">
-                <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {t('phone.linked_clients', lang)} <span style={{ color: theme.textMuted, fontWeight: 400 }}>({result.linked_clients.length})</span>
+                <div className="section-title d-flex align-center gap-8">
+                  {t('phone.linked_clients', lang)} <span className="text-muted text-normal">({result.linked_clients.length})</span>
                 </div>
                 {result.linked_clients.length === 0 ? (
-                  <div className="empty-state" style={{ padding: 20 }}>
-                    <div style={{ fontSize: 32, opacity: 0.5, marginBottom: 8 }}></div>
+                  <div className="empty-state p-20">
+                    <div className="empty-icon-dim mb-8"></div>
                     <div>{t('phone.no_linked', lang)}</div>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <div className="d-flex flex-col">
                     {result.linked_clients.map((c: any, i: number) => (
-                      <div key={i} style={{ display: 'flex', gap: 12, padding: '12px 0', borderBottom: i === result.linked_clients!.length - 1 ? 'none' : `1px solid ${theme.cardBorder}`, fontSize: 14, alignItems: 'center' }}>
+                      <div key={i} className={`d-flex gap-12 p-12-0 align-center subtitle ${i === result.linked_clients!.length - 1 ? '' : 'border-bottom'}`}>
                         <a
                           href={`/clients/${c.id}`}
-                          className="pill-badge" style={{ color: theme.accent, fontWeight: 600, textDecoration: 'none', background: theme.accentLight }}
+                          className="pill-badge text-accent text-bold text-decoration-none bg-accent-light"
                         >
                           #{c.id}
                         </a>
-                        <span style={{ fontWeight: 600, color: theme.textPrimary }}>{c.phone}</span>
-                        <span style={{ color: theme.textSecondary, fontSize: 13 }}>{c.status}</span>
+                        <span className="text-bold">{c.phone}</span>
+                        <span className="caption">{c.status}</span>
                         {c.frontdesk_name && (
-                          <span className="pill-badge" style={{ marginLeft: 'auto', background: theme.bg, border: `1px solid ${theme.cardBorder}`, color: theme.textSecondary, fontSize: 12 }}>
+                          <span className="pill-badge ml-auto caption border">
                             {c.frontdesk_name}
                           </span>
                         )}
@@ -300,22 +292,22 @@ export default function NumberLookup() {
             )}
 
             {result.log && result.log.length > 0 && (
-              <div className="card" style={{ overflow: 'hidden' }}>
+              <div className="card overflow-hidden">
                 <div className="section-title">{t('phone.history', lang)}</div>
                 <table className="data-grid-table">
                   <tbody>
                     {result.log.map((entry, i) => (
                       <tr key={i}>
                         <td>
-                          <span className="badge-info" style={{ fontSize: 12, fontWeight: 700, padding: '4px 8px', textTransform: 'uppercase', letterSpacing: 0.5 }}>{entry.action}</span>
+                          <span className="badge-info badge-sm text-bold text-uppercase">{entry.action}</span>
                         </td>
-                        <td style={{ width: '100%' }}>
-                          <div style={{ color: theme.textPrimary, fontWeight: 500 }}>{entry.actor_name}</div>
+                        <td className="w-full">
+                          <div className="text-bold">{entry.actor_name}</div>
                           {entry.details && (
-                            <div style={{ color: theme.textSecondary, fontSize: 13, marginTop: 4 }}>{entry.details}</div>
+                            <div className="caption mt-4">{entry.details}</div>
                           )}
                         </td>
-                        <td style={{ color: theme.textMuted, fontSize: 12, whiteSpace: 'nowrap', textAlign: 'right' }}>
+                        <td className="text-muted caption text-nowrap text-right">
                           {formatDate(entry.created_at)}
                         </td>
                       </tr>
@@ -329,16 +321,16 @@ export default function NumberLookup() {
       )}
 
       {stats && !result?.found && (
-        <div className="card" style={{ marginTop: 20 }}>
+        <div className="card mt-20">
           <div className="section-title">{t('phone.stats', lang)}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+          <div className="grid-2col gap-20">
             <div className="metric-card">
               <div className="metric-label">{t('phone.total_numbers', lang)}</div>
-              <div className="metric-value" style={{ color: theme.textPrimary }}>{stats.total_registered.toLocaleString() ?? 0}</div>
+              <div className="metric-value">{stats.total_registered.toLocaleString() ?? 0}</div>
             </div>
             <div className="metric-card">
               <div className="metric-label">{t('phone.duplicates_blocked', lang)}</div>
-              <div className="metric-value" style={{ color: theme.textPrimary }}>{stats.duplicates_blocked.toLocaleString() ?? 0}</div>
+              <div className="metric-value">{stats.duplicates_blocked.toLocaleString() ?? 0}</div>
             </div>
           </div>
         </div>
