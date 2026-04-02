@@ -10,6 +10,7 @@ jobs:
   ci:
     name: Full CI Pipeline
     runs-on: self-hosted
+    timeout-minutes: 30
     env:
       TG_API_ID: "0"
       TG_API_HASH: "test"
@@ -27,7 +28,7 @@ jobs:
           rm -rf /tmp/ci-venv
           uv venv /tmp/ci-venv
           uv pip install --python /tmp/ci-venv/bin/python -r requirements.txt
-          uv pip install --python /tmp/ci-venv/bin/python pytest pytest-asyncio pytest-mock flake8
+          uv pip install --python /tmp/ci-venv/bin/python "pytest>=9.0" "pytest-asyncio==1.3.0" pytest-timeout pytest-mock flake8
 
       - name: Lint (flake8)
         run: |
@@ -83,9 +84,10 @@ jobs:
           "
 
       - name: Run Tests
+        timeout-minutes: 15
         run: |
           echo "=== PYTEST ==="
-          /tmp/ci-venv/bin/python -m pytest tests/ -v --tb=short -x
+          /tmp/ci-venv/bin/python -m pytest tests/ --tb=short -x -q --timeout=60
 
       - name: Docker Build Test
         continue-on-error: true
