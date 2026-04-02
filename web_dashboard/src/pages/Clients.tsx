@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { api } from '../api'
+import { api, debug } from '../api'
 import type { Client, ClientList } from '../types'
 import { Empty, PageHeader, Spinner } from '../components/SharedUI'
 import { DataGrid, StatusBadge, formatPhone, Column } from '../components/DataGrid'
@@ -51,7 +51,7 @@ export default function Clients() {
     setLoading(true)
     api.clients({ status: status || undefined, search: search || undefined, page, per_page: PER_PAGE })
       .then(setData)
-      .catch(console.error)
+      .catch(debug)
       .finally(() => setLoading(false))
   }, [status, search, page])
 
@@ -121,7 +121,7 @@ export default function Clients() {
         </select>
         <button
           className="btn-secondary"
-          onClick={() => api.exportClients(status || undefined, undefined).catch(console.error)}
+          onClick={() => api.exportClients(status || undefined, undefined).catch(debug)}
         >
           {t('clients.export_csv', getLang())}
         </button>

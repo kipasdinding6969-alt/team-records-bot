@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, getAuthState } from '../api'
+import { api, getAuthState, debug } from '../api'
 import { useTheme } from '../ThemeContext'
 import { t, getLang } from '../i18n'
 import { PageHeader, Spinner, Empty } from '../components/SharedUI'
@@ -43,7 +43,7 @@ export default function MaintainerDash() {
     setLoading(true)
     api.allStaff()
       .then(res => setStaff(res.filter(s => s.team === auth?.team_scope || auth?.role === 'owner')))
-      .catch(console.error)
+      .catch(debug)
       .finally(() => setLoading(false))
   }
 
@@ -51,7 +51,7 @@ export default function MaintainerDash() {
     setDepositsLoading(true)
     api.maintainerDeposits(group || undefined, auth?.team_scope || undefined)
       .then(setDeposits)
-      .catch(console.error)
+      .catch(debug)
       .finally(() => setDepositsLoading(false))
   }
 

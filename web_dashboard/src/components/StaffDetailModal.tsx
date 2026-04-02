@@ -50,7 +50,14 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
   }, [staffId]);
 
   if (!staff && !loading) {
-    return null;
+    return (
+      <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div className="modal-content staff-modal-content">
+          <div className="p-24 text-center text-muted">{t('staff.not_found', lang)}</div>
+          <button className="btn-secondary" onClick={onClose}>{t('common.cancel', lang)}</button>
+        </div>
+      </div>
+    );
   }
 
   const handleSave = async () => {
@@ -146,16 +153,16 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
                         </div>
                         {gamification.badges?.length > 0 && (
                           <div className="d-flex gap-8 flex-wrap">
-                            {gamification.badges.map((b: any, i: number) => (
-                              <span key={i} title={b.name} className="badge-emoji">{b.emoji}</span>
+                            {gamification.badges.map((b: any) => (
+                              <span key={b.name} title={b.name} className="badge-emoji">{b.emoji}</span>
                             ))}
                           </div>
                         )}
                         {gamification.recent_xp?.length > 0 && (
                           <div className="mt-8 fs-12 text-muted">
                             <strong className="d-flex mb-4">{t('staff.recent_activity', lang)}</strong>
-                            {gamification.recent_xp.slice(0, 3).map((xp: any, i: number) => (
-                              <div key={i} className="d-flex justify-between mb-4 xp-activity-row">
+                            {gamification.recent_xp.slice(0, 3).map((xp: any) => (
+                              <div key={`${xp.action}-${xp.xp_amount}`} className="d-flex justify-between mb-4 xp-activity-row">
                                 <span>{xp.action}</span>
                                 <span className="text-success fw-600">{t('gamification.plus_xp', lang).replace('{xp}', xp.xp_amount)}</span>
                               </div>

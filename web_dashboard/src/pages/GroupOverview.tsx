@@ -167,8 +167,8 @@ export default function GroupOverview() {
                 { value: grandTotals.withdraw, label: t('perf.withdraw', lang), cls: '' },
                 { value: grandTotals.orders, label: t('perf.new_order', lang), cls: 'text-accent' },
                 { value: grandTotals.powder > 0 ? ((grandTotals.orders / grandTotals.powder) * 100).toFixed(1) + '%' : '0.0%', label: t('perf.conversion', lang), cls: 'text-accent' },
-              ].map((item, i) => (
-                <div key={i} className="grand-total-item">
+              ].map((item) => (
+                <div key={item.label} className="grand-total-item">
                   <div className={`grand-total-value ${item.cls}`}>{item.value}</div>
                   <div className="grand-total-label">{item.label}</div>
                 </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api, getAuthState } from '../api'
+import { api, getAuthState, debug } from '../api'
 import { useTheme } from '../ThemeContext'
 import { t, getLang } from '../i18n'
 import { PageHeader, Spinner, Empty } from '../components/SharedUI'
@@ -56,15 +56,15 @@ export default function FrontdeskEntry() {
   }
 
   const loadData = () => {
-    api.phoneRegistryStats().then(setStats).catch(console.error)
-    api.clients({ page: 1, per_page: 10 }).then(res => setRecent(res.clients)).catch(console.error)
+    api.phoneRegistryStats().then(setStats).catch(debug)
+    api.clients({ page: 1, per_page: 10 }).then(res => setRecent(res.clients)).catch(debug)
   }
 
   const loadHistory = () => {
     setHistoryLoading(true)
     api.frontdeskHistory(auth?.staff_id || undefined)
       .then(res => setHistory(res.entries || []))
-      .catch(console.error)
+      .catch(debug)
       .finally(() => setHistoryLoading(false))
   }
 
@@ -356,8 +356,8 @@ export default function FrontdeskEntry() {
                 { label: t('phone.total_numbers', lang), value: stats?.total_registered || 0, cls: 'text-primary' },
                 { label: t('phone.duplicates_blocked', lang), value: stats?.duplicates_blocked || 0, cls: 'text-danger' },
                 { label: t('frontdesk.today_count', lang), value: history.filter(h => h.created_at?.includes(new Date().toISOString().slice(0, 10))).length, cls: 'text-success' },
-              ].map((m, i) => (
-                <div key={i} className="metric-card">
+              ].map((m) => (
+                <div key={m.label} className="metric-card">
                   <div className={`metric-value ${m.cls}`}>{m.value}</div>
                   <div className="metric-label">{m.label}</div>
                 </div>

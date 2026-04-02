@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../api'
+import { api, debug } from '../api'
 import type { Client, FunnelStage } from '../types'
 import { STATUS_COLORS, STATUS_LABELS } from '../types'
 import { Empty, PageHeader, Spinner } from '../components/SharedUI'
@@ -25,7 +25,7 @@ export default function Pipeline() {
         setPipeline(p)
         if (f.length > 0) setSelected(f[0].stage)
       })
-      .catch(e => { console.error(e); setError(t('common.update_failed', lang as any)); })
+      .catch(e => { debug(e); setError(t('common.update_failed', lang as any)); })
       .finally(() => setLoading(false))
   }, [])
 

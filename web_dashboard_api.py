@@ -1249,11 +1249,11 @@ async def export_report(
                            SUM(ds.total_deposit) AS total_deposit
                    FROM daily_stats ds
                    JOIN staff s ON ds.staff_id = s.id
-                   WHERE ds.stat_date >= DATE('now', '-{days} days')
+                   WHERE ds.stat_date >= DATE('now', '-' || ? || ' days')
                    {scope_where}
                    GROUP BY ds.staff_id
                    ORDER BY new_orders DESC""",
-                scope_params
+                (days, *scope_params)
             ) as cur:
                 rows = [row_to_dict(r) for r in await cur.fetchall()]
 
@@ -1451,7 +1451,6 @@ async def phone_registry_override(
             raise HTTPException(status_code=404, detail='Phone not in registry')
 
         old_owner = row['submitter_name']
-        import json as _json
         await db.execute(
             'UPDATE phone_registry SET submitter_name = ?, submitter_staff_id = ? WHERE phone_normalized = ?',
             (body.new_submitter, body.new_staff_id, normalized)
@@ -1461,7 +1460,7 @@ async def phone_registry_override(
                (phone_normalized, action, actor_name, actor_staff_id, details)
                VALUES (?, 'admin_override', ?, ?, ?)""",
             (normalized, user['display_name'], user.get('staff_id'),
-             _json.dumps({'previous_owner': old_owner, 'new_owner': body.new_submitter}))
+             json.dumps({'previous_owner': old_owner, 'new_owner': body.new_submitter}))
         )
         await db.commit()
 
@@ -2430,14 +2429,13 @@ async def create_client_via_dashboard(
 
         # Register in phone_registry if new
         if not registry:
-            from datetime import datetime as _dt
             try:
                 await db.execute(
                     """INSERT INTO phone_registry
                        (phone, phone_normalized, submitter_name, submitter_staff_id, source, submitted_at)
                        VALUES (?, ?, ?, ?, 'dashboard', ?)""",
                     (body.phone, phone_normalized, user['display_name'], staff_id,
-                     _dt.now(UTC).isoformat())
+                     datetime.now(UTC).isoformat())
                 )
                 await db.execute(
                     """INSERT INTO phone_registry_log
@@ -4688,7 +4686,8 @@ async def list_group_interactions(
         count_cur = await db.execute(
             f"SELECT COUNT(*) FROM group_interactions gi{where}", params
         )
-        total = (await count_cur.fetchone())[0]
+        row = await count_cur.fetchone()
+        total = row[0] if row else 0
 
         cur = await db.execute(
             f'''SELECT gi.id, gi.client_id, gi.group_id, gi.actor_staff_id, gi.actor_role,

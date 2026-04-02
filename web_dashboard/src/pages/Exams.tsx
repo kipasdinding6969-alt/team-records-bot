@@ -166,7 +166,7 @@ export default function Exams() {
                             </thead>
                             <tbody>
                               {(results[exam.id] || []).map((r, idx) => (
-                                <tr key={idx}>
+                                <tr key={r.staff_id || r.display_name}>
                                   <td className={`text-bold rank-${idx < 3 ? idx + 1 : 'default'}`}>
                                     {idx + 1}
                                   </td>
@@ -237,7 +237,7 @@ export default function Exams() {
                                 </thead>
                                 <tbody>
                                   {(results[exam.id] || []).slice(0, 5).map((r, idx) => (
-                                    <tr key={idx}>
+                                    <tr key={r.staff_id || r.display_name}>
                                       <td className={`text-bold rank-${idx === 0 ? '1' : 'default'}`}>{idx + 1}</td>
                                       <td>{r.display_name}</td>
                                       <td className="text-right cell-mono">{r.total_new_orders}</td>

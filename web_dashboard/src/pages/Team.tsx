@@ -125,7 +125,17 @@ export default function Team() {
             const depPct = Math.min(100, (depActual / (targetItem.target_deposit || 1)) * 100) || 0
 
             const bar = (label: string, actual: number, targetValue: number | null, pct: number, prefix='') => {
-              if (!targetValue) return null
+              if (!targetValue) return (
+                <div key={label} className="mb-12">
+                  <div className="d-flex justify-between fs-12 fw-600 text-secondary mb-4">
+                    <span>{label}</span>
+                    <span>{prefix}0 / {prefix}0 (0%)</span>
+                  </div>
+                  <div className="progress-bar">
+                    <div className="progress-fill" style={{ width: '0%' }} />
+                  </div>
+                </div>
+              )
               return (
                 <div key={label} className="mb-12">
                   <div className="d-flex justify-between fs-12 fw-600 text-secondary mb-4">
@@ -265,8 +275,8 @@ export default function Team() {
                 contentStyle={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 8 }}
               />
               <Bar dataKey={t('team.today_leads', lang)} fill={theme.cardBorder} radius={[0, 4, 4, 0]}>
-                {chartData.map((_, index) => (
-                  <Cell key={index} fill={TEAM_COLORS[index % TEAM_COLORS.length]} />
+                {chartData.map((entry, index) => (
+                  <Cell key={entry.name} fill={TEAM_COLORS[index % TEAM_COLORS.length]} />
                 ))}
               </Bar>
               <Bar dataKey={t('team.today_orders', lang)} fill={theme.accent} radius={[0, 4, 4, 0]} />

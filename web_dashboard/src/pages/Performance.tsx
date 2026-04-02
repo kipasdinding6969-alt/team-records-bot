@@ -23,7 +23,7 @@ interface StaffPerf {
 }
 
 function Sparkline({ data, color }: { data: number[], color: string }) {
-  if (!data || data.length === 0) return null
+  if (!data || data.length === 0) return <span className="text-muted">{'\u2014'}</span>
   const max = Math.max(...data, 1)
   const width = 60
   const height = 24
@@ -39,7 +39,7 @@ function Sparkline({ data, color }: { data: number[], color: string }) {
     <svg width={width} height={height} className="sparkline-svg">
       <polyline fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" points={points} />
       {data.map((d, i) => (
-        <circle key={i} cx={i * dx} cy={height - (d / max) * height} r="2" fill={color} />
+        <circle key={`${i}-${d}`} cx={i * dx} cy={height - (d / max) * height} r="2" fill={color} />
       ))}
     </svg>
   )

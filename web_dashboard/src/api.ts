@@ -1,3 +1,5 @@
+export const debug = (import.meta as any).env?.DEV ? console.error.bind(console) : () => {};
+
 import type {
   Activity,
   AuthState,

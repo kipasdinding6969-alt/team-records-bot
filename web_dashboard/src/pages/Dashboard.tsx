@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api } from '../api'
+import { api, debug } from '../api'
 import type { Activity, DashboardStats, FunnelStage, Trends } from '../types'
 import { getLang, t } from '../i18n'
 import { useTheme } from '../ThemeContext'
@@ -69,7 +69,7 @@ export default function Dashboard() {
       setActivity(a.slice(0, 12))
       setLastRefresh(new Date())
     } catch (e) {
-      console.error(e)
+      debug(e)
       setError(t('common.error', lang))
     } finally {
       setLoading(false)

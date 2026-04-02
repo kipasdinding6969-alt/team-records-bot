@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, getAuthState } from '../api'
+import { api, getAuthState, debug } from '../api'
 import { getLang, t } from '../i18n'
 import { useTheme } from '../ThemeContext'
 import { PageHeader, Spinner, Empty } from '../components/SharedUI'
@@ -82,7 +82,7 @@ export default function PermissionManager() {
     api.allPermissions().then(data => {
       setStaffList(data)
     }).catch(e => {
-      console.error(e)
+      debug(e)
       setError(t('common.update_failed', lang as any))
     }).finally(() => setLoading(false))
   }
@@ -122,7 +122,7 @@ export default function PermissionManager() {
       loadAll()
       setTimeout(() => setSuccess(''), 3000)
     } catch (e) {
-      console.error(e)
+      debug(e)
       setError(t('perm.save_failed', lang))
     }
     setSaving(false)

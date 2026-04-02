@@ -272,7 +272,7 @@ export default function NumberLookup() {
                 ) : (
                   <div className="d-flex flex-col">
                     {result.linked_clients.map((c: any, i: number) => (
-                      <div key={i} className={`d-flex gap-12 p-12-0 align-center subtitle ${i === result.linked_clients!.length - 1 ? '' : 'border-bottom'}`}>
+                      <div key={c.id} className={`d-flex gap-12 p-12-0 align-center subtitle ${i === result.linked_clients!.length - 1 ? '' : 'border-bottom'}`}>
                         <a
                           href={`/clients/${c.id}`}
                           className="pill-badge text-accent text-bold text-decoration-none bg-accent-light"
@@ -298,8 +298,8 @@ export default function NumberLookup() {
                 <div className="section-title">{t('phone.history', lang)}</div>
                 <table className="data-grid-table">
                   <tbody>
-                    {result.log.map((entry, i) => (
-                      <tr key={i}>
+                    {result.log.map((entry) => (
+                      <tr key={`${entry.action}-${entry.created_at}`}>
                         <td>
                           <span className="badge-info badge-sm text-bold text-uppercase">{entry.action}</span>
                         </td>

@@ -14,7 +14,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api } from '../api'
+import { api, debug } from '../api'
 import type { DashboardStats, Trends } from '../types'
 import { STATUS_COLORS } from '../types'
 import { Empty, PageHeader, SectionTitle, Spinner } from '../components/SharedUI'
@@ -38,7 +38,7 @@ export default function Reports() {
         setStats(statsData)
         setTrends(trendsData)
       })
-      .catch(e => { console.error(e); setError(t('common.error', lang)); })
+      .catch(e => { debug(e); setError(t('common.error', lang)); })
       .finally(() => setLoading(false))
   }, [])
 
@@ -70,7 +70,7 @@ export default function Reports() {
         </div>
         <button
           className="btn-secondary"
-          onClick={() => api.exportReport(period).catch(e => { console.error(e); setError(t('common.update_failed', lang)); })}
+          onClick={() => api.exportReport(period).catch(e => { debug(e); setError(t('common.update_failed', lang)); })}
         >
           {t('reports.export', getLang())}
         </button>
@@ -171,8 +171,8 @@ export default function Reports() {
                   paddingAngle={2}
                   dataKey="value"
                 >
-                  {donutData.map((entry, index) => (
-                    <Cell key={index} fill={STATUS_COLORS[entry.status] || theme.textSecondary} />
+                  {donutData.map((entry) => (
+                    <Cell key={entry.status} fill={STATUS_COLORS[entry.status] || theme.textSecondary} />
                   ))}
                 </Pie>
                 <Tooltip

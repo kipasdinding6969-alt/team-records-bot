@@ -104,7 +104,7 @@ export default function Login() {
         </form>
       </div>
       <div className="login-version">
-        v2.10 — Phase 33
+        v2.11 — Phase 34
       </div>
     </div>
   )
