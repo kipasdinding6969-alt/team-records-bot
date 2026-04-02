@@ -24,6 +24,7 @@ import CustomerService from './pages/CustomerService'
 import PerformanceDetail from './pages/PerformanceDetail'
 import Exams from './pages/Exams'
 import CSFinance from './pages/CSFinance'
+import GroupInteractions from './pages/GroupInteractions'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated() ? <>{children}</> : <Navigate to="/login" replace />
@@ -156,6 +157,7 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="group-interactions" element={<ProtectedRoute><GroupInteractions /></ProtectedRoute>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

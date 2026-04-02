@@ -4431,6 +4431,58 @@ async def add_group_interaction(client_id: int, body: GroupInteractionRequest, u
     return {'ok': True}
 
 
+@app.get('/api/group-interactions')
+async def list_group_interactions(
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    group_id: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 50,
+    user: dict = Depends(get_current_user),
+):
+    """List all group interactions with joined client info, filterable by date range."""
+    async with _connect_db() as db:
+        conditions = []
+        params: list = []
+        if from_date:
+            conditions.append("DATE(gi.created_at) >= ?")
+            params.append(from_date)
+        if to_date:
+            conditions.append("DATE(gi.created_at) <= ?")
+            params.append(to_date)
+        if group_id:
+            conditions.append("gi.group_id = ?")
+            params.append(group_id)
+        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        offset = (page - 1) * per_page
+
+        count_cur = await db.execute(
+            f"SELECT COUNT(*) FROM group_interactions gi{where}", params
+        )
+        total = (await count_cur.fetchone())[0]
+
+        cur = await db.execute(
+            f'''SELECT gi.id, gi.client_id, gi.group_id, gi.actor_staff_id, gi.actor_role,
+                       gi.day_number, gi.script_completed, gi.client_read_messages,
+                       gi.client_replied, gi.client_pm_character, gi.client_left_group,
+                       gi.notes, gi.created_at,
+                       c.phone AS client_phone, c.account_id AS client_account_id,
+                       c.platform AS client_platform, c.first_day_status, c.second_day_status,
+                       s.display_name AS actor_name,
+                       fd.display_name AS frontdesk_name
+                FROM group_interactions gi
+                LEFT JOIN clients c ON gi.client_id = c.id
+                LEFT JOIN staff s ON gi.actor_staff_id = s.id
+                LEFT JOIN staff fd ON c.frontdesk_id = fd.id
+                {where}
+                ORDER BY gi.created_at DESC
+                LIMIT ? OFFSET ?''',
+            params + [per_page, offset],
+        )
+        rows = [row_to_dict(r) for r in await cur.fetchall()]
+        return {'total': total, 'page': page, 'per_page': per_page, 'items': rows}
+
+
 # ─── Phase 26: Organization Units ───────────────────────────────────────────
 
 class OrgUnitRequest(BaseModel):

@@ -562,6 +562,17 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  // Group Interactions (list)
+  listGroupInteractions: (params: { from_date?: string; to_date?: string; group_id?: string; page?: number; per_page?: number }) => {
+    const p = new URLSearchParams()
+    if (params.from_date) p.set('from_date', params.from_date)
+    if (params.to_date) p.set('to_date', params.to_date)
+    if (params.group_id) p.set('group_id', params.group_id)
+    if (params.page) p.set('page', String(params.page))
+    if (params.per_page) p.set('per_page', String(params.per_page))
+    return req<{ total: number; page: number; per_page: number; items: any[] }>(`/api/group-interactions${p.toString() ? `?${p}` : ''}`)
+  },
+
   // Organization
   orgTree: () => req<any>('/api/org/tree'),
 

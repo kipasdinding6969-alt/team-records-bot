@@ -14,6 +14,41 @@ const MILESTONES = [
   { key: 'first_order_at', label: 'detail.first_order_at' },
 ] as const
 
+const PIPELINE_STEPS = [
+  { key: 'contacted', label: 'pipeline.contacted' },
+  { key: 'replied', label: 'pipeline.replied' },
+  { key: 'registered', label: 'pipeline.registered' },
+  { key: 'training_completed', label: 'pipeline.training_completed' },
+  { key: 'bonus_withdrew', label: 'pipeline.bonus_withdrew' },
+  { key: 'new_order', label: 'pipeline.new_order' },
+] as const
+
+const KILL_TYPES = [
+  { value: 'register_kill', label: 'kill.register' },
+  { value: 'new_order_kill', label: 'kill.new_order' },
+  { value: 'pressure_kill', label: 'kill.pressure' },
+  { value: 'salary_kill', label: 'kill.salary' },
+] as const
+
+const ROLE_TYPES = [
+  { value: 'frontdesk', label: 'role_type.frontdesk' },
+  { value: 'maintainer', label: 'role_type.maintainer' },
+  { value: 'group_hype', label: 'role_type.group_hype' },
+  { value: 'newbie_actor', label: 'role_type.newbie_actor' },
+  { value: 'customer_service', label: 'role_type.customer_service' },
+  { value: 'opener_legacy', label: 'role_type.opener_legacy' },
+  { value: 'full_line', label: 'role_type.full_line' },
+] as const
+
+const CROSS_ROLE_OPTIONS = [
+  { value: 'frontdesk', label: 'maintainer.role_frontdesk' },
+  { value: 'opener', label: 'maintainer.role_opener' },
+  { value: 'newbie', label: 'maintainer.role_newbie' },
+  { value: 'hype', label: 'maintainer.role_hype' },
+  { value: 'cs', label: 'maintainer.role_cs' },
+  { value: 'maintenance', label: 'maintainer.role_mt' },
+] as const
+
 function Field({ label, value, accent }: { label: string; value: string | number | null | undefined; accent?: string }) {
   return (
     <div>
@@ -55,15 +90,91 @@ export default function ClientDetail() {
   const [editingComment, setEditingComment] = useState<number | null>(null)
   const [editContent, setEditContent] = useState('')
 
+  // Knife Deposits state
+  const [knives, setKnives] = useState<any[]>([])
+  const [knivesLoading, setKnivesLoading] = useState(false)
+  const [showKnifeModal, setShowKnifeModal] = useState(false)
+  const [knifeForm, setKnifeForm] = useState({ knife_number: '1', amount: '', deposit_day: '', platform: 'MT5', notes: '' })
+  const [knifeSubmitting, setKnifeSubmitting] = useState(false)
+
+  // Pipeline state
+  const [pipelineData, setPipelineData] = useState<any>(null)
+  const [pipelineLoading, setPipelineLoading] = useState(false)
+  const [showKillModal, setShowKillModal] = useState(false)
+  const [killForm, setKillForm] = useState({ kill_type: 'register_kill', kill_knife: '' })
+  const [killSubmitting, setKillSubmitting] = useState(false)
+  const [showUnkillModal, setShowUnkillModal] = useState(false)
+  const [unkillReason, setUnkillReason] = useState('')
+  const [unkillSubmitting, setUnkillSubmitting] = useState(false)
+
+  // Cross-Role Notes state
+  const [roleNotes, setRoleNotes] = useState<any[]>([])
+  const [roleNotesLoading, setRoleNotesLoading] = useState(false)
+  const [roleNoteForm, setRoleNoteForm] = useState({ from_role: 'frontdesk', content: '' })
+  const [roleNoteSaving, setRoleNoteSaving] = useState(false)
+
+  // Role Assignments state
+  const [clientRoles, setClientRoles] = useState<any[]>([])
+  const [clientRolesLoading, setClientRolesLoading] = useState(false)
+  const [showAssignRoleModal, setShowAssignRoleModal] = useState(false)
+  const [assignRoleForm, setAssignRoleForm] = useState({ staff_id: '', role_type: 'frontdesk' })
+  const [assignRoleSubmitting, setAssignRoleSubmitting] = useState(false)
+  const [allStaff, setAllStaff] = useState<any[]>([])
+
   const auth = getAuthState()
   const clientId = id ? parseInt(id, 10) : 0
+
+  const showMsg = (text: string) => {
+    setMessage(text)
+    setTimeout(() => setMessage(''), 3000)
+  }
 
   const loadComments = useCallback(async () => {
     if (!clientId) return
     try {
       const c = await api.clientComments(clientId)
       setComments(c)
-    } catch { setMessage(t('common.failed', lang)); setTimeout(() => setMessage(''), 3000) }
+    } catch { showMsg(t('common.failed', lang)) }
+  }, [clientId])
+
+  const loadKnives = useCallback(async () => {
+    if (!clientId) return
+    setKnivesLoading(true)
+    try {
+      const data = await api.clientKnives(clientId)
+      setKnives(Array.isArray(data) ? data : data?.knives || [])
+    } catch { /* no knives yet */ setKnives([]) }
+    setKnivesLoading(false)
+  }, [clientId])
+
+  const loadPipeline = useCallback(async () => {
+    if (!clientId) return
+    setPipelineLoading(true)
+    try {
+      const data = await api.clientPipeline(clientId)
+      setPipelineData(data)
+    } catch { setPipelineData(null) }
+    setPipelineLoading(false)
+  }, [clientId])
+
+  const loadRoleNotes = useCallback(async () => {
+    if (!clientId) return
+    setRoleNotesLoading(true)
+    try {
+      const data = await api.clientRoleNotes(clientId)
+      setRoleNotes(Array.isArray(data) ? data : data?.notes || [])
+    } catch { setRoleNotes([]) }
+    setRoleNotesLoading(false)
+  }, [clientId])
+
+  const loadClientRoles = useCallback(async () => {
+    if (!clientId) return
+    setClientRolesLoading(true)
+    try {
+      const data = await api.clientRoles(clientId)
+      setClientRoles(Array.isArray(data) ? data : data?.roles || [])
+    } catch { setClientRoles([]) }
+    setClientRolesLoading(false)
   }, [clientId])
 
   async function loadAll() {
@@ -85,7 +196,33 @@ export default function ClientDetail() {
     }
   }
 
-  useEffect(() => { loadAll(); loadComments() }, [id])
+  useEffect(() => {
+    loadAll()
+    loadComments()
+    loadKnives()
+    loadPipeline()
+    loadRoleNotes()
+    loadClientRoles()
+  }, [id])
+
+  // Load staff list for role assignment modal
+  useEffect(() => {
+    api.allStaff().then(setAllStaff).catch(() => setAllStaff([]))
+  }, [])
+
+  // Escape key handlers for modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowKnifeModal(false)
+        setShowKillModal(false)
+        setShowUnkillModal(false)
+        setShowAssignRoleModal(false)
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [])
 
   async function handleAddNote() {
     if (!noteContent.trim()) return
@@ -94,7 +231,7 @@ export default function ClientDetail() {
       await api.addClientNote(clientId, { content: noteContent.trim(), note_type: noteType })
       setNoteContent('')
       await loadAll()
-    } catch { setMessage(t('common.failed', lang)); setTimeout(() => setMessage(''), 3000) }
+    } catch { showMsg(t('common.failed', lang)) }
     setNoteSaving(false)
   }
 
@@ -112,7 +249,7 @@ export default function ClientDetail() {
       setLinkTargetId('')
       setLinkNote('')
       await loadAll()
-    } catch { setMessage(t('common.failed', lang)); setTimeout(() => setMessage(''), 3000) }
+    } catch { showMsg(t('common.failed', lang)) }
     setLinkSaving(false)
   }
 
@@ -132,7 +269,7 @@ export default function ClientDetail() {
       setCommentContent('')
       setReplyTo(null)
       await loadComments()
-    } catch { setMessage(t('common.failed', lang)); setTimeout(() => setMessage(''), 3000) }
+    } catch { showMsg(t('common.failed', lang)) }
     setCommentSaving(false)
   }
 
@@ -143,14 +280,88 @@ export default function ClientDetail() {
       setEditingComment(null)
       setEditContent('')
       await loadComments()
-    } catch { setMessage(t('common.failed', lang)); setTimeout(() => setMessage(''), 3000) }
+    } catch { showMsg(t('common.failed', lang)) }
   }
 
   async function handleDeleteComment(commentId: number) {
     try {
       await api.deleteComment(commentId)
       await loadComments()
-    } catch { setMessage(t('common.failed', lang)); setTimeout(() => setMessage(''), 3000) }
+    } catch { showMsg(t('common.failed', lang)) }
+  }
+
+  async function handleAddKnife() {
+    if (!knifeForm.amount) return
+    setKnifeSubmitting(true)
+    try {
+      await api.addKnife(clientId, {
+        knife_number: Number(knifeForm.knife_number),
+        amount: parseFloat(knifeForm.amount),
+        deposit_day: knifeForm.deposit_day ? Number(knifeForm.deposit_day) : undefined,
+        platform: knifeForm.platform || undefined,
+        notes: knifeForm.notes || undefined,
+      })
+      setShowKnifeModal(false)
+      setKnifeForm({ knife_number: '1', amount: '', deposit_day: '', platform: 'MT5', notes: '' })
+      await loadKnives()
+    } catch { showMsg(t('common.failed', lang)) }
+    setKnifeSubmitting(false)
+  }
+
+  async function handleKill() {
+    if (!killForm.kill_type) return
+    setKillSubmitting(true)
+    try {
+      await api.recordKill(clientId, {
+        kill_type: killForm.kill_type,
+        kill_knife: killForm.kill_knife ? Number(killForm.kill_knife) : undefined,
+      })
+      setShowKillModal(false)
+      setKillForm({ kill_type: 'register_kill', kill_knife: '' })
+      await loadPipeline()
+    } catch { showMsg(t('common.failed', lang)) }
+    setKillSubmitting(false)
+  }
+
+  async function handleUnkill() {
+    if (!unkillReason.trim()) return
+    setUnkillSubmitting(true)
+    try {
+      await api.unkillClient(clientId, unkillReason.trim())
+      setShowUnkillModal(false)
+      setUnkillReason('')
+      await loadPipeline()
+    } catch { showMsg(t('common.failed', lang)) }
+    setUnkillSubmitting(false)
+  }
+
+  async function handleAddRoleNote() {
+    if (!roleNoteForm.content.trim()) return
+    setRoleNoteSaving(true)
+    try {
+      await api.addRoleNote(clientId, {
+        from_role: roleNoteForm.from_role,
+        content: roleNoteForm.content.trim(),
+      })
+      setRoleNoteForm(prev => ({ ...prev, content: '' }))
+      await loadRoleNotes()
+    } catch { showMsg(t('common.failed', lang)) }
+    setRoleNoteSaving(false)
+  }
+
+  async function handleAssignRole() {
+    if (!assignRoleForm.staff_id || !assignRoleForm.role_type) return
+    setAssignRoleSubmitting(true)
+    try {
+      await api.assignRole(clientId, {
+        staff_id: Number(assignRoleForm.staff_id),
+        role_type: assignRoleForm.role_type,
+      })
+      setShowAssignRoleModal(false)
+      setAssignRoleForm({ staff_id: '', role_type: 'frontdesk' })
+      await loadClientRoles()
+    } catch { showMsg(t('common.failed', lang)) }
+    setAssignRoleSubmitting(false)
   }
 
   function buildThreaded(allComments: ClientComment[]): { comment: ClientComment; replies: ClientComment[] }[] {
@@ -173,6 +384,10 @@ export default function ClientDetail() {
 
   const statusColor = STATUS_COLORS[client.status] || theme.textSecondary
   const totalDeposits = client.deposits.reduce((s, d) => s + d.amount, 0)
+  const knifeTotal = knives.reduce((s, k) => s + (k.amount || 0), 0)
+
+  const isKilled = pipelineData?.kill_type || pipelineData?.killed_at
+  const canUnkill = isKilled && pipelineData?.kill_knife && pipelineData.kill_knife <= 2
 
   return (
     <div className="page-container">
@@ -482,7 +697,7 @@ export default function ClientDetail() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Deposits + Links */}
+        {/* RIGHT COLUMN: Deposits + Knife Deposits + Pipeline + Cross-Role Notes + Role Assignments + Links */}
         <div className="flex-col gap-20">
 
           {/* Deposits */}
@@ -512,6 +727,252 @@ export default function ClientDetail() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+
+          {/* A. Knife Deposits Section */}
+          <div className="card">
+            <div className="flex-between mb-12">
+              <h3 className="section-title" style={{ margin: 0 }}>
+                {t('knife.title', lang)} <span className="text-muted fw-600">({knives.length})</span>
+              </h3>
+              <button className="btn-primary" onClick={() => setShowKnifeModal(true)}>
+                + {t('knife.add', lang)}
+              </button>
+            </div>
+
+            {knivesLoading ? (
+              <div className="text-secondary fs-14">{t('common.loading', lang)}...</div>
+            ) : knives.length === 0 ? (
+              <div className="text-secondary fs-14">{t('common.no_data', lang)}</div>
+            ) : (
+              <div className="rounded-8 border-card" style={{ overflow: 'hidden' }}>
+                <table className="data-grid-table w-full">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>{t('knife.amount', lang)}</th>
+                      <th>{t('knife.day', lang)}</th>
+                      <th>{t('detail.platform', lang)}</th>
+                      <th>{t('detail.link_note', lang)}</th>
+                      <th>{t('detail.date', lang)}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {knives.map((k: any, idx: number) => {
+                      const amt = k.amount || 0
+                      return (
+                        <tr key={k.id || idx}>
+                          <td className="cell-mono fw-700">{k.knife_number || idx + 1}</td>
+                          <td className={`cell-mono-right fw-700 ${amt >= 0 ? 'text-success' : 'text-danger'}`}>
+                            ${Math.abs(amt).toLocaleString()}
+                          </td>
+                          <td className="cell-mono">{k.deposit_day || '—'}</td>
+                          <td className="text-primary">{k.platform || '—'}</td>
+                          <td className="fs-12 text-secondary">{k.notes || '—'}</td>
+                          <td className="cell-mono text-secondary fs-12">{k.created_at ? new Date(k.created_at).toLocaleDateString() : '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-top">
+                      <td className="fw-700 fs-14">{t('common.total', lang)}</td>
+                      <td className={`cell-mono-right fw-700 fs-14 ${knifeTotal >= 0 ? 'text-success' : 'text-danger'}`}>
+                        ${Math.abs(knifeTotal).toLocaleString()}
+                      </td>
+                      <td colSpan={4} />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* B. Pipeline Status Section */}
+          <div className="card">
+            <h3 className="section-title">{t('pipeline.client_pipeline', lang)}</h3>
+
+            {pipelineLoading ? (
+              <div className="text-secondary fs-14">{t('common.loading', lang)}...</div>
+            ) : (
+              <div className="flex-col gap-12">
+                {/* Pipeline milestone steps */}
+                <div className="d-flex flex-wrap gap-8">
+                  {PIPELINE_STEPS.map(step => {
+                    const reached = pipelineData?.steps?.[step.key] || pipelineData?.[step.key]
+                    return (
+                      <span
+                        key={step.key}
+                        className={`pill-badge ${reached ? 'badge-success' : 'badge-info'} fs-12 fw-600`}
+                      >
+                        {reached ? '●' : '○'} {t(step.label, lang)}
+                        {reached && typeof reached === 'string' && reached.length > 4 && (
+                          <span className="fs-11"> ({new Date(reached).toLocaleDateString()})</span>
+                        )}
+                      </span>
+                    )
+                  })}
+                </div>
+
+                {/* Kill status */}
+                {isKilled && (
+                  <div className="flex-col gap-8">
+                    <div className="d-flex items-center gap-8">
+                      <span className="pill-badge badge-danger fs-12 fw-700">KILLED</span>
+                      {pipelineData?.kill_type && (
+                        <span className="pill-badge badge-warning fs-12 fw-600">
+                          {t(`kill.${pipelineData.kill_type.replace('_kill', '')}`, lang) !== `kill.${pipelineData.kill_type.replace('_kill', '')}` ? t(`kill.${pipelineData.kill_type.replace('_kill', '')}`, lang) : pipelineData.kill_type}
+                        </span>
+                      )}
+                      {pipelineData?.kill_knife && (
+                        <span className="pill-badge badge-info fs-12 fw-600">
+                          {t('kill.knife', lang)} #{pipelineData.kill_knife}
+                        </span>
+                      )}
+                    </div>
+                    {pipelineData?.killed_at && (
+                      <div className="fs-12 text-secondary">
+                        {new Date(pipelineData.killed_at).toLocaleString()}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Unkill status */}
+                {pipelineData?.unkilled_at && (
+                  <div className="d-flex items-center gap-8">
+                    <span className="pill-badge badge-success fs-12 fw-700">{t('kill.unkill', lang)}</span>
+                    <span className="fs-12 text-secondary">
+                      {new Date(pipelineData.unkilled_at).toLocaleString()}
+                    </span>
+                    {pipelineData?.unkill_reason && (
+                      <span className="fs-12 text-primary">{pipelineData.unkill_reason}</span>
+                    )}
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="d-flex gap-8">
+                  {!isKilled && (
+                    <button className="btn-secondary text-danger" onClick={() => setShowKillModal(true)}>
+                      Kill Client
+                    </button>
+                  )}
+                  {canUnkill && (
+                    <button className="btn-secondary text-success" onClick={() => setShowUnkillModal(true)}>
+                      {t('kill.unkill', lang)}
+                    </button>
+                  )}
+                </div>
+
+                {canUnkill && (
+                  <div className="fs-11 text-secondary">{t('kill.only_1_2', lang)}</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* C. Cross-Role Notes Section */}
+          <div className="card">
+            <h3 className="section-title">
+              {t('role_notes.title', lang)} <span className="text-muted fw-600">({roleNotes.length})</span>
+            </h3>
+
+            {roleNotesLoading ? (
+              <div className="text-secondary fs-14">{t('common.loading', lang)}...</div>
+            ) : roleNotes.length === 0 ? (
+              <div className="text-secondary fs-14 mb-12">{t('common.no_data', lang)}</div>
+            ) : (
+              <div className="flex-col gap-8 mb-12">
+                {roleNotes.map((note: any, idx: number) => (
+                  <div key={note.id || idx} className="d-flex gap-8 items-start">
+                    <span className="pill-badge badge-accent fs-11 fw-700" style={{ whiteSpace: 'nowrap' }}>
+                      {t(`role_notes.from`, lang)}: {t(`maintainer.role_${note.from_role === 'maintenance' ? 'mt' : note.from_role}`, lang) !== `maintainer.role_${note.from_role === 'maintenance' ? 'mt' : note.from_role}` ? t(`maintainer.role_${note.from_role === 'maintenance' ? 'mt' : note.from_role}`, lang) : note.from_role}
+                    </span>
+                    <div className="flex-1">
+                      <div className="fs-13 text-primary">{note.content}</div>
+                      <div className="fs-11 text-secondary">
+                        {note.staff_name || note.author_name || ''}
+                        {note.created_at ? ` — ${new Date(note.created_at).toLocaleString()}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add note form */}
+            <div className="flex-col gap-8">
+              <div className="d-flex gap-8">
+                <select
+                  className="input"
+                  value={roleNoteForm.from_role}
+                  onChange={e => setRoleNoteForm(prev => ({ ...prev, from_role: e.target.value }))}
+                  style={{ width: 140 }}
+                >
+                  {CROSS_ROLE_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{t(opt.label, lang)}</option>
+                  ))}
+                </select>
+                <textarea
+                  className="input flex-1"
+                  placeholder={t('role_notes.placeholder', lang)}
+                  value={roleNoteForm.content}
+                  onChange={e => setRoleNoteForm(prev => ({ ...prev, content: e.target.value }))}
+                  rows={2}
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+              <button
+                className="btn-primary self-end"
+                onClick={handleAddRoleNote}
+                disabled={roleNoteSaving || !roleNoteForm.content.trim()}
+                style={{ opacity: roleNoteSaving || !roleNoteForm.content.trim() ? 0.5 : 1 }}
+              >
+                {roleNoteSaving ? t('common.saving', lang) : t('role_notes.add', lang)}
+              </button>
+            </div>
+          </div>
+
+          {/* D. Role Assignments Section */}
+          <div className="card">
+            <div className="flex-between mb-12">
+              <h3 className="section-title" style={{ margin: 0 }}>
+                {t('maintainer.role', lang)} <span className="text-muted fw-600">({clientRoles.length})</span>
+              </h3>
+              <button className="btn-primary" onClick={() => setShowAssignRoleModal(true)}>
+                + {t('maintainer.role', lang)}
+              </button>
+            </div>
+
+            {clientRolesLoading ? (
+              <div className="text-secondary fs-14">{t('common.loading', lang)}...</div>
+            ) : clientRoles.length === 0 ? (
+              <div className="text-secondary fs-14">{t('common.no_data', lang)}</div>
+            ) : (
+              <div className="flex-col gap-8">
+                {clientRoles.map((role: any, idx: number) => {
+                  const isActive = role.is_active !== false && !role.ended_at
+                  return (
+                    <div key={role.id || idx} className="d-flex items-center gap-8 flex-wrap">
+                      <span className={`pill-badge ${isActive ? 'badge-success' : 'badge-danger'} fs-12 fw-700`}>
+                        {isActive ? 'ACTIVE' : 'ENDED'}
+                      </span>
+                      <span className="pill-badge badge-info fs-12 fw-600">
+                        {t(`role_type.${role.role_type}`, lang) !== `role_type.${role.role_type}` ? t(`role_type.${role.role_type}`, lang) : role.role_type}
+                      </span>
+                      <span className="fs-13 fw-600 text-primary">{role.staff_name || `Staff #${role.staff_id}`}</span>
+                      {role.assigned_at && (
+                        <span className="fs-11 text-secondary">{new Date(role.assigned_at).toLocaleDateString()}</span>
+                      )}
+                      {!isActive && role.end_reason && (
+                        <span className="fs-11 text-warning">{role.end_reason}</span>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -600,6 +1061,165 @@ export default function ClientDetail() {
           </div>
         </div>
       </div>
+
+      {/* ── Modals ── */}
+
+      {/* Add Knife Deposit Modal */}
+      {showKnifeModal && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowKnifeModal(false) }}>
+          <div className="modal-content" style={{ width: 420 }}>
+            <h3 className="modal-title">{t('knife.add', lang)}</h3>
+            <div className="form-grid">
+              <div className="form-grid-2col">
+                <label>
+                  <span className="field-label">{t('knife.number', lang)} *</span>
+                  <select className="input" value={knifeForm.knife_number} onChange={e => setKnifeForm(prev => ({ ...prev, knife_number: e.target.value }))}>
+                    {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span className="field-label">{t('knife.amount', lang)} *</span>
+                  <input className="input" type="number" step="0.01" value={knifeForm.amount} onChange={e => setKnifeForm(prev => ({ ...prev, amount: e.target.value }))} required />
+                </label>
+              </div>
+              <div className="form-grid-2col">
+                <label>
+                  <span className="field-label">{t('knife.day', lang)}</span>
+                  <input className="input" type="number" value={knifeForm.deposit_day} onChange={e => setKnifeForm(prev => ({ ...prev, deposit_day: e.target.value }))} />
+                </label>
+                <label>
+                  <span className="field-label">{t('detail.platform', lang)}</span>
+                  <select className="input" value={knifeForm.platform} onChange={e => setKnifeForm(prev => ({ ...prev, platform: e.target.value }))}>
+                    {['MT5', 'MT4', 'cTrader', 'Other'].map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </label>
+              </div>
+              <label>
+                <span className="field-label">{t('detail.link_note', lang)}</span>
+                <textarea className="input" value={knifeForm.notes} onChange={e => setKnifeForm(prev => ({ ...prev, notes: e.target.value }))} style={{ resize: 'vertical', minHeight: 60, height: 'auto' }} />
+              </label>
+              <div className="modal-actions">
+                <button className="btn-secondary flex-1" onClick={() => setShowKnifeModal(false)}>
+                  {t('common.cancel', lang)}
+                </button>
+                <button
+                  className="btn-primary flex-1"
+                  onClick={handleAddKnife}
+                  disabled={knifeSubmitting || !knifeForm.amount}
+                >
+                  {knifeSubmitting ? '...' : t('common.confirm', lang)}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Kill Client Modal */}
+      {showKillModal && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowKillModal(false) }}>
+          <div className="modal-content" style={{ width: 380 }}>
+            <h3 className="modal-title">Kill Client</h3>
+            <div className="form-grid">
+              <label>
+                <span className="field-label">Kill Type *</span>
+                <select className="input" value={killForm.kill_type} onChange={e => setKillForm(prev => ({ ...prev, kill_type: e.target.value }))}>
+                  {KILL_TYPES.map(kt => (
+                    <option key={kt.value} value={kt.value}>{t(kt.label, lang)}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="field-label">{t('kill.knife', lang)} #</span>
+                <select className="input" value={killForm.kill_knife} onChange={e => setKillForm(prev => ({ ...prev, kill_knife: e.target.value }))}>
+                  <option value="">—</option>
+                  {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+              <div className="modal-actions">
+                <button className="btn-secondary flex-1" onClick={() => setShowKillModal(false)}>
+                  {t('common.cancel', lang)}
+                </button>
+                <button
+                  className="btn-primary flex-1 text-danger"
+                  onClick={handleKill}
+                  disabled={killSubmitting}
+                >
+                  {killSubmitting ? '...' : t('common.confirm', lang)}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unkill Modal */}
+      {showUnkillModal && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowUnkillModal(false) }}>
+          <div className="modal-content" style={{ width: 380 }}>
+            <h3 className="modal-title">{t('kill.unkill', lang)}</h3>
+            <div className="form-grid">
+              <label>
+                <span className="field-label">{t('kill.unkill_reason', lang)} *</span>
+                <textarea className="input" value={unkillReason} onChange={e => setUnkillReason(e.target.value)} rows={3} style={{ resize: 'vertical' }} />
+              </label>
+              <div className="fs-12 text-warning">{t('kill.only_1_2', lang)}</div>
+              <div className="modal-actions">
+                <button className="btn-secondary flex-1" onClick={() => setShowUnkillModal(false)}>
+                  {t('common.cancel', lang)}
+                </button>
+                <button
+                  className="btn-primary flex-1"
+                  onClick={handleUnkill}
+                  disabled={unkillSubmitting || !unkillReason.trim()}
+                >
+                  {unkillSubmitting ? '...' : t('common.confirm', lang)}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Role Modal */}
+      {showAssignRoleModal && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowAssignRoleModal(false) }}>
+          <div className="modal-content" style={{ width: 400 }}>
+            <h3 className="modal-title">{t('maintainer.role', lang)}</h3>
+            <div className="form-grid">
+              <label>
+                <span className="field-label">{t('maintainer.name', lang)} *</span>
+                <select className="input" value={assignRoleForm.staff_id} onChange={e => setAssignRoleForm(prev => ({ ...prev, staff_id: e.target.value }))}>
+                  <option value="">—</option>
+                  {allStaff.map(s => (
+                    <option key={s.id} value={s.id}>{s.display_name} ({s.role})</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="field-label">{t('maintainer.role', lang)} *</span>
+                <select className="input" value={assignRoleForm.role_type} onChange={e => setAssignRoleForm(prev => ({ ...prev, role_type: e.target.value }))}>
+                  {ROLE_TYPES.map(rt => (
+                    <option key={rt.value} value={rt.value}>{t(rt.label, lang)}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="modal-actions">
+                <button className="btn-secondary flex-1" onClick={() => setShowAssignRoleModal(false)}>
+                  {t('common.cancel', lang)}
+                </button>
+                <button
+                  className="btn-primary flex-1"
+                  onClick={handleAssignRole}
+                  disabled={assignRoleSubmitting || !assignRoleForm.staff_id}
+                >
+                  {assignRoleSubmitting ? '...' : t('common.confirm', lang)}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -24,6 +24,7 @@ const NAV_ALL: NavItem[] = [
   { path: '/groups', labelKey: 'nav.groups', icon: '\u2295', end: false },
   { path: '/maintainer', labelKey: 'nav.maintainer', icon: '\u2318', end: false, adminOnly: true },
   { path: '/cs', labelKey: 'nav.customer_service', icon: '\u2298', end: false },
+  { path: '/group-interactions', labelKey: 'nav.group_interactions', icon: '\u229E', end: false },
   { path: '/cs-finance', labelKey: 'nav.cs_finance', icon: '\uD83D\uDCB0', end: false },
   { path: '/phone-lookup', labelKey: 'nav.phone_lookup', icon: '\u260E', end: false },
   { path: '/reports', labelKey: 'nav.reports', icon: '\u232C', end: false },
