@@ -2,29 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, getAuthState } from '../api'
 import { getLang, t } from '../i18n'
 import { useTheme } from '../ThemeContext'
-
-interface Exam {
-  id: number
-  exam_name: string
-  start_date: string
-  end_date: string
-  team: string | null
-  status: string
-}
-
-interface ExamResult {
-  rank: number
-  display_name: string
-  team: string
-  powder: number
-  reply_rate: number
-  registered: number
-  training: number
-  withdrawals: number
-  orders: number
-  conversion_rate: number
-  kills: number
-}
+import type { Exam, ExamResultRow } from '../types'
 
 export default function Exams() {
   const { theme } = useTheme()
@@ -38,7 +16,7 @@ export default function Exams() {
   const [error, setError] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [expandedId, setExpandedId] = useState<number | null>(null)
-  const [results, setResults] = useState<Record<number, ExamResult[]>>({})
+  const [results, setResults] = useState<Record<number, ExamResultRow[]>>({})
   const [resultsLoading, setResultsLoading] = useState<Record<number, boolean>>({})
   const [showEnded, setShowEnded] = useState(false)
   const [formData, setFormData] = useState({ exam_name: '', start_date: '', end_date: '', team: '' })
@@ -190,18 +168,18 @@ export default function Exams() {
                               {(results[exam.id] || []).map((r, idx) => (
                                 <tr key={idx}>
                                   <td className={`text-bold rank-${idx < 3 ? idx + 1 : 'default'}`}>
-                                    {r.rank || idx + 1}
+                                    {idx + 1}
                                   </td>
                                   <td className="text-bold">{r.display_name}</td>
                                   <td className="caption">{r.team || '\u2014'}</td>
-                                  <td className="text-right cell-mono text-accent">{r.powder}</td>
-                                  <td className="text-right cell-mono text-success">{r.reply_rate}%</td>
-                                  <td className="text-right cell-mono text-accent">{r.registered}</td>
-                                  <td className="text-right cell-mono text-warning">{r.training}</td>
-                                  <td className="text-right cell-mono">{r.withdrawals}</td>
-                                  <td className="text-right cell-mono text-bold text-success">{r.orders}</td>
+                                  <td className="text-right cell-mono text-accent">{r.total_powder}</td>
+                                  <td className="text-right cell-mono text-success">{r.avg_reply_rate}%</td>
+                                  <td className="text-right cell-mono text-accent">{r.total_registrations}</td>
+                                  <td className="text-right cell-mono text-warning">{r.total_training}</td>
+                                  <td className="text-right cell-mono">{r.total_withdrawals}</td>
+                                  <td className="text-right cell-mono text-bold text-success">{r.total_new_orders}</td>
                                   <td className="text-right cell-mono text-accent">{r.conversion_rate}%</td>
-                                  <td className="text-right cell-mono text-danger">{r.kills}</td>
+                                  <td className="text-right cell-mono text-danger">{r.total_new_kills}</td>
                                 </tr>
                               ))}
                               {(results[exam.id] || []).length === 0 && (
@@ -260,10 +238,10 @@ export default function Exams() {
                                 <tbody>
                                   {(results[exam.id] || []).slice(0, 5).map((r, idx) => (
                                     <tr key={idx}>
-                                      <td className={`text-bold rank-${idx === 0 ? '1' : 'default'}`}>{r.rank || idx + 1}</td>
+                                      <td className={`text-bold rank-${idx === 0 ? '1' : 'default'}`}>{idx + 1}</td>
                                       <td>{r.display_name}</td>
-                                      <td className="text-right cell-mono">{r.orders}</td>
-                                      <td className="text-right cell-mono text-danger">{r.kills}</td>
+                                      <td className="text-right cell-mono">{r.total_new_orders}</td>
+                                      <td className="text-right cell-mono text-danger">{r.total_new_kills}</td>
                                     </tr>
                                   ))}
                                 </tbody>

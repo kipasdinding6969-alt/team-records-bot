@@ -132,3 +132,20 @@ node_modules/
 flake8_report.txt
 radon_raw.txt
 radon_report.txt
+
+# Session artifacts — fix scripts from agent sessions
+fix_*.py
+fix_*.js
+update_*.py
+import_phone_numbers.py
+web_dashboard/fix_*.py
+web_dashboard/fix_*.cjs
+web_dashboard/add_*.cjs
+web_dashboard/apply_*.cjs
+web_dashboard/refactor*.cjs
+web_dashboard/rewrite_*.cjs
+web_dashboard/update_*.cjs
+
+# Phase prompt/spec docs (not code)
+PHASE*_*.md
+GEMINI_*.md

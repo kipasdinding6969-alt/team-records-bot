@@ -3,29 +3,7 @@ import { api } from '../api'
 import { useTheme } from '../ThemeContext'
 import { t, getLang } from '../i18n'
 import { PageHeader, Spinner, Empty } from '../components/SharedUI'
-
-interface GroupInteractionRow {
-  id: number
-  client_id: number
-  group_id: string | null
-  actor_staff_id: number | null
-  actor_role: string
-  day_number: number | null
-  script_completed: number
-  client_read_messages: number
-  client_replied: number
-  client_pm_character: number
-  client_left_group: number
-  notes: string | null
-  created_at: string
-  client_phone: string | null
-  client_account_id: string | null
-  client_platform: string | null
-  first_day_status: string | null
-  second_day_status: string | null
-  actor_name: string | null
-  frontdesk_name: string | null
-}
+import type { GroupInteraction } from '../types'
 
 interface FormData {
   client_id: string
@@ -65,7 +43,7 @@ export default function GroupInteractions() {
 
   const [fromDate, setFromDate] = useState(thirtyDaysAgo())
   const [toDate, setToDate] = useState(todayStr())
-  const [rows, setRows] = useState<GroupInteractionRow[]>([])
+  const [rows, setRows] = useState<GroupInteraction[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
@@ -146,7 +124,7 @@ export default function GroupInteractions() {
       )}
 
       {/* Summary stats */}
-      <div className="stats-row">
+      <div className="grid-3 mb-20">
         <div className="glass-card stat-card">
           <div className="stat-label">{t('gi.total_clients', lang)}</div>
           <div className="stat-value">{total}</div>
@@ -163,25 +141,21 @@ export default function GroupInteractions() {
 
       {/* Controls: date pickers + new entry button */}
       <div className="toolbar">
-        <div className="toolbar-group">
-          <label className="toolbar-label">{t('gi.date_from', lang)}</label>
-          <input
-            type="date"
-            className="input"
-            value={fromDate}
-            onChange={e => setFromDate(e.target.value)}
-          />
-        </div>
-        <div className="toolbar-group">
-          <label className="toolbar-label">{t('gi.date_to', lang)}</label>
-          <input
-            type="date"
-            className="input"
-            value={toDate}
-            onChange={e => setToDate(e.target.value)}
-          />
-        </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+        <label className="field-label" style={{ marginBottom: 0 }}>{t('gi.date_from', lang)}</label>
+        <input
+          type="date"
+          className="input w-auto"
+          value={fromDate}
+          onChange={e => setFromDate(e.target.value)}
+        />
+        <label className="field-label" style={{ marginBottom: 0 }}>{t('gi.date_to', lang)}</label>
+        <input
+          type="date"
+          className="input w-auto"
+          value={toDate}
+          onChange={e => setToDate(e.target.value)}
+        />
+        <button className="btn-primary" onClick={() => setShowModal(true)}>
           + {t('gi.new_entry', lang)}
         </button>
       </div>
@@ -192,8 +166,8 @@ export default function GroupInteractions() {
       ) : rows.length === 0 ? (
         <Empty label={t('gi.no_data', lang)} />
       ) : (
-        <div className="table-wrap">
-          <table className="data-table">
+        <div className="overflow-x">
+          <table className="data-grid-table">
             <thead>
               <tr>
                 <th>{t('gi.join_date', lang)}</th>
@@ -254,7 +228,7 @@ export default function GroupInteractions() {
       {totalPages > 1 && (
         <div className="pagination">
           <button
-            className="btn btn-sm"
+            className="btn-secondary btn-sm"
             disabled={page <= 1}
             onClick={() => loadData(page - 1)}
           >
@@ -262,7 +236,7 @@ export default function GroupInteractions() {
           </button>
           <span className="pagination-info">{page} / {totalPages}</span>
           <button
-            className="btn btn-sm"
+            className="btn-secondary btn-sm"
             disabled={page >= totalPages}
             onClick={() => loadData(page + 1)}
           >
@@ -278,8 +252,8 @@ export default function GroupInteractions() {
             <h3 className="section-title">{t('gi.new_entry', lang)}</h3>
 
             <div className="form-grid">
-              <div className="form-field">
-                <label className="form-label">{t('gi.client_id', lang)} *</label>
+              <div className="form-section">
+                <label className="field-label">{t('gi.client_id', lang)} *</label>
                 <input
                   type="number"
                   className="input"
@@ -289,8 +263,8 @@ export default function GroupInteractions() {
                 />
               </div>
 
-              <div className="form-field">
-                <label className="form-label">{t('gi.group_num', lang)}</label>
+              <div className="form-section">
+                <label className="field-label">{t('gi.group_num', lang)}</label>
                 <input
                   type="text"
                   className="input"
@@ -300,8 +274,8 @@ export default function GroupInteractions() {
                 />
               </div>
 
-              <div className="form-field">
-                <label className="form-label">{t('gi.actor_role', lang)}</label>
+              <div className="form-section">
+                <label className="field-label">{t('gi.actor_role', lang)}</label>
                 <select
                   className="input"
                   value={form.actor_role}
@@ -313,8 +287,8 @@ export default function GroupInteractions() {
                 </select>
               </div>
 
-              <div className="form-field">
-                <label className="form-label">{t('gi.day_number', lang)}</label>
+              <div className="form-section">
+                <label className="field-label">{t('gi.day_number', lang)}</label>
                 <input
                   type="number"
                   className="input"
@@ -325,8 +299,8 @@ export default function GroupInteractions() {
                 />
               </div>
 
-              <div className="form-field">
-                <label className="form-label">
+              <div className="form-section">
+                <label className="field-label">
                   <input
                     type="checkbox"
                     checked={form.script_completed}
@@ -336,8 +310,8 @@ export default function GroupInteractions() {
                 </label>
               </div>
 
-              <div className="form-field">
-                <label className="form-label">
+              <div className="form-section">
+                <label className="field-label">
                   <input
                     type="checkbox"
                     checked={form.client_left_group}
@@ -347,8 +321,8 @@ export default function GroupInteractions() {
                 </label>
               </div>
 
-              <div className="form-field" style={{ gridColumn: '1 / -1' }}>
-                <label className="form-label">{t('gi.notes', lang)}</label>
+              <div className="form-section" style={{ gridColumn: '1 / -1' }}>
+                <label className="field-label">{t('gi.notes', lang)}</label>
                 <textarea
                   className="input"
                   rows={3}
@@ -359,11 +333,11 @@ export default function GroupInteractions() {
             </div>
 
             <div className="modal-actions">
-              <button className="btn" onClick={() => setShowModal(false)}>
+              <button className="btn-secondary" onClick={() => setShowModal(false)}>
                 {t('gi.cancel', lang)}
               </button>
               <button
-                className="btn btn-primary"
+                className="btn-primary"
                 onClick={handleSubmit}
                 disabled={submitting}
               >

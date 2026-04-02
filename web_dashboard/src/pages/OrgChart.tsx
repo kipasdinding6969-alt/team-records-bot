@@ -92,7 +92,7 @@ export default function OrgChart() {
     ...tm,
     leader: tm.leader && filterStaff([tm.leader]).length > 0 ? tm.leader : null,
     members: filterStaff(tm.members)
-  })).filter(t => t.leader || t.members.length > 0 || t.team.toLowerCase().includes(search.toLowerCase()))
+  })).filter(tm => tm.leader || tm.members.length > 0 || tm.team.toLowerCase().includes(search.toLowerCase()))
 
   const filteredUnassigned = filterStaff(data.unassigned)
 
@@ -240,7 +240,7 @@ export default function OrgChart() {
                   }}
                 >
                   <option value="" disabled>{t('org.assign_team', lang)}</option>
-                  {data.teams.map(t => <option key={t.team} value={t.team}>{t.team}</option>)}
+                  {data.teams.map(tm => <option key={tm.team} value={tm.team}>{tm.team}</option>)}
                 </select>
               </div>
             ))}

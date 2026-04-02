@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, isAuthenticated, setAuthState } from '../api'
-import { useTheme } from '../ThemeContext'
 import { t, getLang } from '../i18n'
 
 export default function Login() {
-  const { theme } = useTheme()
   const nav = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -58,7 +56,7 @@ export default function Login() {
             T
           </div>
           <div className="heading-lg">{t('login.title', getLang())}</div>
-          <div className="subtitle" style={{ letterSpacing: 2 }}>{t('login.subtitle', getLang())}</div>
+          <div className="subtitle login-subtitle">{t('login.subtitle', getLang())}</div>
         </div>
         <form onSubmit={submit} className="form-grid">
           <label>
@@ -96,10 +94,9 @@ export default function Login() {
             </div>
           )}
           <button
-            className="btn-primary"
+            className="btn-primary btn-login"
             type="submit"
             disabled={loading}
-            style={{ width: '100%', height: 48, fontSize: 16, fontWeight: 700, marginTop: 8 }}
           >
             {loading ? t('login.logging_in', getLang()) : t('login.submit', getLang())}
           </button>

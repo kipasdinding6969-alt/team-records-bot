@@ -723,6 +723,40 @@ async def get_funnel(user: dict = Depends(get_current_user)):
     return funnel
 
 
+# ─── Pipeline (clients grouped by status) ────────────────────────────────────
+
+@app.get('/api/pipeline')
+async def get_pipeline(user: dict = Depends(get_current_user)):
+    if user['role'] == 'owner':
+        where, params = '', []
+    elif user['role'] == 'admin':
+        where = 'WHERE frontdesk_id IN (SELECT id FROM staff WHERE team = ?)'
+        params = [user['team_scope']]
+    else:
+        sid = user.get('staff_id')
+        if sid:
+            where, params = 'WHERE frontdesk_id = ?', [sid]
+        else:
+            where, params = 'WHERE 1 = 0', []
+
+    async with _connect_db() as db:
+        async with db.execute(
+            f"""SELECT id, phone, nickname, status, source, created_at,
+                       contacted_at, replied_at, registered_at, total_deposited,
+                       frontdesk_id
+                FROM clients {where}
+                ORDER BY created_at DESC""",
+            params
+        ) as cur:
+            rows = [row_to_dict(r) for r in await cur.fetchall()]
+
+    pipeline: dict[str, list] = {}
+    for row in rows:
+        status = row.get('status') or 'new'
+        pipeline.setdefault(status, []).append(row)
+    return pipeline
+
+
 # ─── Activity feed (scoped) ───────────────────────────────────────────────────
 
 @app.get('/api/activity')
@@ -1923,8 +1957,11 @@ async def recalculate_daily_stats(
                 }
                 if status_name in ('ghosted', 'blocked', 'dead'):
                     async with db.execute(
-                        f"SELECT COUNT(*) FROM clients WHERE frontdesk_id = ? AND status = ?",
-                        (sid, status_name)
+                        """SELECT COUNT(DISTINCT cn.client_id) FROM client_notes cn
+                           JOIN clients c ON cn.client_id = c.id
+                           WHERE c.frontdesk_id = ? AND cn.new_status = ?
+                           AND DATE(cn.created_at) = ?""",
+                        (sid, status_name, today)
                     ) as c:
                         counts[status_name] = (await c.fetchone())[0]
                 else:
@@ -2939,7 +2976,7 @@ async def frontdesk_recent(
 # ─── Phase 20: Client Reassignment (Maintainer) ─────────────────────────────
 
 class ReassignRequest(BaseModel):
-    client_ids: list[int]
+    client_ids: list[int] | None = None
     from_staff_id: int
     to_staff_id: int
     reason: str = ''
@@ -2954,8 +2991,17 @@ async def maintainer_reassign(
     if user.get('role') not in ('owner', 'admin'):
         raise HTTPException(403, 'Admin access required')
     async with _connect_db() as db:
+        # If no client_ids provided, reassign all clients from source staff
+        client_ids = body.client_ids
+        if not client_ids:
+            async with db.execute(
+                "SELECT id FROM clients WHERE frontdesk_id = ?",
+                (body.from_staff_id,)
+            ) as cur:
+                client_ids = [r['id'] for r in await cur.fetchall()]
+
         updated = 0
-        for cid in body.client_ids:
+        for cid in client_ids:
             result = await db.execute(
                 "UPDATE clients SET frontdesk_id = ? WHERE id = ? AND frontdesk_id = ?",
                 (body.to_staff_id, cid, body.from_staff_id)
@@ -3485,6 +3531,11 @@ async def create_maintainer_deposit(
                 body.get('deposit_date', datetime.now().strftime('%Y-%m-%d')),
             ),
         )
+        # Update client total_deposited
+        await db.execute(
+            'UPDATE clients SET total_deposited = total_deposited + ? WHERE id = ?',
+            (body.get('amount', 0), body['client_id']),
+        )
         await db.commit()
 
         # Update deposit group totals
@@ -3665,8 +3716,11 @@ async def _recalculate_staff_daily_stats(staff_id: int, stat_date: str):
             }
             if status_name in ('ghosted', 'blocked', 'dead'):
                 async with db.execute(
-                    "SELECT COUNT(*) FROM clients WHERE frontdesk_id = ? AND status = ?",
-                    (staff_id, status_name)
+                    """SELECT COUNT(DISTINCT cn.client_id) FROM client_notes cn
+                       JOIN clients c ON cn.client_id = c.id
+                       WHERE c.frontdesk_id = ? AND cn.new_status = ?
+                       AND DATE(cn.created_at) = ?""",
+                    (staff_id, status_name, stat_date)
                 ) as c:
                     counts[status_name] = (await c.fetchone())[0]
             else:

@@ -29,7 +29,7 @@ export default function GroupOverview() {
 
   useEffect(() => {
     loadData(date)
-  }, [])
+  }, [date])
 
   const handleDateChange = (newDate: string) => {
     setDate(newDate)

@@ -182,9 +182,9 @@ export default function UserManagement() {
       )}
 
       {loading ? (
-        <div style={{ color: theme.textSecondary, padding: 20, textAlign: 'center' }}>{t('common.loading', getLang())}</div>
+        <div className="loading-state">{t('common.loading', getLang())}</div>
       ) : (
-        <div className="card" style={{ overflow: 'hidden' }}>
+        <div className="card overflow-hidden">
           <table className="data-grid-table">
             <thead>
               <tr>
@@ -199,47 +199,46 @@ export default function UserManagement() {
             </thead>
             <tbody>
               {users.map(u => (
-                <tr key={u.id} style={{ opacity: u.is_active ? 1 : 0.5 }}>
+                <tr key={u.id} className={u.is_active ? '' : 'row-inactive'}>
                   <td>{u.display_name}</td>
-                  <td style={{ color: theme.textSecondary }}>{u.username}</td>
+                  <td className="text-secondary">{u.username}</td>
                   <td>
-                    <span className="pill-badge" style={{
-                      color: ROLE_COLORS[u.role],
-                      background: `${ROLE_COLORS[u.role]}22`,
-                      border: `1px solid ${ROLE_COLORS[u.role]}`,
-                    }}>
+                    <span className="role-badge-dynamic" style={{
+                      '--role-color': ROLE_COLORS[u.role],
+                      '--role-bg': `${ROLE_COLORS[u.role]}22`,
+                    } as React.CSSProperties}>
                       {ROLE_LABELS[u.role] || u.role}
                     </span>
                   </td>
-                  <td style={{ color: theme.textSecondary }}>{u.team_scope ?? t('users.all_teams', getLang())}</td>
+                  <td className="text-secondary">{u.team_scope ?? t('users.all_teams', getLang())}</td>
                   <td>
-                    <span className={u.is_active ? 'badge-success' : 'badge-danger'} style={{ fontSize: 12 }}>
+                    <span className={`${u.is_active ? 'badge-success' : 'badge-danger'} fs-12`}>
                       {u.is_active ? t('users.active', getLang()) : t('users.deactivated', getLang())}
                     </span>
                   </td>
-                  <td style={{ color: theme.textSecondary, fontSize: 12 }}>
+                  <td className="text-secondary fs-12">
                     {u.last_login ? new Date(u.last_login).toLocaleDateString(getLang() === 'zh' ? 'zh-CN' : 'en-US') : '\u2014'}
                   </td>
                   <td>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div className="d-flex gap-8">
                       {canEdit(u) && (
                         <>
-                          <button className="btn-secondary" style={{ height: 32, padding: '0 12px', fontSize: 12 }} onClick={() => openEdit(u)}>{t('common.edit', getLang())}</button>
-                          <button className="btn-secondary" style={{ height: 32, padding: '0 12px', fontSize: 12 }} onClick={() => openReset(u)}>{t('users.reset_password', getLang())}</button>
+                          <button className="btn-secondary btn-sm" onClick={() => openEdit(u)}>{t('common.edit', getLang())}</button>
+                          <button className="btn-secondary btn-sm" onClick={() => openReset(u)}>{t('users.reset_password', getLang())}</button>
                         </>
                       )}
                       {canEdit(u) && u.is_active && auth?.user_id !== u.id && (
                         confirmDeactivate === u.id ? (
                           <>
-                            <button className="btn-danger" style={{ height: 32, padding: '0 12px', fontSize: 12 }} onClick={() => deactivate(u.id)}>{t('users.confirm_deactivate', getLang())}</button>
-                            <button className="btn-secondary" style={{ height: 32, padding: '0 12px', fontSize: 12 }} onClick={() => setConfirmDeactivate(null)}>{t('common.cancel', getLang())}</button>
+                            <button className="btn-danger btn-sm" onClick={() => deactivate(u.id)}>{t('users.confirm_deactivate', getLang())}</button>
+                            <button className="btn-secondary btn-sm" onClick={() => setConfirmDeactivate(null)}>{t('common.cancel', getLang())}</button>
                           </>
                         ) : (
-                          <button className="btn-danger" style={{ height: 32, padding: '0 12px', fontSize: 12 }} onClick={() => setConfirmDeactivate(u.id)}>{t('users.deactivate', getLang())}</button>
+                          <button className="btn-danger btn-sm" onClick={() => setConfirmDeactivate(u.id)}>{t('users.deactivate', getLang())}</button>
                         )
                       )}
                       {canEdit(u) && !u.is_active && isOwner && (
-                        <button className="btn-secondary" style={{ height: 32, padding: '0 12px', fontSize: 12, color: theme.accent }} onClick={() => reactivate(u)}>{t('users.reactivate', getLang())}</button>
+                        <button className="btn-secondary btn-sm text-accent" onClick={() => reactivate(u)}>{t('users.reactivate', getLang())}</button>
                       )}
                     </div>
                   </td>
@@ -253,15 +252,15 @@ export default function UserManagement() {
       {/* Modal */}
       {modal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ width: 480 }}>
+          <div className="modal-content w-480">
             <h3 className="modal-title">
               {modal === 'add' ? t('users.add', getLang()) : modal === 'edit' ? t('users.edit', getLang()) : t('users.reset_password', getLang())}
             </h3>
 
             {modal === 'reset' ? (
               <div className="form-grid">
-                <p style={{ color: theme.textSecondary, fontSize: 13, margin: 0 }}>
-                  {t('users.set_pwd_for', getLang())} <strong style={{ color: theme.textPrimary }}>{editTarget?.display_name}</strong>
+                <p className="text-secondary fs-13 m-0">
+                  {t('users.set_pwd_for', getLang())} <strong className="text-primary">{editTarget?.display_name}</strong>
                 </p>
                 <label>
                   <span className="field-label">{t('users.new_password', getLang())}</span>
@@ -310,7 +309,7 @@ export default function UserManagement() {
             )}
 
             {formError && (
-              <div className="alert alert-error" style={{ marginTop: 12, marginBottom: 0, padding: '8px 12px', fontSize: 12 }}>
+              <div className="alert alert-error alert-compact">
                 {formError}
               </div>
             )}

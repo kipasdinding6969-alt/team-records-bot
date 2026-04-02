@@ -1,11 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
-import { useTheme } from '../ThemeContext'
 import { t, getLang } from '../i18n'
 
 export default function Setup() {
-  const { theme } = useTheme()
   const nav = useNavigate()
   const [form, setForm] = useState({
     display_name: '',
@@ -43,11 +41,11 @@ export default function Setup() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: theme.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="card" style={{ width: 400, background: theme.bgElevated }}>
-        <div style={{ marginBottom: 24, textAlign: 'center' }}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: theme.textPrimary }}>{t('setup.title', getLang())}</div>
-          <div style={{ fontSize: 13, color: theme.textSecondary, marginTop: 8 }}>
+    <div className="login-page">
+      <div className="card login-card">
+        <div className="setup-header">
+          <div className="heading-lg">{t('setup.title', getLang())}</div>
+          <div className="subtitle mt-8">
             {t('setup.subtitle', getLang())}
           </div>
         </div>
@@ -82,7 +80,7 @@ export default function Setup() {
             </div>
           )}
 
-          <button className="btn-primary" type="submit" disabled={loading} style={{ width: '100%' }}>
+          <button className="btn-primary w-full" type="submit" disabled={loading}>
             {loading ? t('setup.creating', getLang()) : t('setup.create', getLang())}
           </button>
         </form>

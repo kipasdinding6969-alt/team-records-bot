@@ -406,7 +406,13 @@ export interface GroupInteraction {
   client_left_group: number
   notes: string | null
   created_at: string
-  actor_name?: string
+  client_phone: string | null
+  client_account_id: string | null
+  client_platform: string | null
+  first_day_status: string | null
+  second_day_status: string | null
+  actor_name?: string | null
+  frontdesk_name?: string | null
 }
 
 export interface OrgUnit {

@@ -2362,6 +2362,69 @@ class DatabaseV2:
             await db.commit()
         await self.set_setting('badges_seeded_v2', '1', 'Default badges seeded')
 
+    # ─── Organization Units Seeding ──────────────────────────────────────────
+
+    async def seed_organization_units(self, db_path: Optional[str] = None):
+        """Seed organization_units from existing staff team data (idempotent).
+
+        Creates:
+        1. Root org: 'PromoBot Operations' (type=organization)
+        2. One branch per team: '何军 Team', '阿俊 Team', '炒群 Team', '全线 Team'
+        3. Updates staff.org_unit_id to match their team branch
+        """
+        seeded = await self.get_setting('org_units_seeded')
+        if seeded == '1':
+            return
+
+        team_branches = ['何军', '阿俊', '炒群', '全线']
+
+        async with self.get_connection() as db:
+            # 1. Create root organization unit
+            cur = await db.execute(
+                'INSERT INTO organization_units (name, unit_type, parent_id, leader_staff_id, is_active)'
+                ' VALUES (?, ?, NULL, NULL, 1)',
+                ('PromoBot Operations', 'organization')
+            )
+            root_id = cur.lastrowid
+
+            # Set admin (staff id=5) as root leader
+            await db.execute(
+                'UPDATE organization_units SET leader_staff_id = ? WHERE id = ?',
+                (5, root_id)
+            )
+
+            # 2. Create branch for each team
+            branch_map: Dict[str, int] = {}
+            for team_name in team_branches:
+                # Find a leader candidate: staff with role='leader' in this team, else None
+                leader_cur = await db.execute(
+                    'SELECT id FROM staff WHERE team = ? AND role = ? AND is_active = 1 LIMIT 1',
+                    (team_name, 'leader')
+                )
+                leader_row = await leader_cur.fetchone()
+                leader_id = leader_row['id'] if leader_row else None
+
+                cur = await db.execute(
+                    'INSERT INTO organization_units (name, unit_type, parent_id, leader_staff_id, is_active)'
+                    ' VALUES (?, ?, ?, ?, 1)',
+                    (f'{team_name} Team', 'branch', root_id, leader_id)
+                )
+                branch_map[team_name] = cur.lastrowid
+
+            # 3. Update staff.org_unit_id based on team name
+            for team_name, branch_id in branch_map.items():
+                await db.execute(
+                    'UPDATE staff SET org_unit_id = ? WHERE team = ?',
+                    (branch_id, team_name)
+                )
+
+            # Staff with team=None stay with org_unit_id=NULL (unassigned)
+
+            await db.commit()
+
+        await self.set_setting('org_units_seeded', '1', 'Organization units seeded from staff teams')
+        logger.info('seed_organization_units: root + %d branches created', len(team_branches))
+
     async def check_and_award_badges(self, staff_id: int) -> List[Dict[str, Any]]:
         """Check all unearned badges and award any newly qualified. Returns newly awarded badges."""
         total_xp = await self.get_staff_xp(staff_id, 'all')

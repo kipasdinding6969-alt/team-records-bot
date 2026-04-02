@@ -97,23 +97,23 @@ export default function Templates() {
       {loading ? (
         <div className="empty-state">{t('common.loading', lang)}</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
+        <div className="template-grid">
           {filtered.map(tpl => (
-            <div key={tpl.id} className="card" style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+            <div key={tpl.id} className="card template-card">
+              <div className="template-card-header">
                 <div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: theme.textPrimary, marginBottom: 4 }}>{tpl.name}</div>
+                  <div className="template-card-title">{tpl.name}</div>
                   <span className="pill-badge badge-info">{tpl.category}</span>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn-secondary" style={{ height: 32, padding: '0 12px', fontSize: 13 }} onClick={() => { setEditId(tpl.id); setFormData({ name: tpl.name, content: tpl.content, category: tpl.category }); setShowModal(true) }}>{t('common.edit', lang)}</button>
-                  <button className="btn-danger" style={{ height: 32, padding: '0 12px', fontSize: 13 }} onClick={() => handleDelete(tpl.id)}>{t('common.delete', lang)}</button>
+                <div className="template-card-actions">
+                  <button className="btn-secondary btn-sm" onClick={() => { setEditId(tpl.id); setFormData({ name: tpl.name, content: tpl.content, category: tpl.category }); setShowModal(true) }}>{t('common.edit', lang)}</button>
+                  <button className="btn-danger btn-sm" onClick={() => handleDelete(tpl.id)}>{t('common.delete', lang)}</button>
                 </div>
               </div>
-              <pre style={{ margin: 0, padding: 12, background: theme.bgElevated, border: `1px solid ${theme.cardBorder}`, borderRadius: 8, fontSize: 13, color: theme.textSecondary, whiteSpace: 'pre-wrap', flex: 1, fontFamily: 'monospace' }}>
+              <pre className="template-preview">
                 {tpl.content}
               </pre>
-              <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 12, textAlign: 'right' }}>
+              <div className="template-meta">
                 {t('templates.by', lang)} {tpl.created_by_name}
               </div>
             </div>
@@ -141,7 +141,7 @@ export default function Templates() {
               </label>
               <label>
                 <span className="field-label">{t('templates.content', lang)}</span>
-                <textarea className="input" required rows={6} style={{ height: 'auto', padding: '8px 14px', resize: 'vertical' }} value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} />
+                <textarea className="input template-textarea" required rows={6} value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} />
               </label>
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>{t('common.cancel', lang)}</button>

@@ -1,5 +1,4 @@
 import type { AuthState } from '../types'
-import { useTheme } from '../ThemeContext'
 import { t, getLang } from '../i18n'
 
 interface Props {
@@ -7,7 +6,6 @@ interface Props {
 }
 
 export default function ScopeBanner({ auth }: Props) {
-  const { theme } = useTheme()
   const lang = getLang()
   if (!auth || auth.role === 'owner') return null
 
@@ -17,20 +15,9 @@ export default function ScopeBanner({ auth }: Props) {
       : t('scope.viewing_my', lang)
 
   return (
-    <div
-      style={{
-        background: theme.activeNav,
-        borderLeft: `3px solid ${theme.accent}`,
-        padding: '8px 14px',
-        marginBottom: 20,
-        borderRadius: '0 8px 8px 0',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-      }}
-    >
-      <span style={{ fontSize: 13, color: theme.accent, fontWeight: 600 }}>◈</span>
-      <span style={{ fontSize: 13, color: theme.textPrimary }}>{message}</span>
+    <div className="scope-banner">
+      <span className="scope-banner-icon">◈</span>
+      <span className="scope-banner-text">{message}</span>
     </div>
   )
 }

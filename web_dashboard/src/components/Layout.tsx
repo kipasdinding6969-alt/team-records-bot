@@ -117,10 +117,10 @@ export default function Layout() {
                   {auth.display_name}
                 </div>
                 <div className="sidebar-user-meta">
-                  <span className="pill-badge" style={{
-                    color: ROLE_COLORS[auth.role] || undefined,
-                    background: ROLE_COLORS[auth.role] ? `${ROLE_COLORS[auth.role]}1a` : undefined,
-                  }}>
+                  <span className="role-badge-dynamic" style={{
+                    '--role-color': ROLE_COLORS[auth.role] || undefined,
+                    '--role-bg': ROLE_COLORS[auth.role] ? `${ROLE_COLORS[auth.role]}1a` : undefined,
+                  } as React.CSSProperties}>
                     {roleLabel}
                   </span>
                   {auth.team_scope && (
@@ -153,13 +153,13 @@ export default function Layout() {
         {/* Footer — theme / lang / logout */}
         <div className="sidebar-footer">
           <div className="sidebar-footer-btns">
-            <button className="glass-btn" onClick={toggleTheme} style={{ flex: 1 }}>
+            <button className="glass-btn flex-1" onClick={toggleTheme}>
               {themeMode === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19'}
             </button>
-            <button className="glass-btn" onClick={toggleLang} style={{ flex: 1 }}>
+            <button className="glass-btn flex-1" onClick={toggleLang}>
               {lang === 'zh' ? 'EN' : '\u4E2D\u6587'}
             </button>
-            <button className="glass-btn" onClick={logout} style={{ flex: 1, background: theme.dangerBg, color: theme.danger, borderColor: 'transparent' }}>
+            <button className="glass-btn flex-1 glass-btn-danger" onClick={logout}>
               {t('nav.logout', lang as 'en' | 'zh')}
             </button>
           </div>
@@ -183,7 +183,7 @@ export default function Layout() {
               {t('nav.brand', lang as 'en' | 'zh')}
             </div>
           )}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'flex-end' }}>
+          <div className="header-actions">
             <div className="search-input-wrap">
               <input
                 type="text"

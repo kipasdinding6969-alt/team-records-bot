@@ -185,8 +185,7 @@ export default function MaintainerDash() {
                         </td>
                         <td className="cell-center">
                            <button
-                             className={`${s.is_active ? 'badge-success' : 'badge-danger'} pointer fs-12 fw-700 rounded-8`}
-                             style={{ padding: '4px 12px' }}
+                             className={`${s.is_active ? 'badge-success' : 'badge-danger'} pointer fs-12 fw-700 rounded-8 p-4-12`}
                              onClick={() => handleUpdateStaff(s.id, { is_active: !s.is_active })}
                            >
                              {s.is_active ? t('maintainer.active', lang) : t('maintainer.inactive', lang)}
@@ -204,7 +203,7 @@ export default function MaintainerDash() {
         {activeTab === 'reassign' && (
            <div>
              <h3 className="section-title">{t('maintainer.bulk_reassign', lang)}</h3>
-             <div className="form-section" style={{ maxWidth: 500 }}>
+             <div className="form-section max-w-500">
                 <label>
                   <span className="field-label">{t('maintainer.source_staff', lang)}</span>
                   <select className="input" value={reassignFrom} onChange={e => setReassignFrom(e.target.value)}>
@@ -239,13 +238,12 @@ export default function MaintainerDash() {
                  <div key={s.id} className="target-row">
                     <span className="fw-600 fs-14">{s.display_name}</span>
                     <div className="d-flex items-center gap-12">
-                       <span className="field-label" style={{ marginBottom: 0 }}>{t('maintainer.daily_target', lang)}</span>
+                       <span className="field-label m-0">{t('maintainer.daily_target', lang)}</span>
                        <input
-                         className="input text-center fw-700"
+                         className="input text-center fw-700 w-80"
                          type="number"
-                         value={s.daily_target}
-                         onChange={e => handleUpdateStaff(s.id, { daily_target: parseInt(e.target.value) || 0 })}
-                         style={{ width: 80 }}
+                         defaultValue={s.daily_target}
+                         onBlur={e => handleUpdateStaff(s.id, { daily_target: parseInt(e.target.value) || 0 })}
                        />
                     </div>
                  </div>
@@ -287,7 +285,7 @@ export default function MaintainerDash() {
         {activeTab === 'deposits' && (
           <div>
             <div className="toolbar">
-              <h3 className="section-title" style={{ margin: 0 }}>{t('maintainer.deposits_tab', lang)}</h3>
+              <h3 className="section-title m-0">{t('maintainer.deposits_tab', lang)}</h3>
               <div className="toolbar-spacer" />
               <button className="btn-primary" onClick={() => setShowDepositModal(true)}>
                 + {t('maintainer.add_deposit', lang)}
@@ -295,8 +293,8 @@ export default function MaintainerDash() {
             </div>
 
             <div className="toolbar">
-              <label className="field-label" style={{ marginBottom: 0 }}>{t('maintainer.group_number', lang)}:</label>
-              <input className="input" value={depositGroupFilter} onChange={e => setDepositGroupFilter(e.target.value)} placeholder={t('maintainer.group_number', lang)} style={{ width: 200 }} />
+              <label className="field-label m-0">{t('maintainer.group_number', lang)}:</label>
+              <input className="input w-200" value={depositGroupFilter} onChange={e => setDepositGroupFilter(e.target.value)} placeholder={t('maintainer.group_number', lang)} />
               <button className="btn-primary" onClick={() => loadDeposits(depositGroupFilter)}>
                 {t('common.search', lang)}
               </button>
@@ -332,7 +330,7 @@ export default function MaintainerDash() {
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="border-top" style={{ background: `${theme.accent}08` }}>
+                    <tr className="border-top deposit-totals-row">
                       <td colSpan={3} className="fw-700 fs-14">{t('common.total', lang)}</td>
                       <td className="cell-mono-right text-success fw-700 fs-14">${depositTotals.amount.toLocaleString()}</td>
                       <td className="cell-mono-right text-warning fw-700 fs-14">${depositTotals.pressure.toLocaleString()}</td>
@@ -350,7 +348,7 @@ export default function MaintainerDash() {
       {/* Add Deposit Modal */}
       {showDepositModal && (
         <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowDepositModal(false) }}>
-          <div className="modal-content" style={{ width: 480 }}>
+          <div className="modal-content w-480">
             <h3 className="modal-title">{t('maintainer.add_deposit', lang)}</h3>
 
             <div className="form-grid">
@@ -405,7 +403,7 @@ export default function MaintainerDash() {
 
               <label>
                 <span className="field-label">{t('detail.link_note', lang)}</span>
-                <textarea className="input" value={depositForm.note} onChange={e => setDepositForm(prev => ({ ...prev, note: e.target.value }))} style={{ resize: 'vertical', minHeight: 60, height: 'auto' }} />
+                <textarea className="input textarea-resize min-h-60 h-auto" value={depositForm.note} onChange={e => setDepositForm(prev => ({ ...prev, note: e.target.value }))} />
               </label>
 
               <div className="modal-actions">

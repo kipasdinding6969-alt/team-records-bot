@@ -26,12 +26,12 @@ export function DataGrid<T extends { id?: number | string }>({
   onRowClick,
 }: DataGridProps<T>) {
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div className="overflow-x">
       <table className="data-grid-table">
         <thead>
           <tr>
             {columns.map(col => (
-              <th key={col.key} style={{ width: col.width, textAlign: col.align || 'left' }}>
+              <th key={col.key} className={col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'} style={col.width ? { width: col.width } : undefined}>
                 {col.label}
               </th>
             ))}
@@ -42,14 +42,10 @@ export function DataGrid<T extends { id?: number | string }>({
             <tr
               key={item.id !== undefined ? item.id : index}
               onClick={() => onRowClick && onRowClick(item)}
-              style={{ cursor: onRowClick ? 'pointer' : undefined }}
+              className={onRowClick ? 'pointer' : undefined}
             >
               {columns.map(col => (
-                <td key={col.key} style={{
-                  textAlign: col.align || 'left',
-                  fontFamily: col.monospace ? "'JetBrains Mono', 'Fira Code', monospace" : 'inherit',
-                  fontWeight: col.monospace ? 600 : 500,
-                }}>
+                <td key={col.key} className={`${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'}${col.monospace ? ' cell-mono' : ''}`}>
                   {col.render ? col.render(item, index) : ((item as Record<string, unknown>)[col.key] as React.ReactNode ?? '\u2014')}
                 </td>
               ))}
@@ -66,11 +62,11 @@ export function StatusBadge({ status }: { status: string }) {
   const color = STATUS_COLORS[status] || '#94a3b8'
   const label = t(`status.${status}`, lang) !== `status.${status}` ? t(`status.${status}`, lang) : (STATUS_LABELS[status] || status)
   return (
-    <span className="status-badge" style={{
-      background: `${color}18`,
-      color: color,
-      borderColor: `${color}30`,
-    }}>
+    <span className="status-badge-dynamic" style={{
+      '--status-bg': `${color}18`,
+      '--status-color': color,
+      '--status-border': `${color}30`,
+    } as React.CSSProperties}>
       {label}
     </span>
   )

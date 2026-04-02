@@ -1,5 +1,4 @@
 import React from 'react'
-import { useTheme } from '../ThemeContext'
 import { getLang, t } from '../i18n'
 import type { ClientPipelineStatus, ClientRoleAssignment, KnifeDeposit } from '../types'
 import { KILL_LABELS, ROLE_TYPE_LABELS } from '../types'
@@ -23,12 +22,11 @@ const PIPELINE_STEPS = [
 ] as const
 
 export default function PipelineTimeline({ pipeline, roles, knives }: PipelineTimelineProps) {
-  const { theme } = useTheme()
   const lang = getLang()
 
   if (!pipeline || (pipeline as any).status === 'no_pipeline') {
     return (
-      <div style={{ padding: 16, color: theme.textSecondary, textAlign: 'center', fontSize: 13 }}>
+      <div className="ptl-empty">
         {t('common.no_data', lang)}
       </div>
     )
@@ -48,34 +46,29 @@ export default function PipelineTimeline({ pipeline, roles, knives }: PipelineTi
     : null
 
   return (
-    <div style={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+    <div className="ptl-wrap">
       <div className="section-title">
         {t('pipeline.client_pipeline', lang)}
       </div>
 
       {/* Pipeline steps bar */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16, overflowX: 'auto' }}>
+      <div className="ptl-steps">
         {PIPELINE_STEPS.map((step, i) => {
           const status = getStepStatus(step)
           const isDone = status === 'done'
           const isHandoff = step.key === 'insufficient_funds_at'
+          const dotClass = ['ptl-dot', isDone ? 'done' : '', isDone && isHandoff ? 'handoff' : ''].filter(Boolean).join(' ')
+          const labelClass = ['ptl-label', isDone ? 'done' : ''].filter(Boolean).join(' ')
           return (
-            <div key={step.key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <div style={{
-                width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 10, fontWeight: 700,
-                background: isDone ? (isHandoff ? theme.warning : theme.accent) : theme.bg,
-                color: isDone ? '#fff' : theme.textMuted,
-                border: `2px solid ${isDone ? (isHandoff ? theme.warning : theme.accent) : theme.cardBorder}`,
-                transition: 'all 0.2s',
-              }}>
+            <div key={step.key} className="ptl-step">
+              <div className={dotClass}>
                 {step.icon}
               </div>
-              <div style={{ fontSize: 10, color: isDone ? theme.textPrimary : theme.textMuted, fontWeight: isDone ? 600 : 400, whiteSpace: 'nowrap', maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div className={labelClass}>
                 {t(step.i18n, lang)}
               </div>
               {i < PIPELINE_STEPS.length - 1 && (
-                <div style={{ width: 12, height: 2, background: isDone ? theme.accent : theme.cardBorder }} />
+                <div className={`ptl-connector${isDone ? ' done' : ''}`} />
               )}
             </div>
           )
@@ -84,37 +77,20 @@ export default function PipelineTimeline({ pipeline, roles, knives }: PipelineTi
 
       {/* Handoff indicator */}
       {isHandedOff && (
-        <div style={{
-          padding: '8px 12px', borderRadius: 8, marginBottom: 12,
-          background: theme.warningBg, border: `1px solid ${theme.warning}40`,
-          fontSize: 12, fontWeight: 600, color: theme.warning,
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
+        <div className="ptl-handoff-banner">
           {t('pipeline.handoff', lang)}: {frontdeskRole?.staff_name || '?'} → {activeRole?.staff_name || '?'}
         </div>
       )}
 
       {/* Deposit stages */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: knives.length > 0 ? 12 : 0, flexWrap: 'wrap' }}>
+      <div className={`ptl-deposits${knives.length > 0 ? ' mb-12' : ''}`}>
         {pipeline.new_order_amount !== null && (
-          <div style={{
-            padding: '8px 14px', borderRadius: 8,
-            background: pipeline.new_order_amount > 0 ? theme.successBg : theme.dangerBg,
-            border: `1px solid ${pipeline.new_order_amount > 0 ? theme.success : theme.danger}40`,
-            fontSize: 13, fontWeight: 600,
-            color: pipeline.new_order_amount > 0 ? theme.success : theme.danger,
-          }}>
+          <div className={`ptl-deposit-tag ${pipeline.new_order_amount > 0 ? 'success' : 'danger'}`}>
             {t('pipeline.new_order', lang)}: {pipeline.new_order_amount > 0 ? `$${pipeline.new_order_amount.toLocaleString()}` : 'Failed'}
           </div>
         )}
         {pipeline.pressure_amount !== null && (
-          <div style={{
-            padding: '8px 14px', borderRadius: 8,
-            background: pipeline.pressure_amount > 0 ? theme.successBg : theme.dangerBg,
-            border: `1px solid ${pipeline.pressure_amount > 0 ? theme.success : theme.danger}40`,
-            fontSize: 13, fontWeight: 600,
-            color: pipeline.pressure_amount > 0 ? theme.success : theme.danger,
-          }}>
+          <div className={`ptl-deposit-tag ${pipeline.pressure_amount > 0 ? 'success' : 'danger'}`}>
             {t('pipeline.pressure', lang)}: {pipeline.pressure_amount > 0 ? `$${pipeline.pressure_amount.toLocaleString()}` : 'Failed'}
           </div>
         )}
@@ -122,15 +98,9 @@ export default function PipelineTimeline({ pipeline, roles, knives }: PipelineTi
 
       {/* Knife deposits */}
       {knives.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div className="ptl-knives">
           {knives.map(k => (
-            <div key={k.knife_number} style={{
-              padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-              background: k.amount >= 0 ? theme.accentLight : theme.dangerBg,
-              color: k.amount >= 0 ? theme.accent : theme.danger,
-              border: `1px solid ${k.amount >= 0 ? theme.accent : theme.danger}30`,
-              fontFamily: 'monospace',
-            }}>
+            <div key={k.knife_number} className={`ptl-knife-tag ${k.amount >= 0 ? 'accent' : 'danger'}`}>
               {k.knife_number}{t('kill.knife', lang)}: ${k.amount.toLocaleString()}
             </div>
           ))}
@@ -138,28 +108,19 @@ export default function PipelineTimeline({ pipeline, roles, knives }: PipelineTi
       )}
 
       {/* Kill / Total */}
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+      <div className="ptl-summary">
         {killLabel && (
-          <div style={{
-            padding: '6px 12px', borderRadius: 8,
-            background: theme.dangerBg, color: theme.danger,
-            border: `1px solid ${theme.danger}40`,
-            fontSize: 12, fontWeight: 700,
-          }}>
+          <div className="ptl-kill-tag">
             {killLabel}
           </div>
         )}
         {pipeline.total_deposited > 0 && (
-          <div style={{ fontSize: 14, fontWeight: 700, color: theme.success, fontFamily: 'monospace' }}>
+          <div className="ptl-total">
             {t('kill.total_deposited', lang)}: ${pipeline.total_deposited.toLocaleString()}
           </div>
         )}
         {pipeline.is_unkilled === 1 && (
-          <div style={{
-            padding: '4px 10px', borderRadius: 8,
-            background: theme.warningBg, color: theme.warning,
-            fontSize: 11, fontWeight: 600,
-          }}>
+          <div className="ptl-unkill-tag">
             {t('kill.unkill', lang)} {pipeline.unkill_reason ? `- ${pipeline.unkill_reason}` : ''}
           </div>
         )}
@@ -167,16 +128,10 @@ export default function PipelineTimeline({ pipeline, roles, knives }: PipelineTi
 
       {/* Role assignments */}
       {roles.length > 0 && (
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${theme.cardBorder}` }}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="ptl-roles">
+          <div className="ptl-roles-list">
             {roles.map(r => (
-              <div key={r.id} style={{
-                padding: '4px 10px', borderRadius: 9999, fontSize: 11, fontWeight: 600,
-                background: r.is_active ? theme.accentLight : theme.bg,
-                color: r.is_active ? theme.accent : theme.textMuted,
-                border: `1px solid ${r.is_active ? theme.accent : theme.cardBorder}40`,
-                opacity: r.is_active ? 1 : 0.6,
-              }}>
+              <div key={r.id} className={`ptl-role-pill ${r.is_active ? 'active' : 'inactive'}`}>
                 {ROLE_TYPE_LABELS[r.role_type]?.[lang] || r.role_type}: {r.staff_name || `#${r.staff_id}`}
                 {!r.is_active && r.handoff_reason ? ` (${r.handoff_reason})` : ''}
               </div>

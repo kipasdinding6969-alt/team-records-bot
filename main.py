@@ -178,6 +178,12 @@ class RalphLoop:
             except Exception as e:
                 logger.warning(f"seed_badges failed: {e}")
 
+            # Seed organization units from staff teams — idempotent
+            try:
+                await database_v2.seed_organization_units()
+            except Exception as e:
+                logger.warning(f"seed_organization_units failed: {e}")
+
             # Seed default follow-up sequences + register status-change hook
             try:
                 from engines.followup_engine import seed_default_sequences, register_hooks

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { getLang, t } from '../i18n'
 import { useTheme } from '../ThemeContext'
+import type { CryptoTransaction, CountryFinancialSummary } from '../types'
 
 const COUNTRIES = [
   { value: 'Norway', key: 'cs_finance.norway' },
@@ -16,31 +17,13 @@ const COUNTRIES = [
   { value: 'Finland', key: 'cs_finance.finland' },
 ]
 
-interface CryptoEntry {
-  id: number
-  date: string
-  txn_type: string
-  client_name: string
-  amount_usdt: number
-  country: string
-  situation: string
-}
-
-interface CountrySummary {
-  country: string
-  new_orders: number
-  deposit_count: number
-  total_deposits: number
-  avg_per_client: number
-}
-
 export default function CSFinance() {
   const { theme } = useTheme()
   const lang = getLang()
 
   const [tab, setTab] = useState<'crypto' | 'daily'>('crypto')
 
-  const [ledger, setLedger] = useState<CryptoEntry[]>([])
+  const [ledger, setLedger] = useState<CryptoTransaction[]>([])
   const [ledgerLoading, setLedgerLoading] = useState(true)
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0]
@@ -51,7 +34,7 @@ export default function CSFinance() {
   const [error, setError] = useState('')
 
   const [dailyDate, setDailyDate] = useState(() => new Date().toISOString().split('T')[0])
-  const [dailyData, setDailyData] = useState<CountrySummary[]>([])
+  const [dailyData, setDailyData] = useState<CountryFinancialSummary[]>([])
   const [dailyLoading, setDailyLoading] = useState(false)
 
   useEffect(() => {
@@ -150,7 +133,7 @@ export default function CSFinance() {
                   <tbody>
                     {ledger.map(entry => (
                       <tr key={entry.id}>
-                        <td className="text-nowrap">{entry.date}</td>
+                        <td className="text-nowrap">{entry.txn_date}</td>
                         <td>
                           <span className={`${entry.txn_type === 'in' ? 'badge-success' : 'badge-danger'} caption`}>
                             {entry.txn_type === 'in' ? 'IN' : 'OUT'}

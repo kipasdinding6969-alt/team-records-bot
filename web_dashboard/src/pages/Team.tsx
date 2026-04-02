@@ -101,7 +101,7 @@ export default function Team() {
 
       {/* Targets Section */}
       <div className="toolbar mt-20">
-        <h2 className="section-title" style={{ margin: 0 }}>{t('targets.title', lang)}</h2>
+        <h2 className="section-title m-0">{t('targets.title', lang)}</h2>
         <div className="toolbar-spacer" />
         {(auth?.role === 'admin' || auth?.role === 'owner') && (
           <button className="btn-primary" onClick={() => setShowTargetModal(true)}>
@@ -111,7 +111,7 @@ export default function Team() {
       </div>
 
       {targets.length > 0 ? (
-        <div className="grid-4 mb-20" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
+        <div className="grid-auto-320 mb-20">
           {targets.map(targetItem => {
             const teamPerf = teams.find(tm => tm.team === targetItem.team)?.performance || {}
 
@@ -157,7 +157,7 @@ export default function Team() {
       )}
 
       {/* Team summaries */}
-      <div className="grid-4 mb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
+      <div className="grid-auto-320 mb-20">
         {teams.map(teamInfo => (
           <div key={teamInfo.team} className="card">
             <div className="d-flex justify-between items-start mb-12">
@@ -167,7 +167,7 @@ export default function Team() {
                   <span className="fs-14 text-secondary">&#x2197;</span>
                 </div>
                 <div className="fs-13 text-secondary mt-4">
-                  <span className="pill-badge" style={{ background: theme.activeNav, color: theme.accent }}>
+                  <span className="pill-badge pill-nav-active">
                     {teamInfo.member_count + (teamInfo.leader ? 1 : 0)} {t('org.members', lang)}
                   </span>
                 </div>
@@ -180,7 +180,7 @@ export default function Team() {
               </div>
             </div>
 
-            <div className="grid-4" style={{ gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <div className="grid-3-equal">
               <div className="metric-card">
                 <div className="metric-value fs-16 text-primary">{teamInfo.performance?.new_leads || 0}</div>
                 <div className="metric-label">{t('team.new_leads', lang)}</div>
@@ -219,32 +219,30 @@ export default function Team() {
                   className="pointer"
                   onClick={() => setSelectedStaffId(s.id)}
                 >
-                  <td style={{ color: i < 3 ? theme.chartLine : theme.textSecondary, fontWeight: i < 3 ? 700 : 400 }}>
+                  <td className={i < 3 ? 'rank-top' : 'rank-normal'}>
                     #{i + 1}
                   </td>
                   <td className="fw-600 d-flex items-center gap-8">
-                    <div className="d-flex items-center justify-center fs-12 fw-700 rounded-full" style={{
-                      width: 24, height: 24, background: theme.accent, color: '#fff',
-                    }}>
+                    <div className="avatar-xs">
                       {s.display_name.charAt(0).toUpperCase()}
                     </div>
                     {s.display_name}
                   </td>
                   <td className="text-secondary">{s.team || '-'}</td>
                   <td>
-                    <span className="pill-badge fs-12" style={{ background: theme.accentLight }}>{s.role}</span>
+                    <span className="pill-badge fs-12 bg-accent-light">{s.role}</span>
                   </td>
                   <td className="text-accent fw-600">
                     {s.xp_total.toLocaleString()}
                   </td>
                   <td>
-                    <span style={{ color: s.current_streak > 0 ? theme.chartLine : theme.textSecondary }}>
+                    <span className={s.current_streak > 0 ? 'streak-active' : 'streak-zero'}>
                       {s.current_streak > 0 ? `${s.current_streak}d` : '0'}
                     </span>
                   </td>
                   <td className="text-secondary">{s.total_clients}</td>
                   <td className="text-accent">{s.total_orders}</td>
-                  <td style={{ color: theme.chartLine }}>{s.today_leads}</td>
+                  <td className="text-accent">{s.today_leads}</td>
                   <td className="text-accent">{s.today_orders}</td>
                 </tr>
               ))}

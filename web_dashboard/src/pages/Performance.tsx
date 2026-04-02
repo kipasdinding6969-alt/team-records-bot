@@ -23,7 +23,7 @@ interface StaffPerf {
 }
 
 function Sparkline({ data, color }: { data: number[], color: string }) {
-  if (!data || data.length === 0) return <div style={{ width: 60, height: 24, margin: '0 auto' }} />
+  if (!data || data.length === 0) return <div className="sparkline-placeholder" />
   const max = Math.max(...data, 1)
   const width = 60
   const height = 24
@@ -36,7 +36,7 @@ function Sparkline({ data, color }: { data: number[], color: string }) {
   }).join(' ')
 
   return (
-    <svg width={width} height={height} style={{ overflow: 'visible', display: 'block', margin: '0 auto' }}>
+    <svg width={width} height={height} className="sparkline-svg">
       <polyline fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" points={points} />
       {data.map((d, i) => (
         <circle key={i} cx={i * dx} cy={height - (d / max) * height} r="2" fill={color} />
@@ -45,10 +45,10 @@ function Sparkline({ data, color }: { data: number[], color: string }) {
   )
 }
 
-function MetricBox({ label, value, color }: { label: string; value: number | string; color: string }) {
+function MetricBox({ label, value, colorClass }: { label: string; value: number | string; colorClass: string }) {
   return (
     <div className="metric-card">
-      <div className="metric-value" style={{ color }}>{value}</div>
+      <div className={`metric-value ${colorClass}`}>{value}</div>
       <div className="metric-label">{label}</div>
     </div>
   )
@@ -81,8 +81,8 @@ export default function Performance() {
       .then(orgData => {
         const dynamicTeams = [{ key: 'all', label: lang === 'zh' ? '全线' : 'All Teams' }]
         if (orgData && orgData.teams) {
-          orgData.teams.forEach((t: any) => {
-            dynamicTeams.push({ key: t.team, label: t.team })
+          orgData.teams.forEach((entry: any) => {
+            dynamicTeams.push({ key: entry.team, label: entry.team })
           })
         }
         setTeamsList(dynamicTeams)
@@ -146,8 +146,7 @@ export default function Performance() {
           ))}
         </div>
         <button
-          className={`btn-primary toolbar-spacer${recalculating ? ' opacity-70' : ''}`}
-          style={{ marginLeft: 'auto' }}
+          className={`btn-primary ml-auto${recalculating ? ' opacity-70' : ''}`}
           disabled={recalculating}
           onClick={() => {
             setRecalculating(true)
@@ -197,7 +196,7 @@ export default function Performance() {
                 const bar = (label: string, actual: number, target: number | null, pct: number, prefix = '') => {
                   if (!target) return null
                   return (
-                    <div key={label} className="card p-20" style={{ flex: 1, minWidth: 200 }}>
+                    <div key={label} className="card p-20 target-bar-card">
                       <div className="d-flex justify-between fs-12 fw-600 mb-8 text-secondary">
                         <span>{label}</span>
                         <span className="text-primary">{prefix}{actual.toLocaleString()} / {prefix}{target.toLocaleString()} ({pct.toFixed(0)}%)</span>
@@ -246,7 +245,7 @@ export default function Performance() {
                     <td className="text-left">
                       <span className="pill-badge badge-info">{s.team || '-'}</span>
                     </td>
-                    <td className="cell-center" style={{ width: 60 }}>
+                    <td className="cell-center cell-trend">
                       {s.trend && <Sparkline data={s.trend} color={theme.accent} />}
                     </td>
                     <td className="cell-mono-right text-accent">{s.new_leads}</td>
@@ -270,21 +269,21 @@ export default function Performance() {
               {t('perf.team_total', lang)}
             </div>
             <div className="grid-4">
-              <MetricBox label={t('perf.new_powder', lang)} value={data.totals.new_leads || 0} color={theme.accent} />
-              <MetricBox label={t('perf.reply_rate', lang)} value={`${data.totals.reply_rate || 0}%`} color={theme.success} />
-              <MetricBox label={t('perf.register', lang)} value={data.totals.registered || 0} color={theme.accent} />
-              <MetricBox label={t('perf.training', lang)} value={data.totals.training || 0} color={theme.warning} />
-              <MetricBox label={t('perf.withdraw', lang)} value={data.totals.withdrew || 0} color={theme.success} />
-              <MetricBox label={t('perf.new_order', lang)} value={data.totals.new_orders || 0} color={theme.success} />
-              <MetricBox label={t('perf.conversion', lang)} value={`${data.totals.conversion_rate || 0}%`} color={theme.accent} />
-              <MetricBox label={t('perf.deposit', lang)} value={`$${(data.totals.total_deposit || 0).toLocaleString()}`} color={theme.success} />
+              <MetricBox label={t('perf.new_powder', lang)} value={data.totals.new_leads || 0} colorClass="text-accent" />
+              <MetricBox label={t('perf.reply_rate', lang)} value={`${data.totals.reply_rate || 0}%`} colorClass="text-success" />
+              <MetricBox label={t('perf.register', lang)} value={data.totals.registered || 0} colorClass="text-accent" />
+              <MetricBox label={t('perf.training', lang)} value={data.totals.training || 0} colorClass="text-warning" />
+              <MetricBox label={t('perf.withdraw', lang)} value={data.totals.withdrew || 0} colorClass="text-success" />
+              <MetricBox label={t('perf.new_order', lang)} value={data.totals.new_orders || 0} colorClass="text-success" />
+              <MetricBox label={t('perf.conversion', lang)} value={`${data.totals.conversion_rate || 0}%`} colorClass="text-accent" />
+              <MetricBox label={t('perf.deposit', lang)} value={`$${(data.totals.total_deposit || 0).toLocaleString()}`} colorClass="text-success" />
             </div>
           </div>
         </>
       )}
 
       {/* Summary Report Section */}
-      <div className="mt-20 border-top" style={{ paddingTop: 20 }}>
+      <div className="mt-20 border-top pt-20">
         <div
           className={`accordion-header${showSummary ? ' mb-20' : ''}`}
           onClick={() => setShowSummary(!showSummary)}
@@ -324,11 +323,11 @@ export default function Performance() {
                       {s.team || '-'} / {summaryFrom} ~ {summaryTo}
                     </div>
                     <div className="grid-4">
-                      <MetricBox label={t('perf.new_powder', lang)} value={s.new_leads || 0} color={theme.accent} />
-                      <MetricBox label={t('perf.reply_rate', lang)} value={`${s.reply_rate || 0}%`} color={theme.success} />
-                      <MetricBox label={t('perf.register', lang)} value={s.registered || 0} color={theme.accent} />
-                      <MetricBox label={t('perf.new_order', lang)} value={s.new_orders || 0} color={theme.success} />
-                      <MetricBox label={t('perf.deposit', lang)} value={`$${(s.total_deposit || 0).toFixed(0)}`} color={theme.success} />
+                      <MetricBox label={t('perf.new_powder', lang)} value={s.new_leads || 0} colorClass="text-accent" />
+                      <MetricBox label={t('perf.reply_rate', lang)} value={`${s.reply_rate || 0}%`} colorClass="text-success" />
+                      <MetricBox label={t('perf.register', lang)} value={s.registered || 0} colorClass="text-accent" />
+                      <MetricBox label={t('perf.new_order', lang)} value={s.new_orders || 0} colorClass="text-success" />
+                      <MetricBox label={t('perf.deposit', lang)} value={`$${(s.total_deposit || 0).toFixed(0)}`} colorClass="text-success" />
                     </div>
                   </div>
                 ))}
@@ -338,9 +337,9 @@ export default function Performance() {
                       {t('perf.team_total', lang)} ({summaryFrom} ~ {summaryTo})
                     </div>
                     <div className="grid-4">
-                      <MetricBox label={t('perf.new_powder', lang)} value={summaryData.totals.new_leads || 0} color={theme.accent} />
-                      <MetricBox label={t('perf.new_order', lang)} value={summaryData.totals.new_orders || 0} color={theme.success} />
-                      <MetricBox label={t('perf.deposit', lang)} value={`$${(summaryData.totals.total_deposit || 0).toFixed(0)}`} color={theme.success} />
+                      <MetricBox label={t('perf.new_powder', lang)} value={summaryData.totals.new_leads || 0} colorClass="text-accent" />
+                      <MetricBox label={t('perf.new_order', lang)} value={summaryData.totals.new_orders || 0} colorClass="text-success" />
+                      <MetricBox label={t('perf.deposit', lang)} value={`$${(summaryData.totals.total_deposit || 0).toFixed(0)}`} colorClass="text-success" />
                     </div>
                   </div>
                 )}

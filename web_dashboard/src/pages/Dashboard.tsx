@@ -70,6 +70,7 @@ export default function Dashboard() {
       setLastRefresh(new Date())
     } catch (e) {
       console.error(e)
+      setError(t('common.error', lang))
     } finally {
       setLoading(false)
     }

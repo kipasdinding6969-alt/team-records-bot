@@ -102,18 +102,16 @@ export default function Clients() {
       {/* Filter bar */}
       <div className="toolbar">
         <input
-          className="input"
+          className="input min-w-240"
           type="text"
           placeholder={t('clients.search', getLang())}
           value={search}
           onChange={e => setParam('search', e.target.value)}
-          style={{ minWidth: 240 }}
         />
         <select
-          className="input"
+          className="input w-180"
           value={status}
           onChange={e => setParam('status', e.target.value)}
-          style={{ width: 180 }}
         >
           {STATUSES.map(s => (
             <option key={s} value={s}>
@@ -145,7 +143,7 @@ export default function Clients() {
       {loading ? (
         <Spinner />
       ) : (
-        <div className="card" style={{ overflow: 'hidden' }}>
+        <div className="card overflow-hidden">
           {!data || data.clients.length === 0 ? (
             <Empty />
           ) : (
@@ -154,12 +152,12 @@ export default function Clients() {
                 columns={[
                   { key: 'phone', label: t('clients.phone', getLang()), monospace: true, render: (c: Client) => formatPhone(c.phone) },
                   { key: 'status', label: t('clients.status', getLang()), render: (c: Client) => <StatusBadge status={c.status} /> },
-                  { key: 'source', label: t('clients.source', getLang()), render: (c: Client) => <span style={{ color: theme.textSecondary }}>{c.source || '—'}</span> },
+                  { key: 'source', label: t('clients.source', getLang()), render: (c: Client) => <span className="text-secondary">{c.source || '—'}</span> },
                   { key: 'frontdesk', label: t('clients.owner', getLang()), render: (c: Client) => c.frontdesk_name || '—' },
-                  { key: 'team', label: t('detail.team', getLang()), render: (c: Client) => <span style={{ color: theme.textSecondary }}>{c.team || '—'}</span> },
-                  { key: 'deposit', label: t('clients.deposit', getLang()), monospace: true, render: (c: Client) => c.total_deposited > 0 ? <span style={{ color: theme.success }}>${c.total_deposited.toLocaleString()}</span> : <span style={{ color: theme.textSecondary }}>—</span> },
-                  { key: 'next_followup', label: t('clients.next_followup', getLang()), monospace: true, render: (c: Client) => <span style={{ color: c.next_followup ? theme.warning : theme.textSecondary, fontSize: 12 }}>{c.next_followup ? new Date(c.next_followup).toLocaleDateString() : '—'}</span> },
-                  { key: 'created_at', label: t('clients.created_at', getLang()), monospace: true, render: (c: Client) => <span style={{ color: theme.textSecondary, fontSize: 12 }}>{c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}</span> },
+                  { key: 'team', label: t('detail.team', getLang()), render: (c: Client) => <span className="text-secondary">{c.team || '—'}</span> },
+                  { key: 'deposit', label: t('clients.deposit', getLang()), monospace: true, render: (c: Client) => c.total_deposited > 0 ? <span className="text-success">${c.total_deposited.toLocaleString()}</span> : <span className="text-secondary">—</span> },
+                  { key: 'next_followup', label: t('clients.next_followup', getLang()), monospace: true, render: (c: Client) => <span className={`fs-12 ${c.next_followup ? 'text-warning' : 'text-secondary'}`}>{c.next_followup ? new Date(c.next_followup).toLocaleDateString() : '—'}</span> },
+                  { key: 'created_at', label: t('clients.created_at', getLang()), monospace: true, render: (c: Client) => <span className="text-secondary fs-12">{c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}</span> },
                 ]}
                 data={data.clients}
                 onRowClick={c => nav(`/clients/${c.id}`)}
@@ -194,19 +192,18 @@ export default function Clients() {
       {/* Add Client Modal */}
       {showAdd && (
         <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowAdd(false) }}>
-          <div className="modal-content" style={{ width: 480 }}>
+          <div className="modal-content w-480">
             <h3 className="modal-title">{t('clients.add_title', getLang())}</h3>
 
             {/* Phone input with live check */}
-            <div style={{ marginBottom: 20 }}>
+            <div className="mb-20">
               <label className="field-label">{t('clients.phone_input', getLang())}</label>
-              <div style={{ display: 'flex', gap: 12 }}>
+              <div className="d-flex gap-12">
                 <input
-                  className="input"
+                  className="input flex-1 input-phone"
                   value={addPhone}
                   onChange={e => { setAddPhone(e.target.value); checkPhone(e.target.value) }}
                   placeholder="e.g. +60123456789"
-                  style={{ flex: 1, fontSize: 16, fontWeight: 600 }}
                 />
                 <button className="btn-secondary" onClick={() => checkPhone(addPhone)}>
                   {t('clients.check_again', getLang())}
@@ -214,15 +211,15 @@ export default function Clients() {
               </div>
               {phoneStatus && (
                 <div className={`phone-check-result ${phoneStatus.status === 'taken' ? 'badge-danger' : phoneStatus.status === 'available' ? 'badge-success' : 'badge-warning'}`}>
-                  <div className="dot" style={{ background: phoneStatus.status === 'taken' ? 'var(--danger)' : phoneStatus.status === 'available' ? 'var(--success)' : 'var(--warning)' }} />
+                  <div className={`dot ${phoneStatus.status === 'taken' ? 'dot-danger' : phoneStatus.status === 'available' ? 'dot-success' : 'dot-warning'}`} />
                   {phoneStatus.status === 'available' && (
-                    <span style={{ fontWeight: 600 }}>{t('clients.phone_available', getLang())}</span>
+                    <span className="fw-600">{t('clients.phone_available', getLang())}</span>
                   )}
                   {phoneStatus.status === 'own' && (
-                    <span style={{ fontWeight: 600 }}>{t('clients.phone_own', getLang())}</span>
+                    <span className="fw-600">{t('clients.phone_own', getLang())}</span>
                   )}
                   {phoneStatus.status === 'taken' && (
-                    <span style={{ fontWeight: 600 }}>
+                    <span className="fw-600">
                       {t('clients.phone_taken', getLang()).replace('{owner}', phoneStatus.owner)} ({phoneStatus.submitted_at?.split('T')[0]})
                     </span>
                   )}
@@ -231,7 +228,7 @@ export default function Clients() {
             </div>
 
             {/* 2-column form grid */}
-            <div className="form-grid-2col" style={{ marginBottom: 20 }}>
+            <div className="form-grid-2col mb-20">
               {/* Source */}
               <div>
                 <label className="field-label">{t('clients.source_label', getLang())}</label>
@@ -239,7 +236,6 @@ export default function Clients() {
                   className="input"
                   value={addSource}
                   onChange={e => setAddSource(e.target.value)}
-                  style={{ width: '100%' }}
                 >
                   {['web', 'telegram', 'whatsapp', 'referral', 'facebook', 'instagram', 'tiktok', 'other'].map(s => (
                     <option key={s} value={s}>{s}</option>
@@ -251,7 +247,7 @@ export default function Clients() {
               <div>
                 <label className="field-label">{t('clients.platform_label', getLang())}</label>
                 <select className="input" value={addPlatform} onChange={e => setAddPlatform(e.target.value)}
-                  style={{ width: '100%' }}>
+                 >
                   <option value="">{t('clients.select', getLang())}</option>
                   {['MT5', 'MT4', 'cTrader', 'Other'].map(p => (
                     <option key={p} value={p}>{p}</option>
@@ -263,21 +259,21 @@ export default function Clients() {
               <div>
                 <label className="field-label">{t('clients.nickname_label', getLang())}</label>
                 <input className="input" value={addNickname} onChange={e => setAddNickname(e.target.value)}
-                  placeholder={t('clients.optional', getLang())} style={{ width: '100%' }} />
+                  placeholder={t('clients.optional', getLang())} />
               </div>
 
               {/* Account ID */}
               <div>
                 <label className="field-label">{t('clients.account_id_label', getLang())}</label>
                 <input className="input" value={addAccountId} onChange={e => setAddAccountId(e.target.value)}
-                  placeholder={t('clients.optional', getLang())} style={{ width: '100%' }} />
+                  placeholder={t('clients.optional', getLang())} />
               </div>
 
               {/* Category */}
               <div>
                 <label className="field-label">{t('clients.category_label', getLang())}</label>
                 <select className="input" value={addCategory} onChange={e => setAddCategory(e.target.value)}
-                  style={{ width: '100%' }}>
+                 >
                   <option value="">{t('clients.select', getLang())}</option>
                   {['UK表单粉', 'CA表单粉', 'AU表单粉', 'EU表单粉', 'US表单粉', 'SEA表单粉', 'Other'].map(c => (
                     <option key={c} value={c}>{c}</option>
@@ -289,7 +285,7 @@ export default function Clients() {
               <div>
                 <label className="field-label">{t('clients.recruiter_label', getLang())}</label>
                 <input className="input" value={addRecruiter} onChange={e => setAddRecruiter(e.target.value)}
-                  placeholder={t('clients.optional', getLang())} style={{ width: '100%' }} />
+                  placeholder={t('clients.optional', getLang())} />
               </div>
             </div>
 

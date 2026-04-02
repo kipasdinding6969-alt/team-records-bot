@@ -1,128 +1,45 @@
 const fs = require('fs');
 const path = require('path');
 
-const dir = '/home/baiwan/team-records-bot/web_dashboard/src/pages';
-const files = fs.readdirSync(dir).filter(f => f.endsWith('.tsx'));
+function processDir(dir) {
+  const files = fs.readdirSync(dir);
+  for (const file of files) {
+    const fullPath = path.join(dir, file);
+    if (fs.statSync(fullPath).isDirectory()) {
+      processDir(fullPath);
+    } else if (fullPath.endsWith('.tsx')) {
+      let content = fs.readFileSync(fullPath, 'utf8');
+      let changed = false;
 
-const colorMap = {
-  '#1a1a2e': 'theme.bg',
-  '#16213e': 'theme.cardBg',
-  '#0f3460': 'theme.cardBorder',
-  '#e0e0e0': 'theme.textPrimary',
-  '#7f848e': 'theme.textSecondary',
-  '#00b894': 'theme.accent',
-  '#00d2a4': 'theme.accentHover',
-  '#fdcb6e': 'theme.chartLine',
-  '#00b89433': 'theme.badgeGreen',
-  '#fdcb6e33': 'theme.badgeYellow',
-  '#d6303133': 'theme.badgeRed',
-  '#ff7675': 'theme.badgeRed',
-  '#2d1515': 'theme.badgeRed',
-  '#00cec9': 'theme.accent',
-};
+      // Replace hardcoded light theme colors that slipped in or weren't caught
+      const replacements = {
+        "'#ffffff'": "theme.cardBg",
+        "'#f8fafc'": "theme.inputBg",
+        "'#e2e8f0'": "theme.cardBorder",
+        "'#2d2a26'": "theme.textPrimary",
+        "'#3b82f6'": "theme.accent",
+        "'#22c55e'": "theme.badgeGreen",
+        "'#3b82f620'": "theme.badgeYellow",
+      };
 
-files.forEach(file => {
-  const filepath = path.join(dir, file);
-  let content = fs.readFileSync(filepath, 'utf-8');
-  let original = content;
+      for (const [old, new_str] of Object.entries(replacements)) {
+        if (content.includes(old)) {
+           content = content.replace(new RegExp(old.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), new_str);
+           changed = true;
+        }
+      }
 
-  // Add the useTheme hook and import first, so we know `theme.` is available
-  if (!content.includes('useTheme') && !content.includes('ThemeContext')) {
-    const importMatches = [...content.matchAll(/^import .*?from\s+['"].*?['"]/gm)];
-    if (importMatches.length > 0) {
-      const lastMatch = importMatches[importMatches.length - 1];
-      const insertPos = lastMatch.index + lastMatch[0].length;
-      content = content.slice(0, insertPos) + "\nimport { useTheme } from '../ThemeContext'" + content.slice(insertPos);
-    } else {
-      content = "import { useTheme } from '../ThemeContext'\n" + content;
+      if (changed) {
+        // Ensure useTheme is imported if not already (basic check)
+        if (!content.includes('useTheme')) {
+           // This is tricky to inject automatically if they don't have it, but they should after my generalist run
+           console.log(`Warning: useTheme might be missing in ${fullPath}`);
+        }
+        fs.writeFileSync(fullPath, content, 'utf8');
+        console.log(`Updated ${fullPath}`);
+      }
     }
   }
+}
 
-  // Find standard function component to insert hook
-  let addedHook = false;
-  content = content.replace(/(export\s+(?:default\s+)?function\s+[A-Z][a-zA-Z0-9_]*\s*\([^{]*\)\s*\{\n)/, (match, funcDef) => {
-    if (!content.includes('const { theme } = useTheme()')) {
-      addedHook = true;
-      return `${funcDef}  const { theme } = useTheme()\n`;
-    }
-    return match;
-  });
-
-  // Regex replacement for hex colors:
-  
-  // 1. Direct properties e.g., background: '#1a1a2e' -> background: theme.bg
-  content = content.replace(/:\s*(['"])(#[0-9a-fA-F]{6,8})\1/gi, (match, quote, hex) => {
-    const lHex = hex.toLowerCase();
-    if (colorMap[lHex]) {
-      return `: ${colorMap[lHex]}`;
-    }
-    return match;
-  });
-
-  // 2. Mixed values in object properties: border: '1px solid #0f3460' -> border: `1px solid ${theme.cardBorder}`
-  content = content.replace(/:\s*(['"])([^'"]*?#[0-9a-fA-F]{6,8}[^'"]*?)\1/gi, (match, quote, inner) => {
-    let replaced = false;
-    for (const [hex, themeProp] of Object.entries(colorMap)) {
-      const re = new RegExp(hex, 'gi');
-      if (re.test(inner)) {
-        inner = inner.replace(re, `\${${themeProp}}`);
-        replaced = true;
-      }
-    }
-    if (replaced) {
-      return `: \`${inner}\``;
-    }
-    return match;
-  });
-
-  // 3. Template literals: `1px solid #0f3460` -> `1px solid ${theme.cardBorder}`
-  content = content.replace(/`([^`]*?#[0-9a-fA-F]{6,8}[^`]*?)`/gi, (match, inner) => {
-    let replaced = false;
-    for (const [hex, themeProp] of Object.entries(colorMap)) {
-      const re = new RegExp(hex, 'gi');
-      if (re.test(inner)) {
-        inner = inner.replace(re, `\${${themeProp}}`);
-        replaced = true;
-      }
-    }
-    if (replaced) {
-      return `\`${inner}\``;
-    }
-    return match;
-  });
-  
-  // 4. Props like accent="#00b894" -> accent={theme.accent}
-  content = content.replace(/=([\'"])(#[0-9a-fA-F]{6,8})\1/gi, (match, quote, hex) => {
-    const lHex = hex.toLowerCase();
-    if (colorMap[lHex]) {
-      return `={${colorMap[lHex]}}`;
-    }
-    return match;
-  });
-
-  // 5. Props with mixed values like stroke="#0f3460" -> stroke={theme.cardBorder}
-  content = content.replace(/=([\'"])([^'"]*?#[0-9a-fA-F]{6,8}[^'"]*?)\1/gi, (match, quote, inner) => {
-    let replaced = false;
-    for (const [hex, themeProp] of Object.entries(colorMap)) {
-      const re = new RegExp(hex, 'gi');
-      if (re.test(inner)) {
-        inner = inner.replace(re, `\${${themeProp}}`);
-        replaced = true;
-      }
-    }
-    if (replaced) {
-      return `={\`${inner}\`}`;
-    }
-    return match;
-  });
-
-  if (content !== original) {
-    fs.writeFileSync(filepath, content);
-    console.log('Refactored', file);
-  } else {
-    // If we only added the hook but no colors were replaced, maybe revert the hook?
-    if (addedHook && !original.includes('const { theme } = useTheme()') && !original.includes('theme.')) {
-      fs.writeFileSync(filepath, original);
-    }
-  }
-});
+processDir(path.join(__dirname, 'src', 'pages'));

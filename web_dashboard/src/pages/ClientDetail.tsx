@@ -53,7 +53,7 @@ function Field({ label, value, accent }: { label: string; value: string | number
   return (
     <div>
       <div className="field-label">{label}</div>
-      <div className="fs-14 fw-600" style={{ color: accent || undefined }}>{value || '—'}</div>
+      <div className="fs-14 fw-600" style={accent ? { color: accent } : undefined}>{value || '—'}</div>
     </div>
   )
 }
@@ -405,9 +405,9 @@ export default function ClientDetail() {
             {t('detail.back', lang)}
           </button>
           <h1 className="page-title">{client.phone}</h1>
-          <span className="status-badge" style={{
-            background: `${statusColor}20`, color: statusColor, border: `1px solid ${statusColor}40`,
-          }}>
+          <span className="status-badge-dynamic" style={{
+            '--status-bg': `${statusColor}20`, '--status-color': statusColor, '--status-border': `${statusColor}40`,
+          } as React.CSSProperties}>
             {t(`status.${client.status}`, lang) !== `status.${client.status}` ? t(`status.${client.status}`, lang) : (STATUS_LABELS[client.status] || client.status)}
           </span>
           {client.source && (
@@ -468,28 +468,25 @@ export default function ClientDetail() {
             <h3 className="section-title">{t('detail.add_note', lang)}</h3>
             <div className="inline-form">
               <select
-                className="input"
+                className="input w-140"
                 value={noteType}
                 onChange={e => setNoteType(e.target.value)}
-                style={{ width: 140 }}
               >
                 <option value="comment">{t('note_type.comment', lang)}</option>
                 <option value="flag">{t('note_type.flag', lang)}</option>
                 <option value="link_note">{t('note_type.link_note', lang)}</option>
               </select>
               <textarea
-                className="input flex-1"
+                className="input flex-1 textarea-resize"
                 placeholder={t('detail.note_placeholder', lang)}
                 value={noteContent}
                 onChange={e => setNoteContent(e.target.value)}
                 rows={2}
-                style={{ resize: 'vertical' }}
               />
               <button
-                className="btn-primary self-start"
+                className={`btn-primary self-start${noteSaving || !noteContent.trim() ? ' opacity-50' : ''}`}
                 onClick={handleAddNote}
                 disabled={noteSaving || !noteContent.trim()}
-                style={{ opacity: noteSaving || !noteContent.trim() ? 0.5 : 1 }}
               >
                 {noteSaving ? t('common.saving', lang) : t('common.save', lang)}
               </button>
@@ -505,7 +502,7 @@ export default function ClientDetail() {
               setShowLinked(!showLinked)
             }}>
               <div className="flex-between">
-                <div className="section-title" style={{ margin: 0 }}>
+                <div className="section-title m-0">
                   {t('detail.linked_timeline', lang)} {linkedTimeline ? `(${linkedTimeline.timeline?.length || 0})` : ''}
                 </div>
                 <span className="fs-12 text-accent">{showLinked ? t('common.close', lang) : t('detail.linked_timeline', lang)}</span>
@@ -525,12 +522,10 @@ export default function ClientDetail() {
                   )}
                   {(linkedTimeline.timeline || []).map((item: any, i: number) => (
                     <div key={`lt-${i}`} className="timeline-entry">
-                      <span className="timeline-dot" style={{
-                        ...(item.timeline_type === 'deposit' ? { background: theme.successBg, color: theme.success }
-                          : item.timeline_type === 'link' ? { background: `${theme.accent}20`, color: theme.accent }
-                          : item.client_id !== clientId ? { background: theme.warningBg, color: theme.warning }
-                          : { background: theme.bgElevated, color: theme.textSecondary }),
-                      }}>
+                      <span className={`timeline-dot ${item.timeline_type === 'deposit' ? 'timeline-dot-deposit'
+                          : item.timeline_type === 'link' ? 'timeline-dot-link'
+                          : item.client_id !== clientId ? 'timeline-dot-other'
+                          : 'timeline-dot-default'}`}>
                         {item.timeline_type === 'deposit' ? '$' : item.timeline_type === 'link' ? '~' : item.client_id !== clientId ? `#${item.client_id}` : '-'}
                       </span>
                       <div className="flex-1">
@@ -538,7 +533,7 @@ export default function ClientDetail() {
                           <span>
                             {item.staff_name || item.author_name || '-'}
                             {item.client_phone && item.client_id !== clientId && (
-                              <span className="text-accent" style={{ marginLeft: 8, fontSize: 10 }}>({item.client_phone})</span>
+                              <span className="text-accent ml-8 fs-11">({item.client_phone})</span>
                             )}
                           </span>
                           <span className="fs-11">{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</span>
@@ -570,12 +565,10 @@ export default function ClientDetail() {
                     className="timeline-entry"
                   >
                     {/* Dot on the left border */}
-                    <div className="timeline-dot" style={{
-                      background: n.timeline_type === 'link' ? theme.accent
-                        : n.note_type === 'status_change' ? theme.success
-                        : n.note_type === 'flag' ? theme.warning
-                        : theme.textMuted,
-                    }} />
+                    <div className={`timeline-dot ${n.timeline_type === 'link' ? 'dot-accent'
+                        : n.note_type === 'status_change' ? 'dot-success'
+                        : n.note_type === 'flag' ? 'dot-warning'
+                        : 'dot-muted'}`} />
                     <div className="timeline-header">
                       <span className="fs-13 fw-600 text-primary d-flex items-center gap-8">
                         {n.staff_name || n.author_name || t('detail.system', lang)}
@@ -586,11 +579,11 @@ export default function ClientDetail() {
                         )}
                         {n.note_type === 'status_change' && n.old_status && n.new_status && (
                           <span className="d-flex items-center gap-8 fs-12">
-                            <span className="status-badge" style={{ color: STATUS_COLORS[n.old_status] || 'var(--text-secondary)', background: `${STATUS_COLORS[n.old_status] || 'var(--text-secondary)'}20` }}>
+                            <span className="status-badge-dynamic" style={{ '--status-color': STATUS_COLORS[n.old_status] || 'var(--text-secondary)', '--status-bg': `${STATUS_COLORS[n.old_status] || 'var(--text-secondary)'}20` } as React.CSSProperties}>
                               {t(`status.${n.old_status}`, lang) !== `status.${n.old_status}` ? t(`status.${n.old_status}`, lang) : (STATUS_LABELS[n.old_status] || n.old_status)}
                             </span>
                             <span className="text-muted">{'->'}</span>
-                            <span className="status-badge" style={{ color: STATUS_COLORS[n.new_status] || 'var(--text-primary)', background: `${STATUS_COLORS[n.new_status] || 'var(--text-secondary)'}20` }}>
+                            <span className="status-badge-dynamic" style={{ '--status-color': STATUS_COLORS[n.new_status] || 'var(--text-primary)', '--status-bg': `${STATUS_COLORS[n.new_status] || 'var(--text-secondary)'}20` } as React.CSSProperties}>
                               {t(`status.${n.new_status}`, lang) !== `status.${n.new_status}` ? t(`status.${n.new_status}`, lang) : (STATUS_LABELS[n.new_status] || n.new_status)}
                             </span>
                           </span>
@@ -632,18 +625,16 @@ export default function ClientDetail() {
               )}
               <div className="inline-form">
                 <textarea
-                  className="input flex-1"
+                  className="input flex-1 textarea-resize"
                   placeholder={t('comments.placeholder', lang)}
                   value={commentContent}
                   onChange={e => setCommentContent(e.target.value)}
                   rows={2}
-                  style={{ resize: 'vertical' }}
                 />
                 <button
-                  className="btn-primary self-start"
+                  className={`btn-primary self-start${commentSaving || !commentContent.trim() ? ' opacity-50' : ''}`}
                   onClick={handleAddComment}
                   disabled={commentSaving || !commentContent.trim()}
-                  style={{ opacity: commentSaving || !commentContent.trim() ? 0.5 : 1 }}
                 >
                   {commentSaving ? t('common.saving', lang) : t('comments.submit', lang)}
                 </button>
@@ -708,7 +699,7 @@ export default function ClientDetail() {
             {client.deposits.length === 0 ? (
               <div className="text-secondary fs-14">{t('detail.no_deposits', lang)}</div>
             ) : (
-              <div className="rounded-8 border-card" style={{ overflow: 'hidden' }}>
+              <div className="rounded-8 border-card overflow-hidden">
                 <table className="data-grid-table w-full">
                   <thead>
                     <tr>
@@ -734,7 +725,7 @@ export default function ClientDetail() {
           {/* A. Knife Deposits Section */}
           <div className="card">
             <div className="flex-between mb-12">
-              <h3 className="section-title" style={{ margin: 0 }}>
+              <h3 className="section-title m-0">
                 {t('knife.title', lang)} <span className="text-muted fw-600">({knives.length})</span>
               </h3>
               <button className="btn-primary" onClick={() => setShowKnifeModal(true)}>
@@ -747,7 +738,7 @@ export default function ClientDetail() {
             ) : knives.length === 0 ? (
               <div className="text-secondary fs-14">{t('common.no_data', lang)}</div>
             ) : (
-              <div className="rounded-8 border-card" style={{ overflow: 'hidden' }}>
+              <div className="rounded-8 border-card overflow-hidden">
                 <table className="data-grid-table w-full">
                   <thead>
                     <tr>
@@ -888,7 +879,7 @@ export default function ClientDetail() {
               <div className="flex-col gap-8 mb-12">
                 {roleNotes.map((note: any, idx: number) => (
                   <div key={note.id || idx} className="d-flex gap-8 items-start">
-                    <span className="pill-badge badge-accent fs-11 fw-700" style={{ whiteSpace: 'nowrap' }}>
+                    <span className="pill-badge badge-accent fs-11 fw-700 nowrap">
                       {t(`role_notes.from`, lang)}: {t(`maintainer.role_${note.from_role === 'maintenance' ? 'mt' : note.from_role}`, lang) !== `maintainer.role_${note.from_role === 'maintenance' ? 'mt' : note.from_role}` ? t(`maintainer.role_${note.from_role === 'maintenance' ? 'mt' : note.from_role}`, lang) : note.from_role}
                     </span>
                     <div className="flex-1">
@@ -907,29 +898,26 @@ export default function ClientDetail() {
             <div className="flex-col gap-8">
               <div className="d-flex gap-8">
                 <select
-                  className="input"
+                  className="input w-140"
                   value={roleNoteForm.from_role}
                   onChange={e => setRoleNoteForm(prev => ({ ...prev, from_role: e.target.value }))}
-                  style={{ width: 140 }}
                 >
                   {CROSS_ROLE_OPTIONS.map(opt => (
                     <option key={opt.value} value={opt.value}>{t(opt.label, lang)}</option>
                   ))}
                 </select>
                 <textarea
-                  className="input flex-1"
+                  className="input flex-1 textarea-resize"
                   placeholder={t('role_notes.placeholder', lang)}
                   value={roleNoteForm.content}
                   onChange={e => setRoleNoteForm(prev => ({ ...prev, content: e.target.value }))}
                   rows={2}
-                  style={{ resize: 'vertical' }}
                 />
               </div>
               <button
-                className="btn-primary self-end"
+                className={`btn-primary self-end${roleNoteSaving || !roleNoteForm.content.trim() ? ' opacity-50' : ''}`}
                 onClick={handleAddRoleNote}
                 disabled={roleNoteSaving || !roleNoteForm.content.trim()}
-                style={{ opacity: roleNoteSaving || !roleNoteForm.content.trim() ? 0.5 : 1 }}
               >
                 {roleNoteSaving ? t('common.saving', lang) : t('role_notes.add', lang)}
               </button>
@@ -939,7 +927,7 @@ export default function ClientDetail() {
           {/* D. Role Assignments Section */}
           <div className="card">
             <div className="flex-between mb-12">
-              <h3 className="section-title" style={{ margin: 0 }}>
+              <h3 className="section-title m-0">
                 {t('maintainer.role', lang)} <span className="text-muted fw-600">({clientRoles.length})</span>
               </h3>
               <button className="btn-primary" onClick={() => setShowAssignRoleModal(true)}>
@@ -980,7 +968,7 @@ export default function ClientDetail() {
           {/* Linked Clients */}
           <div className="card">
             <div className="flex-between mb-20">
-              <h3 className="section-title" style={{ margin: 0 }}>
+              <h3 className="section-title m-0">
                 {t('detail.links', lang)} <span className="text-muted fw-600">({links.length})</span>
               </h3>
               <button
@@ -1016,10 +1004,9 @@ export default function ClientDetail() {
                   onChange={e => setLinkNote(e.target.value)}
                 />
                 <button
-                  className="btn-primary"
+                  className={`btn-primary${linkSaving || !linkTargetId ? ' opacity-50' : ''}`}
                   onClick={handleAddLink}
                   disabled={linkSaving || !linkTargetId}
-                  style={{ opacity: linkSaving || !linkTargetId ? 0.5 : 1 }}
                 >
                   {linkSaving ? t('common.saving', lang) : t('common.save', lang)}
                 </button>
@@ -1042,14 +1029,13 @@ export default function ClientDetail() {
                         #{otherId}
                       </span>
                       <span className="text-primary">{otherPhone}</span>
-                      <span className="pill-badge badge-warning fs-11" style={{ textTransform: 'uppercase' }}>
+                      <span className="pill-badge badge-warning fs-11 text-uppercase">
                         {t(`link_type.${lnk.link_type}`, lang)}
                       </span>
                       <span className="text-secondary flex-1 fs-13">{lnk.note || ''}</span>
                       <button
-                        className="btn-secondary text-danger fs-12"
+                        className="btn-secondary btn-xs text-danger"
                         onClick={() => handleRemoveLink(lnk.id)}
-                        style={{ padding: '4px 12px' }}
                       >
                         {t('detail.remove_link', lang)}
                       </button>
@@ -1067,7 +1053,7 @@ export default function ClientDetail() {
       {/* Add Knife Deposit Modal */}
       {showKnifeModal && (
         <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowKnifeModal(false) }}>
-          <div className="modal-content" style={{ width: 420 }}>
+          <div className="modal-content w-420">
             <h3 className="modal-title">{t('knife.add', lang)}</h3>
             <div className="form-grid">
               <div className="form-grid-2col">
@@ -1096,7 +1082,7 @@ export default function ClientDetail() {
               </div>
               <label>
                 <span className="field-label">{t('detail.link_note', lang)}</span>
-                <textarea className="input" value={knifeForm.notes} onChange={e => setKnifeForm(prev => ({ ...prev, notes: e.target.value }))} style={{ resize: 'vertical', minHeight: 60, height: 'auto' }} />
+                <textarea className="input textarea-resize min-h-60 h-auto" value={knifeForm.notes} onChange={e => setKnifeForm(prev => ({ ...prev, notes: e.target.value }))} />
               </label>
               <div className="modal-actions">
                 <button className="btn-secondary flex-1" onClick={() => setShowKnifeModal(false)}>
@@ -1118,7 +1104,7 @@ export default function ClientDetail() {
       {/* Kill Client Modal */}
       {showKillModal && (
         <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowKillModal(false) }}>
-          <div className="modal-content" style={{ width: 380 }}>
+          <div className="modal-content w-380">
             <h3 className="modal-title">Kill Client</h3>
             <div className="form-grid">
               <label>
@@ -1156,12 +1142,12 @@ export default function ClientDetail() {
       {/* Unkill Modal */}
       {showUnkillModal && (
         <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowUnkillModal(false) }}>
-          <div className="modal-content" style={{ width: 380 }}>
+          <div className="modal-content w-380">
             <h3 className="modal-title">{t('kill.unkill', lang)}</h3>
             <div className="form-grid">
               <label>
                 <span className="field-label">{t('kill.unkill_reason', lang)} *</span>
-                <textarea className="input" value={unkillReason} onChange={e => setUnkillReason(e.target.value)} rows={3} style={{ resize: 'vertical' }} />
+                <textarea className="input textarea-resize" value={unkillReason} onChange={e => setUnkillReason(e.target.value)} rows={3} />
               </label>
               <div className="fs-12 text-warning">{t('kill.only_1_2', lang)}</div>
               <div className="modal-actions">
@@ -1184,7 +1170,7 @@ export default function ClientDetail() {
       {/* Assign Role Modal */}
       {showAssignRoleModal && (
         <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowAssignRoleModal(false) }}>
-          <div className="modal-content" style={{ width: 400 }}>
+          <div className="modal-content w-400">
             <h3 className="modal-title">{t('maintainer.role', lang)}</h3>
             <div className="form-grid">
               <label>
@@ -1260,13 +1246,7 @@ function CommentItem({
 
   return (
     <div
-      className={`comment-item ${isSystem ? 'system' : ''} ${indent > 0 ? 'reply' : ''}`}
-      style={{
-        marginLeft: indent * 20,
-        marginTop: indent > 0 ? 8 : 0,
-        opacity: isSystem ? 0.75 : 1,
-        borderLeftColor: indent > 0 ? theme.accent : undefined,
-      }}
+      className={`comment-item ${isSystem ? 'system' : ''} ${indent > 0 ? 'reply comment-indent-1' : ''}${isSystem ? ' opacity-75' : ''}`}
     >
       {/* Header */}
       <div className="comment-header">
@@ -1280,7 +1260,7 @@ function CommentItem({
             </span>
           )}
           {c.updated_at && !isDeleted && (
-            <span className="fs-11 text-muted" style={{ fontStyle: 'italic' }}>{t('comments.edited', lang)}</span>
+            <span className="fs-11 text-muted italic">{t('comments.edited', lang)}</span>
           )}
         </div>
         <span className="fs-12 text-secondary fw-600">
@@ -1292,11 +1272,10 @@ function CommentItem({
       {isEditing ? (
         <div className="d-flex gap-8 items-start">
           <textarea
-            className="input flex-1"
+            className="input flex-1 textarea-resize"
             value={editContent}
             onChange={e => onEditContentChange(e.target.value)}
             rows={2}
-            style={{ resize: 'vertical' }}
           />
           <div className="flex-col gap-4">
             <button className="btn-primary fs-12 p-12" onClick={onSaveEdit}>
@@ -1308,11 +1287,7 @@ function CommentItem({
           </div>
         </div>
       ) : (
-        <div className={`fs-14 ${isDeleted ? 'text-muted' : (isSystem ? 'text-secondary' : 'text-primary')}`}
-          style={{
-            lineHeight: 1.6,
-            fontStyle: isDeleted ? 'italic' : 'normal',
-          }}>
+        <div className={`fs-14 lh-16 ${isDeleted ? 'text-muted italic' : (isSystem ? 'text-secondary' : 'text-primary')}`}>
           {isDeleted ? t('comments.deleted', lang) : c.content}
         </div>
       )}

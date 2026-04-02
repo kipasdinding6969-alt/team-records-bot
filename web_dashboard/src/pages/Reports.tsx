@@ -70,7 +70,7 @@ export default function Reports() {
         </div>
         <button
           className="btn-secondary"
-          onClick={() => api.exportReport(period).catch(e => { console.error(e); setError(t('common.update_failed', '' as any)); })}
+          onClick={() => api.exportReport(period).catch(e => { console.error(e); setError(t('common.update_failed', lang)); })}
         >
           {t('reports.export', getLang())}
         </button>

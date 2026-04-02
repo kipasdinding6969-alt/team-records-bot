@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, getRole } from '../api';
-import { useTheme } from '../ThemeContext';
 import { t, getLang } from '../i18n';
 
 interface StaffDetailModalProps {
@@ -11,7 +10,6 @@ interface StaffDetailModalProps {
 }
 
 export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModalProps) {
-  const { theme } = useTheme();
   const lang = getLang();
   const nav = useNavigate();
   const currentUserRole = getRole();
@@ -81,99 +79,86 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
   const canEdit = currentUserRole === 'owner' || currentUserRole === 'admin';
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-    }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{
-        background: theme.cardBg, borderRadius: theme.radiusCard, padding: theme.paddingCard, width: 500, maxWidth: '90vw',
-        maxHeight: '90vh', overflowY: 'auto',
-        boxShadow: theme.shadow, border: `1px solid ${theme.cardBorder}`
-      }}>
+    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-content staff-modal-content">
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: theme.textSecondary }}>{t('common.loading', lang as any)}...</div>
+          <div className="p-24 text-center text-muted">{t('common.loading', lang as any)}...</div>
         ) : (
           <>
             {error && (
-              <div className="alert alert-error" style={{ marginBottom: 16 }}>
+              <div className="alert alert-error mb-16">
                 {error}
               </div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{
-                  width: 48, height: 48, borderRadius: '50%', background: theme.accent, color: '#fff',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 700
-                }}>
+            <div className="d-flex justify-between items-start mb-20">
+              <div className="d-flex items-center gap-12">
+                <div className="avatar avatar-lg avatar-accent-solid">
                   {staff.display_name.charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: theme.textPrimary }}>{staff.display_name}</h2>
-                  <div style={{ fontSize: 13, color: theme.textSecondary, marginTop: 4 }}>
-                    <span style={{
-                      background: theme.activeNav, padding: '2px 8px', borderRadius: theme.radiusCard,
-                      color: theme.accent, fontWeight: 600, fontSize: 11, textTransform: 'uppercase'
-                    }}>{staff.role}</span>
-                    <span style={{ marginLeft: 8 }}>{staff.team || t('org.unassigned', lang)}</span>
+                  <h2 className="heading-sm fs-20">{staff.display_name}</h2>
+                  <div className="fs-13 text-muted mt-4">
+                    <span className="status-badge badge-accent text-uppercase">{staff.role}</span>
+                    <span className="ml-8">{staff.team || t('org.unassigned', lang)}</span>
                   </div>
                 </div>
               </div>
-              <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: theme.textSecondary, fontSize: 20, cursor: 'pointer' }}>×</button>
+              <button className="modal-close-btn" onClick={onClose}>×</button>
             </div>
 
             {!isEditing ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div className="metric-card" style={{ padding: 12 }}>
+              <div className="flex-col gap-12">
+                <div className="grid-2col">
+                  <div className="metric-card p-12">
                     <div className="metric-label">{t('org.daily_target', lang)}</div>
-                    <div className="metric-value" style={{ fontSize: 16, color: theme.textPrimary }}>{staff.daily_target}</div>
+                    <div className="metric-value fs-16 text-primary">{staff.daily_target}</div>
                   </div>
-                  <div className="metric-card" style={{ padding: 12 }}>
+                  <div className="metric-card p-12">
                     <div className="metric-label">{t('staff.phone', lang)}</div>
-                    <div className="metric-value" style={{ fontSize: 16, color: theme.textPrimary }}>{staff.phone || '—'}</div>
+                    <div className="metric-value fs-16 text-primary">{staff.phone || '—'}</div>
                   </div>
-                  <div className="metric-card" style={{ padding: 12 }}>
+                  <div className="metric-card p-12">
                     <div className="metric-label">{t('staff.language', lang)}</div>
-                    <div className="metric-value" style={{ fontSize: 16, color: theme.textPrimary }}>{staff.language || '—'}</div>
+                    <div className="metric-value fs-16 text-primary">{staff.language || '—'}</div>
                   </div>
-                  <div className="metric-card" style={{ padding: 12 }}>
+                  <div className="metric-card p-12">
                     <div className="metric-label">{t('team.clients', lang)}</div>
-                    <div className="metric-value" style={{ fontSize: 16, color: theme.textPrimary }}>{staff.client_count}</div>
+                    <div className="metric-value fs-16 text-primary">{staff.client_count}</div>
                   </div>
                 </div>
 
                 {gamification && (
-                  <div style={{ marginTop: 12, padding: theme.paddingCard, borderRadius: theme.radiusCard, background: theme.cardBg, border: `1px solid ${theme.cardBorder}` }}>
-                    <h3 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div className="gamification-section mt-12">
+                    <h3 className="heading-sm d-flex items-center gap-8 mb-12">
                       🎮 {t('staff.gamification', lang)}
                     </h3>
                     {gamification.total_xp === 0 ? (
-                      <div style={{ fontSize: 13, color: theme.textSecondary, fontStyle: 'italic' }}>{t('gamification.no_activity', lang)}</div>
+                      <div className="fs-13 text-muted text-italic">{t('gamification.no_activity', lang)}</div>
                     ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      <div className="flex-col gap-12">
                         <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4, fontWeight: 600, color: theme.textSecondary }}>
-                            <span>{t('gamification.xp', lang)}: <span style={{ color: theme.accent }}>{gamification.total_xp.toLocaleString()}</span></span>
-                            {gamification.streak?.current_streak > 0 && <span style={{ color: theme.chartLine }}>🔥 {gamification.streak.current_streak} {t('gamification.streak', lang)}</span>}
+                          <div className="d-flex justify-between fs-13 mb-4 fw-600 text-muted">
+                            <span>{t('gamification.xp', lang)}: <span className="text-accent">{gamification.total_xp.toLocaleString()}</span></span>
+                            {gamification.streak?.current_streak > 0 && <span className="text-success">🔥 {gamification.streak.current_streak} {t('gamification.streak', lang)}</span>}
                           </div>
-                          <div style={{ height: 8, background: theme.bg, borderRadius: theme.radiusCard, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${Math.min(100, (gamification.total_xp % 1000) / 10)}%`, background: theme.accent, transition: 'width 1s ease-out' }} />
+                          <div className="progress-bar">
+                            <div className="progress-fill accent-bg-fill" style={{ width: `${Math.min(100, (gamification.total_xp % 1000) / 10)}%` }} />
                           </div>
                         </div>
                         {gamification.badges?.length > 0 && (
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <div className="d-flex gap-8 flex-wrap">
                             {gamification.badges.map((b: any, i: number) => (
-                              <span key={i} title={b.name} style={{ fontSize: 24, filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}>{b.emoji}</span>
+                              <span key={i} title={b.name} className="badge-emoji">{b.emoji}</span>
                             ))}
                           </div>
                         )}
                         {gamification.recent_xp?.length > 0 && (
-                          <div style={{ marginTop: 8, fontSize: 12, color: theme.textSecondary }}>
-                            <strong style={{ display: 'block', marginBottom: 4 }}>{t('staff.recent_activity', lang)}</strong>
+                          <div className="mt-8 fs-12 text-muted">
+                            <strong className="d-flex mb-4">{t('staff.recent_activity', lang)}</strong>
                             {gamification.recent_xp.slice(0, 3).map((xp: any, i: number) => (
-                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, padding: '4px 8px', background: theme.bg, borderRadius: theme.radiusCard }}>
+                              <div key={i} className="d-flex justify-between mb-4 xp-activity-row">
                                 <span>{xp.action}</span>
-                                <span style={{ color: theme.success, fontWeight: 600 }}>{t('gamification.plus_xp', lang).replace('{xp}', xp.xp_amount)}</span>
+                                <span className="text-success fw-600">{t('gamification.plus_xp', lang).replace('{xp}', xp.xp_amount)}</span>
                               </div>
                             ))}
                           </div>
@@ -183,25 +168,19 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
                   </div>
                 )}
 
-                <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
+                <div className="d-flex gap-12 mt-12">
                   {canEdit && (
-                    <button className="glass-btn" onClick={() => setIsEditing(true)} style={{
-                      flex: 1, padding: '10px', background: theme.cardBg, border: `1px solid ${theme.cardBorder}`,
-                      borderRadius: theme.radiusBtn, color: theme.textPrimary, fontWeight: 600, cursor: 'pointer'
-                    }}>
+                    <button className="btn-secondary flex-1" onClick={() => setIsEditing(true)}>
                       {t('org.edit_staff', lang)}
                     </button>
                   )}
-                  <button className="glass-btn" onClick={() => { onClose(); nav(`/clients?search=${encodeURIComponent(staff.display_name)}`); }} style={{
-                    flex: 1, padding: '10px', background: theme.accent, border: 'none',
-                    borderRadius: theme.radiusBtn, color: '#fff', fontWeight: 600, cursor: 'pointer'
-                  }}>
+                  <button className="btn-primary flex-1" onClick={() => { onClose(); nav(`/clients?search=${encodeURIComponent(staff.display_name)}`); }}>
                     {t('org.view_clients', lang)}
                   </button>
                 </div>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="flex-col gap-12">
                 <div>
                   <label className="field-label">{t('team.team', lang)}</label>
                   <input
@@ -240,25 +219,19 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
                     onChange={e => setEditData({ ...editData, daily_target: e.target.value })}
                   />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div className="d-flex items-center gap-8">
                   <input
                     type="checkbox"
                     checked={editData.is_active}
                     onChange={e => setEditData({ ...editData, is_active: e.target.checked })}
                   />
-                  <label style={{ fontSize: 13, color: theme.textPrimary }}>{t('staff.active', lang)}</label>
+                  <label className="fs-13 text-primary">{t('staff.active', lang)}</label>
                 </div>
-                <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
-                  <button className="glass-btn" onClick={() => setIsEditing(false)} style={{
-                    flex: 1, padding: '10px', background: theme.cardBg, border: `1px solid ${theme.cardBorder}`,
-                    borderRadius: theme.radiusBtn, color: theme.textPrimary, fontWeight: 600, cursor: 'pointer'
-                  }}>
+                <div className="d-flex gap-12 mt-12">
+                  <button className="btn-secondary flex-1" onClick={() => setIsEditing(false)}>
                     {t('common.cancel', lang)}
                   </button>
-                  <button className="glass-btn" onClick={handleSave} disabled={saving} style={{
-                    flex: 1, padding: '10px', background: theme.accent, border: 'none',
-                    borderRadius: theme.radiusBtn, color: '#fff', fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.7 : 1
-                  }}>
+                  <button className={`btn-primary flex-1${saving ? ' opacity-70' : ''}`} onClick={handleSave} disabled={saving}>
                     {saving ? t('common.saving', lang as any) : t('org.save_changes', lang as any)}
                   </button>
                 </div>

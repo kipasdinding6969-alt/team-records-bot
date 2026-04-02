@@ -156,29 +156,20 @@ export default function FrontdeskEntry() {
                 {t('frontdesk.phone_input', lang)} *
               </label>
               <input
-                className="input input-lg"
+                className={`input input-lg${formErrors.phone ? ' border-danger' : ''}`}
                 required
                 value={phone}
                 onChange={e => { setPhone(e.target.value); checkPhone(e.target.value); setFormErrors(p => ({ ...p, phone: false })) }}
-                style={{
-                  border: formErrors.phone ? '2px solid ' + theme.danger : phoneStatus ? `2px solid ${phoneStatusColor}` : undefined,
-                }}
+                style={phoneStatus && !formErrors.phone ? { border: `2px solid ${phoneStatusColor}` } : undefined}
                 placeholder="+60123456789"
               />
 
               {/* Duplicate check banner */}
               {phoneStatus && (
                 <div
-                  className="phone-status-banner mt-8"
-                  style={{
-                    background: phoneStatus.status === 'taken' ? theme.dangerBg : phoneStatus.status === 'own' ? theme.warningBg : theme.successBg,
-                    color: phoneStatusColor,
-                    border: `2px solid ${phoneStatusColor}40`,
-                  }}
+                  className={`phone-status-banner mt-8 ${phoneStatus.status === 'taken' ? 'badge-danger' : phoneStatus.status === 'own' ? 'badge-warning' : 'badge-success'}`}
                 >
-                  <span className="phone-status-icon" style={{
-                    background: phoneStatusColor,
-                  }}>
+                  <span className={`phone-status-icon ${phoneStatus.status === 'taken' ? 'dot-danger' : phoneStatus.status === 'own' ? 'dot-warning' : 'dot-success'}`}>
                     {phoneStatus?.status === 'taken' ? 'X' : phoneStatus?.status === 'own' ? '!' : phoneStatus?.status === 'available' ? '/' : null}
                   </span>
                   <span>
@@ -196,12 +187,7 @@ export default function FrontdeskEntry() {
                 {t('frontdesk.category', lang)} *
               </label>
               <div
-                className="category-grid"
-                style={{
-                  border: formErrors.category ? `2px solid ${theme.danger}` : undefined,
-                  borderRadius: formErrors.category ? 8 : undefined,
-                  padding: formErrors.category ? 4 : undefined,
-                }}
+                className={`category-grid${formErrors.category ? ' category-grid-error' : ''}`}
               >
                 {CATEGORIES.map(c => (
                   <button
@@ -325,10 +311,9 @@ export default function FrontdeskEntry() {
                 {t('frontdesk.client_condition', lang)}
               </label>
               <textarea
-                className="input"
+                className="input textarea-resize min-h-80"
                 value={clientCondition}
                 onChange={e => setClientCondition(e.target.value)}
-                style={{ resize: 'vertical', minHeight: 80 }}
                 placeholder={t('frontdesk.client_condition', lang) + '...'}
               />
             </div>
@@ -336,14 +321,8 @@ export default function FrontdeskEntry() {
             {/* Submit button - full width */}
             <button
               type="submit"
-              className="btn-primary w-full fw-700 fs-16"
+              className={`btn-primary btn-lg w-full fw-700 fs-16${phoneStatus?.status === 'taken' ? ' btn-blocked' : ''}${submitting ? ' opacity-70' : ''}`}
               disabled={submitting || phoneStatus?.status === 'taken'}
-              style={{
-                height: 48,
-                background: phoneStatus?.status === 'taken' ? theme.cardBorder : undefined,
-                cursor: phoneStatus?.status === 'taken' ? 'not-allowed' : undefined,
-                opacity: submitting ? 0.7 : 1,
-              }}
             >
               {submitting ? '...' : t('frontdesk.submit', lang)}
             </button>
@@ -374,12 +353,12 @@ export default function FrontdeskEntry() {
             </h3>
             <div className="form-grid-3col">
               {[
-                { label: t('phone.total_numbers', lang), value: stats?.total_registered || 0, color: theme.textPrimary },
-                { label: t('phone.duplicates_blocked', lang), value: stats?.duplicates_blocked || 0, color: theme.danger },
-                { label: t('frontdesk.today_count', lang), value: history.filter(h => h.created_at?.includes(new Date().toISOString().slice(0, 10))).length, color: theme.success },
+                { label: t('phone.total_numbers', lang), value: stats?.total_registered || 0, cls: 'text-primary' },
+                { label: t('phone.duplicates_blocked', lang), value: stats?.duplicates_blocked || 0, cls: 'text-danger' },
+                { label: t('frontdesk.today_count', lang), value: history.filter(h => h.created_at?.includes(new Date().toISOString().slice(0, 10))).length, cls: 'text-success' },
               ].map((m, i) => (
                 <div key={i} className="metric-card">
-                  <div className="metric-value" style={{ color: m.color }}>{m.value}</div>
+                  <div className={`metric-value ${m.cls}`}>{m.value}</div>
                   <div className="metric-label">{m.label}</div>
                 </div>
               ))}
@@ -399,8 +378,8 @@ export default function FrontdeskEntry() {
                 setSearchVal(e.target.value)
                 if (e.target.value.replace(/[^\d]/g, '').length >= 5) {
                   api.phoneCheck(e.target.value).then(res => {
-                    if (res.found) {
-                      setSearchMessage({ type: 'success', text: t('frontdesk.found_owner', lang).replace('{owner}', res.owner) })
+                    if (res.status === 'taken' || res.status === 'own') {
+                      setSearchMessage({ type: 'success', text: t('frontdesk.found_owner', lang).replace('{owner}', res.owner || '') })
                       setTimeout(() => setSearchMessage(null), 3000)
                     } else {
                       setSearchMessage({ type: 'error', text: t('common.no_data', lang) })
@@ -455,7 +434,7 @@ export default function FrontdeskEntry() {
                         {entry.day2_status || t('day_status.pending', lang)}
                       </span>
                     </td>
-                    <td className="truncate" style={{ maxWidth: 200 }}>
+                    <td className="truncate max-w-200">
                       {entry.condition || entry.phone_remark || '-'}
                     </td>
                     <td>
