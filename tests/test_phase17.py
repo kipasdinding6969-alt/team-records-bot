@@ -357,10 +357,10 @@ class TestDashboardDuplicateCheck:
         resp = client.post('/api/clients', json={
             'phone': '601-0003', 'source': 'web'
         }, headers=_auth(token))
-        assert resp.status_code == 409
+        assert resp.status_code == 400
         detail = resp.json()['detail']
         assert detail['type'] == 'duplicate'
-        assert detail['owner'] == 'FrontdeskBob'
+        assert detail['message'] == 'Phone already registered. Contact admin to override.'
 
     def test_phone_check_available(self, client):
         token = _login(client, 'owner17')
@@ -472,6 +472,6 @@ class TestAutoPhoneRegistration:
         resp = client.post('/api/clients', json={
             'phone': '601-0003', 'source': 'web'
         }, headers=_auth(token))
-        assert resp.status_code == 409
+        assert resp.status_code == 400
         # The attempt should be logged (we check by looking at the registry log)
         # This is an audit concern — the log was written to phone_registry_log
