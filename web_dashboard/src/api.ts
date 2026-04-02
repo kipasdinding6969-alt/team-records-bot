@@ -298,6 +298,7 @@ export const api = {
   createClient: (data: {
     phone: string; source: string; account_id?: string; nickname?: string;
     platform?: string; phone_remark?: string; recruiter?: string; category?: string;
+    first_day_status?: string; second_day_status?: string; client_condition?: string;
   }) =>
     req<{ ok: boolean; client_id: number }>('/api/clients', {
       method: 'POST',
@@ -373,4 +374,198 @@ export const api = {
 
   // Phase 19: Gamification
   staffGamification: (staffId: number) => req<any>(`/api/gamification/${staffId}`),
+
+  // Phase 22: Frontdesk
+  frontdeskHistory: (staffId?: number, page = 1) =>
+    req<{ total: number; entries: any[] }>(`/api/frontdesk/history${staffId ? `?staff_id=${staffId}&page=${page}` : `?page=${page}`}`),
+  updateDayStatus: (clientId: number, day: 1 | 2, status: string) =>
+    req<{ ok: boolean }>(`/api/clients/${clientId}/day-status`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ day, status }) }),
+
+  // Phase 22: Granular Performance
+  performanceGranular: (date?: string, team?: string) => {
+    const p = new URLSearchParams()
+    if (date) p.set('date', date)
+    if (team) p.set('team', team)
+    return req<{ date: string; rows: any[] }>(`/api/performance/granular?${p}`)
+  },
+  upsertGranularPerf: (data: Record<string, any>) =>
+    req<{ ok: boolean }>('/api/performance/granular', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
+  blownAccounts: (date?: string, team?: string) => {
+    const p = new URLSearchParams()
+    if (date) p.set('date', date)
+    if (team) p.set('team', team)
+    return req<any[]>(`/api/performance/blown-accounts?${p}`)
+  },
+  addBlownAccount: (data: Record<string, any>) =>
+    req<{ ok: boolean }>('/api/performance/blown-accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
+
+  // Phase 22: Group Compare
+  groupCompare: (date?: string) => {
+    const p = new URLSearchParams()
+    if (date) p.set('date', date)
+    return req<{ date: string; groups: any[] }>(`/api/groups/compare?${p}`)
+  },
+
+  // Phase 22: Exams
+  getExams: () => req<any[]>('/api/exams'),
+  createExam: (data: { exam_name: string; start_date: string; end_date: string; team?: string }) =>
+    req<{ ok: boolean; id: number }>('/api/exams', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
+  examResults: (examId: number) => req<any>(`/api/exams/${examId}/results`),
+  closeExam: (examId: number) => req<{ ok: boolean }>(`/api/exams/${examId}/close`, { method: 'PUT' }),
+
+  // Phase 22: Maintainer Deposits
+  maintainerDeposits: (groupNumber?: string, team?: string) => {
+    const p = new URLSearchParams()
+    if (groupNumber) p.set('group_number', groupNumber)
+    if (team) p.set('team', team)
+    return req<any[]>(`/api/maintainer/deposits?${p}`)
+  },
+  createMaintainerDeposit: (data: Record<string, any>) =>
+    req<{ ok: boolean; id: number }>('/api/maintainer/deposits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
+
+  // Phase 22: Crypto & Financial
+  cryptoLedger: (from?: string, to?: string) => {
+    const p = new URLSearchParams()
+    if (from) p.set('from_date', from)
+    if (to) p.set('to_date', to)
+    return req<any[]>(`/api/cs/crypto-ledger?${p}`)
+  },
+  addCryptoTransaction: (data: Record<string, any>) =>
+    req<{ ok: boolean; id: number }>('/api/cs/crypto-ledger', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
+  dailyFinancial: (date?: string) =>
+    req<{ date: string; countries: any[] }>(`/api/cs/daily-financial${date ? `?date=${date}` : ''}`),
+  upsertDailyFinancial: (data: Record<string, any>) =>
+    req<{ ok: boolean }>('/api/cs/daily-financial', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
+
+  // Phase 24: Client Comments
+  clientComments: (clientId: number) =>
+    req<any[]>(`/api/clients/${clientId}/comments`),
+
+  addClientComment: (clientId: number, data: { content: string; parent_comment_id?: number }) =>
+    req<any>(`/api/clients/${clientId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateComment: (commentId: number, content: string) =>
+    req<any>(`/api/comments/${commentId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content }),
+    }),
+
+  deleteComment: (commentId: number) =>
+    req<any>(`/api/comments/${commentId}`, { method: 'DELETE' }),
+
+  // Phase 24: Audit Log
+  auditLog: (params: { entity_type?: string; entity_id?: number; user_id?: number; from?: string; to?: string; page?: number; per_page?: number }) => {
+    const p = new URLSearchParams()
+    if (params.entity_type) p.set('entity_type', params.entity_type)
+    if (params.entity_id) p.set('entity_id', String(params.entity_id))
+    if (params.user_id) p.set('user_id', String(params.user_id))
+    if (params.from) p.set('from', params.from)
+    if (params.to) p.set('to', params.to)
+    if (params.page) p.set('page', String(params.page))
+    if (params.per_page) p.set('per_page', String(params.per_page))
+    return req<any>(`/api/audit-log${p.toString() ? `?${p}` : ''}`)
+  },
+
+  // Phase 24: Phone Registry Enhanced
+  phoneRegistryDuplicates: (page = 1, per_page = 50) =>
+    req<any>(`/api/phone-registry/duplicates?page=${page}&per_page=${per_page}`),
+
+  phoneRegistryHistory: (phone: string) =>
+    req<any>(`/api/phone-registry/history/${encodeURIComponent(phone)}`),
+
+  phoneRegistryBulkCheck: (phones: string[]) =>
+    req<any>('/api/phone-registry/bulk-check', {
+      method: 'POST',
+      body: JSON.stringify({ phones }),
+    }),
+
+  phoneRegistryByStaff: (staffId: number, page = 1, per_page = 50) =>
+    req<any>(`/api/phone-registry/by-staff/${staffId}?page=${page}&per_page=${per_page}`),
+
+  // ─── Phase 26: Domain Model ────────────────────────────────────────────
+
+  // Pipeline
+  clientPipeline: (clientId: number) =>
+    req<any>(`/api/clients/${clientId}/pipeline`),
+
+  updatePipeline: (clientId: number, step: string, value?: string) =>
+    req<any>(`/api/clients/${clientId}/pipeline`, {
+      method: 'PUT',
+      body: JSON.stringify({ step, value }),
+    }),
+
+  // Role Assignments
+  clientRoles: (clientId: number) =>
+    req<any>(`/api/clients/${clientId}/roles`),
+
+  assignRole: (clientId: number, data: { staff_id: number; role_type: string }) =>
+    req<any>(`/api/clients/${clientId}/roles`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  recordHandoff: (clientId: number, maintainerStaffId: number) =>
+    req<any>(`/api/clients/${clientId}/handoff`, {
+      method: 'POST',
+      body: JSON.stringify({ maintainer_staff_id: maintainerStaffId }),
+    }),
+
+  // Knife Deposits
+  clientKnives: (clientId: number) =>
+    req<any>(`/api/clients/${clientId}/knives`),
+
+  addKnife: (clientId: number, data: { knife_number: number; amount: number; deposit_day?: number; platform?: string; notes?: string }) =>
+    req<any>(`/api/clients/${clientId}/knives`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  recordKill: (clientId: number, data: { kill_type: string; kill_knife?: number }) =>
+    req<any>(`/api/clients/${clientId}/kill`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  unkillClient: (clientId: number, reason: string) =>
+    req<any>(`/api/clients/${clientId}/unkill`, {
+      method: 'PUT',
+      body: JSON.stringify({ reason }),
+    }),
+
+  // Cross-Role Notes
+  clientRoleNotes: (clientId: number, role?: string) =>
+    req<any>(`/api/clients/${clientId}/role-notes${role ? `?role=${role}` : ''}`),
+
+  addRoleNote: (clientId: number, data: { from_role: string; content: string }) =>
+    req<any>(`/api/clients/${clientId}/role-notes`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Group Interactions
+  clientGroupInteractions: (clientId: number) =>
+    req<any>(`/api/clients/${clientId}/group-interactions`),
+
+  addGroupInteraction: (clientId: number, data: {
+    group_id?: string; actor_role: string; day_number?: number;
+    script_completed?: boolean; client_read_messages?: boolean;
+    client_replied?: boolean; client_pm_character?: boolean;
+    client_left_group?: boolean; notes?: string
+  }) =>
+    req<any>(`/api/clients/${clientId}/group-interactions`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Organization
+  orgTree: () => req<any>('/api/org/tree'),
+
+  createOrgUnit: (data: { name: string; unit_type: string; parent_id?: number; leader_staff_id?: number }) =>
+    req<any>('/api/org/units', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 }

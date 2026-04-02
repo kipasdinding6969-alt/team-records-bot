@@ -6,6 +6,7 @@ OWNER → ADMIN → MEMBER backed by dashboard_users table (bcrypt passwords).
 import bcrypt
 import csv
 import io
+import json
 import logging
 import os
 import secrets
@@ -13,10 +14,12 @@ from contextlib import asynccontextmanager as _acm
 from datetime import UTC, date, datetime, timedelta
 from typing import Optional
 
+import sqlite3
+
 import aiosqlite
 import jwt
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Body, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -66,6 +69,8 @@ CREATE TABLE IF NOT EXISTS dashboard_users (
 async def _connect_db():
     async with aiosqlite.connect(DB_PATH, timeout=15) as db:
         db.row_factory = aiosqlite.Row
+        await db.execute('PRAGMA foreign_keys = ON')
+        await db.execute('PRAGMA journal_mode = WAL')
         yield db
 
 
@@ -213,6 +218,37 @@ def _require_owner_or_admin(user: dict = Depends(get_current_user)) -> dict:
     if user['role'] not in ('owner', 'admin'):
         raise HTTPException(status_code=403, detail='Admin or owner access required')
     return user
+
+
+async def _check_section_permission(user: dict, command: str) -> bool:
+    """Check if user has permission for a specific section/command.
+
+    Owner always has all permissions. For admin/member, checks permission_overrides table.
+    If no override exists, permission defaults to True (allowed).
+    """
+    if user['role'] == 'owner':
+        return True
+    staff_id = user.get('staff_id')
+    if not staff_id:
+        return True  # No staff link = no overrides to check
+    async with _connect_db() as db:
+        cur = await db.execute(
+            'SELECT allowed FROM permission_overrides WHERE staff_id = ? AND command = ?',
+            (staff_id, command)
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return True  # No override = allowed by default
+        return bool(row['allowed'])
+
+
+async def _require_permission(user: dict, command: str):
+    """Raise 403 if user doesn't have permission for the given command."""
+    if not await _check_section_permission(user, command):
+        raise HTTPException(
+            status_code=403,
+            detail=f'Permission denied: {command}'
+        )
 
 
 # ─── Data scoping helpers ─────────────────────────────────────────────────────
@@ -541,6 +577,7 @@ async def reset_password(
 
 @app.get('/api/dashboard')
 async def get_dashboard(user: dict = Depends(get_current_user)):
+    await _require_permission(user, 'performance.view')
     today = date.today().isoformat()
     now_iso = datetime.now(UTC).isoformat()
     scope_conds, scope_params = _scope_clients(user)
@@ -936,6 +973,7 @@ async def list_clients(
     per_page: int = Query(default=50, le=200),
     user: dict = Depends(get_current_user),
 ):
+    await _require_permission(user, 'clients.view')
     conditions: list[str] = []
     params: list = []
 
@@ -975,6 +1013,7 @@ async def list_clients(
             f"""SELECT c.id, c.phone, c.status, c.source, c.total_deposited,
                        c.created_at, c.contacted_at, c.replied_at, c.registered_at,
                        c.training_at, c.first_order_at, c.next_followup,
+                       c.first_day_status, c.second_day_status,
                        s.display_name AS frontdesk_name, s.team
                 FROM clients c
                 LEFT JOIN staff s ON c.frontdesk_id = s.id
@@ -991,11 +1030,13 @@ async def list_clients(
 
 @app.get('/api/clients/{client_id}')
 async def get_client_detail(client_id: int, user: dict = Depends(get_current_user)):
+    await _require_permission(user, 'clients.view')
     async with _connect_db() as db:
         async with db.execute(
             """SELECT c.id, c.phone, c.status, c.source, c.total_deposited,
                       c.created_at, c.contacted_at, c.replied_at, c.registered_at,
                       c.training_at, c.first_order_at, c.next_followup,
+                      c.first_day_status, c.second_day_status,
                       s.display_name AS frontdesk_name, s.team, c.frontdesk_id,
                       s.team AS staff_team
                FROM clients c
@@ -1050,6 +1091,7 @@ async def export_clients(
     team: Optional[str] = None,
     user: dict = Depends(get_current_user),
 ):
+    await _require_permission(user, 'reports.export')
     conditions: list[str] = []
     params: list = []
     scope_conds, scope_params = _scope_clients(user)
@@ -1102,6 +1144,7 @@ async def export_report(
     period: str = Query(default='daily', pattern='^(daily|weekly|monthly)$'),
     user: dict = Depends(get_current_user),
 ):
+    await _require_permission(user, 'reports.export')
     today = date.today().isoformat()
 
     if user['role'] == 'owner':
@@ -1190,6 +1233,7 @@ async def phone_registry_lookup(
     user: dict = Depends(get_current_user),
 ):
     """Look up a phone number in the registry."""
+    await _require_permission(user, 'phone.lookup')
     normalized = _normalize_phone(phone)
     async with _connect_db() as db:
         async with db.execute(
@@ -1200,6 +1244,35 @@ async def phone_registry_lookup(
         ) as cur:
             row = await cur.fetchone()
         if not row:
+            # Fallback: check chat_export_phones
+            try:
+                async with db.execute(
+                    """SELECT phone, phone_normalized, submitter_name,
+                              submitter_tg_id, first_submitted_at, last_submitted_at,
+                              message_count, is_duplicate_flagged, staff_id
+                       FROM chat_export_phones
+                       WHERE phone_normalized = ?
+                       ORDER BY first_submitted_at ASC LIMIT 1""",
+                    (normalized,)
+                ) as cur:
+                    export_row = await cur.fetchone()
+                if export_row:
+                    er = row_to_dict(export_row)
+                    return {
+                        'found': True,
+                        'phone': er.get('phone', phone),
+                        'phone_normalized': er.get('phone_normalized', normalized),
+                        'submitter_name': er.get('submitter_name', 'Unknown'),
+                        'submitter_staff_id': er.get('staff_id'),
+                        'source': 'chat_export',
+                        'submitted_at': er.get('first_submitted_at'),
+                        'duplicate_flagged': bool(er.get('is_duplicate_flagged', 0)),
+                        'message_count': er.get('message_count', 1),
+                        'linked_clients': [],
+                        'log': [],
+                    }
+            except Exception:
+                pass
             return {'found': False, 'phone': phone}
 
         entry = row_to_dict(row)
@@ -1236,6 +1309,7 @@ async def phone_registry_search(
     user: dict = Depends(get_current_user),
 ):
     """Search phone registry by number or submitter."""
+    await _require_permission(user, 'phone.lookup')
     normalized = _normalize_phone(q)
     offset = (page - 1) * per_page
     async with _connect_db() as db:
@@ -1274,7 +1348,23 @@ async def phone_registry_stats(user: dict = Depends(get_current_user)):
             'SELECT source, COUNT(*) AS cnt FROM phone_registry GROUP BY source'
         ) as cur:
             by_source = {r['source']: r['cnt'] for r in await cur.fetchall()}
-    return {'total': total, 'total_registered': total, 'duplicates_blocked': duplicates, 'by_source': by_source}
+        # Include chat export stats
+        chat_export_total = 0
+        chat_export_flagged = 0
+        try:
+            async with db.execute('SELECT COUNT(DISTINCT phone_normalized) AS cnt FROM chat_export_phones') as cur:
+                chat_export_total = (await cur.fetchone())['cnt']
+            async with db.execute('SELECT COUNT(*) AS cnt FROM chat_export_phones WHERE is_duplicate_flagged = 1') as cur:
+                chat_export_flagged = (await cur.fetchone())['cnt']
+        except Exception:
+            pass
+    return {
+        'total': total, 'total_registered': total + chat_export_total,
+        'duplicates_blocked': duplicates + chat_export_flagged,
+        'by_source': by_source,
+        'chat_export_phones': chat_export_total,
+        'chat_export_duplicates': chat_export_flagged,
+    }
 
 
 @app.post('/api/phone-registry/override')
@@ -1308,10 +1398,41 @@ async def phone_registry_override(
              _json.dumps({'previous_owner': old_owner, 'new_owner': body.new_submitter}))
         )
         await db.commit()
+
+    # Phase 24: Audit log
+    await _audit(user, 'update', 'phone_registry', None,
+                 old_values={'submitter_name': old_owner, 'phone': normalized},
+                 new_values={'submitter_name': body.new_submitter, 'staff_id': body.new_staff_id})
+
     return {'ok': True}
 
 
 # ─── Phase 16: Client Links API ─────────────────────────────────────────────
+
+
+class GlobalClientLinkRequest(BaseModel):
+    client_id_a: int
+    client_id_b: int
+    link_type: str = 'related'
+    note: Optional[str] = None
+
+@app.post('/api/client-links')
+async def create_client_link_global(body: GlobalClientLinkRequest, user: dict = Depends(get_current_user)):
+    valid_types = ('related', 'same_person', 'referral', 'family')
+    if body.link_type not in valid_types:
+        raise HTTPException(status_code=400, detail=f'Invalid link_type. Valid: {valid_types}')
+
+    a, b = min(body.client_id_a, body.client_id_b), max(body.client_id_a, body.client_id_b)
+    async with _connect_db() as db:
+        try:
+            await db.execute(
+                'INSERT INTO client_links (client_id_a, client_id_b, link_type, note, created_by) VALUES (?, ?, ?, ?, ?)',
+                (a, b, body.link_type, body.note, user.get('user_id'))
+            )
+            await db.commit()
+        except Exception:
+            raise HTTPException(status_code=409, detail='Link already exists')
+    return {'ok': True}
 
 class ClientLinkRequest(BaseModel):
     linked_client_id: int
@@ -1516,6 +1637,15 @@ async def delete_permission_override(
 ):
     """Remove a permission override."""
     async with _connect_db() as db:
+        # RBAC: admin can only manage staff in their team
+        if user['role'] == 'admin':
+            async with db.execute('SELECT team FROM staff WHERE id = ?', (staff_id,)) as cur:
+                staff_row = await cur.fetchone()
+            if not staff_row:
+                raise HTTPException(status_code=404, detail='Staff not found')
+            if staff_row['team'] != user.get('team_scope'):
+                raise HTTPException(status_code=403, detail='Cannot manage permissions outside your team')
+
         cur = await db.execute(
             'DELETE FROM permission_overrides WHERE staff_id = ? AND command = ?',
             (staff_id, command)
@@ -1902,9 +2032,25 @@ async def update_staff(
         if not updates:
             raise HTTPException(status_code=400, detail='No fields to update')
 
+        old_values = {'team': staff['team'], 'role': staff['role']}
         params.append(staff_id)
         await db.execute(f"UPDATE staff SET {', '.join(updates)} WHERE id = ?", params)
         await db.commit()
+
+    # Phase 24: Audit log
+    new_vals = {}
+    if body.team is not None:
+        new_vals['team'] = body.team
+    if body.role is not None:
+        new_vals['role'] = body.role
+    if body.display_name is not None:
+        new_vals['display_name'] = body.display_name
+    if body.daily_target is not None:
+        new_vals['daily_target'] = body.daily_target
+    if body.is_active is not None:
+        new_vals['is_active'] = body.is_active
+    await _audit(user, 'update', 'staff', staff_id,
+                 old_values=old_values, new_values=new_vals)
 
     return {'ok': True}
 
@@ -2088,6 +2234,9 @@ class CreateClientRequest(BaseModel):
     phone_remark: Optional[str] = None
     recruiter: Optional[str] = None
     category: Optional[str] = None  # UK表单粉, CA表单粉, etc.
+    first_day_status: Optional[str] = 'pending'
+    second_day_status: Optional[str] = 'pending'
+    client_condition: Optional[str] = None
 
 
 @app.post('/api/clients')
@@ -2096,6 +2245,7 @@ async def create_client_via_dashboard(
     user: dict = Depends(get_current_user),
 ):
     """Create a client via dashboard with phone_registry duplicate guard."""
+    await _require_permission(user, 'clients.create')
     staff_id = user.get('staff_id')
     if not staff_id:
         # Owner without linked staff — try to find any admin staff
@@ -2110,6 +2260,8 @@ async def create_client_via_dashboard(
 
     import re
     phone_normalized = re.sub(r'[^\d]', '', body.phone)
+    if len(phone_normalized) < 7 or len(phone_normalized) > 15:
+        raise HTTPException(status_code=400, detail='Invalid phone number: must be 7-15 digits')
 
     async with _connect_db() as db:
         # Check clients table (same frontdesk)
@@ -2138,7 +2290,7 @@ async def create_client_via_dashboard(
                    (phone_normalized, action, actor_name, actor_staff_id, details)
                    VALUES (?, 'duplicate_blocked_dashboard', ?, ?, ?)""",
                 (phone_normalized, user['display_name'], staff_id,
-                 f'{{"original_submitter": "{registry["submitter_name"]}"}}')
+                 json.dumps({"original_submitter": registry["submitter_name"]}))
             )
             await db.commit()
             raise HTTPException(
@@ -2154,10 +2306,13 @@ async def create_client_via_dashboard(
         # Create the client
         cur = await db.execute(
             """INSERT INTO clients
-               (frontdesk_id, phone, source, account_id, nickname, platform, phone_remark, recruiter, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new')""",
+               (frontdesk_id, phone, source, account_id, nickname, platform, phone_remark, recruiter,
+                first_day_status, second_day_status, client_condition, category, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new')""",
             (staff_id, body.phone, body.source, body.account_id,
-             body.nickname, body.platform, body.phone_remark, body.recruiter)
+             body.nickname, body.platform, body.phone_remark, body.recruiter,
+             body.first_day_status or 'pending', body.second_day_status or 'pending',
+             body.client_condition, body.category)
         )
         client_id = cur.lastrowid
 
@@ -2182,6 +2337,18 @@ async def create_client_via_dashboard(
                 pass  # race condition, already registered
 
         await db.commit()
+
+    # Phase 24: Auto-recalculate daily stats for this staff member
+    try:
+        today = date.today().isoformat()
+        await _recalculate_staff_daily_stats(staff_id, today)
+    except Exception as e:
+        logger.warning(f'Auto-stats recalculate failed after client create: {e}')
+
+    # Phase 24: Audit log
+    await _audit(user, 'create', 'client', client_id,
+                 new_values={'phone': body.phone, 'source': body.source,
+                             'account_id': body.account_id, 'staff_id': staff_id})
 
     return {'ok': True, 'client_id': client_id}
 
@@ -2226,6 +2393,11 @@ async def set_bulk_permissions(
                 (body.staff_id, cmd_clean, allowed, granter_id, body.reason)
             )
         await db.commit()
+
+    # Phase 24: Audit log
+    await _audit(user, 'permission_change', 'permission', body.staff_id,
+                 new_values={'permissions': body.permissions, 'reason': body.reason})
+
     return {'ok': True, 'updated': len(body.permissions)}
 
 
@@ -2275,6 +2447,29 @@ async def check_phone_duplicate(
             result['client_status'] = client['status']
             result['client_owner'] = client['frontdesk_name']
             result['is_own_client'] = client['frontdesk_id'] == staff_id
+
+        # Check chat_export_phones (imported from Telegram duplicate group)
+        if result['status'] == 'available':
+            try:
+                async with db.execute(
+                    """SELECT submitter_name, submitter_tg_id, first_submitted_at,
+                              is_duplicate_flagged, staff_id AS export_staff_id
+                       FROM chat_export_phones
+                       WHERE phone_normalized = ?
+                       ORDER BY first_submitted_at ASC LIMIT 1""",
+                    (normalized,)
+                ) as cur:
+                    export_record = await cur.fetchone()
+                if export_record:
+                    export_is_own = export_record['export_staff_id'] == staff_id if export_record['export_staff_id'] else False
+                    result['status'] = 'own' if export_is_own else 'taken'
+                    result['owner'] = export_record['submitter_name'] or 'Unknown'
+                    result['submitted_at'] = export_record['first_submitted_at']
+                    result['source'] = 'chat_export'
+                    result['editable'] = export_is_own
+                    result['duplicate_flagged'] = bool(export_record['is_duplicate_flagged'])
+            except Exception:
+                pass  # chat_export_phones table may not exist yet
 
     return result
 
@@ -2669,9 +2864,1621 @@ async def get_staff_gamification(staff_id: int, user: dict = Depends(get_current
 
 # ─── Health ───────────────────────────────────────────────────────────────────
 
+# ─── Phase 20: Frontdesk Entry Stats ─────────────────────────────────────────
+
+@app.get('/api/frontdesk/my-stats')
+async def frontdesk_my_stats(user: dict = Depends(get_current_user)):
+    """Get current user's frontdesk submission stats."""
+    staff_id = user.get('staff_id')
+    today = date.today().isoformat()
+    result = {'today_entries': 0, 'total_entries': 0, 'recent': []}
+    async with _connect_db() as db:
+        if staff_id:
+            async with db.execute(
+                "SELECT COUNT(*) AS cnt FROM clients WHERE frontdesk_id = ? AND DATE(created_at) = ?",
+                (staff_id, today)
+            ) as cur:
+                result['today_entries'] = (await cur.fetchone())['cnt']
+            async with db.execute(
+                "SELECT COUNT(*) AS cnt FROM clients WHERE frontdesk_id = ?",
+                (staff_id,)
+            ) as cur:
+                result['total_entries'] = (await cur.fetchone())['cnt']
+            async with db.execute(
+                """SELECT id, phone, status, source, created_at
+                   FROM clients WHERE frontdesk_id = ?
+                   ORDER BY created_at DESC LIMIT 10""",
+                (staff_id,)
+            ) as cur:
+                result['recent'] = [row_to_dict(r) for r in await cur.fetchall()]
+    return result
+
+
+@app.get('/api/frontdesk/recent')
+async def frontdesk_recent(
+    limit: int = Query(20, ge=1, le=100),
+    user: dict = Depends(get_current_user),
+):
+    """Get recent frontdesk entries across all staff (for admins) or own (for members)."""
+    staff_id = user.get('staff_id')
+    role = user.get('role', 'member')
+    team_scope = user.get('team_scope')
+    async with _connect_db() as db:
+        if role == 'owner':
+            query = """SELECT c.id, c.phone, c.status, c.source, c.created_at,
+                              s.display_name AS frontdesk_name, s.team
+                       FROM clients c LEFT JOIN staff s ON c.frontdesk_id = s.id
+                       ORDER BY c.created_at DESC LIMIT ?"""
+            params = (limit,)
+        elif role == 'admin' and team_scope:
+            query = """SELECT c.id, c.phone, c.status, c.source, c.created_at,
+                              s.display_name AS frontdesk_name, s.team
+                       FROM clients c LEFT JOIN staff s ON c.frontdesk_id = s.id
+                       WHERE s.team = ?
+                       ORDER BY c.created_at DESC LIMIT ?"""
+            params = (team_scope, limit)
+        elif team_scope:
+            query = """SELECT c.id, c.phone, c.status, c.source, c.created_at,
+                              s.display_name AS frontdesk_name, s.team
+                       FROM clients c LEFT JOIN staff s ON c.frontdesk_id = s.id
+                       WHERE s.team = ?
+                       ORDER BY c.created_at DESC LIMIT ?"""
+            params = (team_scope, limit)
+        else:
+            query = """SELECT c.id, c.phone, c.status, c.source, c.created_at,
+                              s.display_name AS frontdesk_name, s.team
+                       FROM clients c LEFT JOIN staff s ON c.frontdesk_id = s.id
+                       WHERE c.frontdesk_id = ?
+                       ORDER BY c.created_at DESC LIMIT ?"""
+            params = (staff_id, limit)
+        async with db.execute(query, params) as cur:
+            rows = [row_to_dict(r) for r in await cur.fetchall()]
+    return rows
+
+
+# ─── Phase 20: Client Reassignment (Maintainer) ─────────────────────────────
+
+class ReassignRequest(BaseModel):
+    client_ids: list[int]
+    from_staff_id: int
+    to_staff_id: int
+    reason: str = ''
+
+
+@app.post('/api/maintainer/reassign')
+async def maintainer_reassign(
+    body: ReassignRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Bulk reassign clients from one staff to another."""
+    if user.get('role') not in ('owner', 'admin'):
+        raise HTTPException(403, 'Admin access required')
+    async with _connect_db() as db:
+        updated = 0
+        for cid in body.client_ids:
+            result = await db.execute(
+                "UPDATE clients SET frontdesk_id = ? WHERE id = ? AND frontdesk_id = ?",
+                (body.to_staff_id, cid, body.from_staff_id)
+            )
+            if result.rowcount > 0:
+                updated += 1
+                await db.execute(
+                    """INSERT INTO client_notes (client_id, staff_id, note_type, content, created_at)
+                       VALUES (?, ?, 'reassign', ?, datetime('now'))""",
+                    (cid, user.get('staff_id'), f"Reassigned from staff #{body.from_staff_id} to #{body.to_staff_id}. Reason: {body.reason}")
+                )
+        await db.commit()
+    return {'ok': True, 'reassigned': updated}
+
+
+@app.get('/api/maintainer/team-members')
+async def maintainer_team_members(
+    team: str = Query(None),
+    user: dict = Depends(get_current_user),
+):
+    """Get team members with client counts for maintainer view."""
+    role = user.get('role', 'member')
+    team_scope = user.get('team_scope')
+    target_team = team or team_scope
+    async with _connect_db() as db:
+        if role in ('owner', 'admin') and not target_team:
+            query = """SELECT s.id, s.display_name, s.role, s.team, s.daily_target, s.is_active,
+                              COUNT(c.id) AS client_count,
+                              SUM(CASE WHEN c.status = 'new' THEN 1 ELSE 0 END) AS new_count,
+                              SUM(CASE WHEN c.next_followup < datetime('now') THEN 1 ELSE 0 END) AS overdue_count
+                       FROM staff s LEFT JOIN clients c ON s.id = c.frontdesk_id
+                       GROUP BY s.id ORDER BY s.team, s.display_name"""
+            async with db.execute(query) as cur:
+                rows = [row_to_dict(r) for r in await cur.fetchall()]
+        else:
+            query = """SELECT s.id, s.display_name, s.role, s.team, s.daily_target, s.is_active,
+                              COUNT(c.id) AS client_count,
+                              SUM(CASE WHEN c.status = 'new' THEN 1 ELSE 0 END) AS new_count,
+                              SUM(CASE WHEN c.next_followup < datetime('now') THEN 1 ELSE 0 END) AS overdue_count
+                       FROM staff s LEFT JOIN clients c ON s.id = c.frontdesk_id
+                       WHERE s.team = ?
+                       GROUP BY s.id ORDER BY s.display_name"""
+            async with db.execute(query, (target_team,)) as cur:
+                rows = [row_to_dict(r) for r in await cur.fetchall()]
+    return rows
+
+
+# ─── Phase 20: Customer Service Quick Actions ────────────────────────────────
+
+@app.get('/api/cs/recent-interactions')
+async def cs_recent_interactions(
+    limit: int = Query(20, ge=1, le=100),
+    user: dict = Depends(get_current_user),
+):
+    """Get recent client interactions for CS view."""
+    async with _connect_db() as db:
+        async with db.execute(
+            """SELECT cn.id, cn.client_id, cn.note_type, cn.content, cn.created_at,
+                      c.phone, c.status, s.display_name AS staff_name
+               FROM client_notes cn
+               JOIN clients c ON cn.client_id = c.id
+               LEFT JOIN staff s ON cn.staff_id = s.id
+               ORDER BY cn.created_at DESC LIMIT ?""",
+            (limit,)
+        ) as cur:
+            rows = [row_to_dict(r) for r in await cur.fetchall()]
+    return rows
+
+
+@app.post('/api/cs/quick-note')
+async def cs_quick_note(
+    phone: str = Query(...),
+    content: str = Query(...),
+    user: dict = Depends(get_current_user),
+):
+    """Add a quick note to a client by phone number."""
+    import re
+    normalized = re.sub(r'[^\d]', '', phone)
+    async with _connect_db() as db:
+        async with db.execute(
+            "SELECT id FROM clients WHERE phone LIKE ? LIMIT 1",
+            (f'%{normalized[-8:]}%',)
+        ) as cur:
+            client = await cur.fetchone()
+        if not client:
+            raise HTTPException(404, 'Client not found for this phone number')
+        await db.execute(
+            """INSERT INTO client_notes (client_id, staff_id, note_type, content, created_at)
+               VALUES (?, ?, 'comment', ?, datetime('now'))""",
+            (client['id'], user.get('staff_id') or user.get('user_id'), content)
+        )
+        await db.commit()
+    return {'ok': True, 'client_id': client['id']}
+
+
+# ─── Phase 20: Permission Cascade (Hierarchy-Aware) ─────────────────────────
+
+ROLE_HIERARCHY = {'owner': 4, 'admin': 3, 'leader': 2, 'maintenance': 2, 'frontdesk': 1, 'customer_service': 1, 'member': 0, 'newbie': 0, 'viewer': 0}
+
+@app.get('/api/permissions/hierarchy')
+async def permissions_hierarchy(user: dict = Depends(get_current_user)):
+    """Get permissions organized by hierarchy for tree view."""
+    caller_role = user.get('role', 'member')
+    caller_level = ROLE_HIERARCHY.get(caller_role, 0)
+    async with _connect_db() as db:
+        async with db.execute(
+            """SELECT s.id, s.display_name, s.role, s.team, s.is_active
+               FROM staff s WHERE s.is_active = 1 ORDER BY s.team, s.role DESC, s.display_name"""
+        ) as cur:
+            all_staff = [row_to_dict(r) for r in await cur.fetchall()]
+        async with db.execute(
+            "SELECT staff_id, command, allowed, reason FROM permission_overrides"
+        ) as cur:
+            all_overrides = [row_to_dict(r) for r in await cur.fetchall()]
+
+    overrides_by_staff = {}
+    for ov in all_overrides:
+        sid = ov['staff_id']
+        if sid not in overrides_by_staff:
+            overrides_by_staff[sid] = []
+        overrides_by_staff[sid].append(ov)
+
+    result = []
+    for s in all_staff:
+        staff_level = ROLE_HIERARCHY.get(s['role'], 0)
+        result.append({
+            **s,
+            'overrides': overrides_by_staff.get(s['id'], []),
+            'editable': caller_level > staff_level,
+            'level': staff_level,
+        })
+    return result
+
+
 @app.get('/health')
 async def health():
     return {'status': 'ok', 'db': DB_PATH, 'service': 'dashboard', 'port': 8501}
+
+
+# ─── Feature 1: Frontdesk Entry Enhancement ──────────────────────────────────
+
+
+@app.get('/api/frontdesk/history')
+async def frontdesk_history(
+    staff_id: int = None, page: int = 1, per_page: int = 50,
+    user=Depends(get_current_user),
+):
+    """Get paginated entry history for a frontdesk user."""
+    role = user.get('role', 'member')
+    user_staff_id = user.get('staff_id')
+    team_scope = user.get('team_scope')
+    sid = staff_id or user_staff_id
+
+    # Scope check: members can only see their own data
+    if role == 'member' and sid != user_staff_id:
+        raise HTTPException(status_code=403, detail='You can only view your own history')
+
+    async with _connect_db() as db:
+        # Admin can only see staff within their team_scope
+        if role == 'admin' and sid != user_staff_id and team_scope:
+            check = await db.execute(
+                'SELECT id FROM staff WHERE id = ? AND team = ?', (sid, team_scope),
+            )
+            if not await check.fetchone():
+                raise HTTPException(status_code=403, detail='Staff not in your team scope')
+
+        offset = (page - 1) * per_page
+        count_row = await db.execute(
+            'SELECT COUNT(id) as cnt FROM clients WHERE frontdesk_id = ?', (sid,),
+        )
+        total = (await count_row.fetchone())[0]
+        cursor = await db.execute(
+            'SELECT id, phone, source as category, first_day_status, second_day_status, '
+            'client_condition, recruiter, status, created_at '
+            'FROM clients WHERE frontdesk_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+            (sid, per_page, offset),
+        )
+        rows = [dict(r) for r in await cursor.fetchall()]
+        return {'total': total, 'entries': rows}
+
+
+@app.put('/api/clients/{client_id}/day-status')
+async def update_day_status(
+    client_id: int, body: dict = Body(...), user=Depends(get_current_user),
+):
+    """Update first/second day status on a client. Auto-recalculates daily stats."""
+    async with _connect_db() as db:
+        day = body.get('day')  # 1 or 2
+        status = body.get('status')  # '注册', '不注册', 'pending'
+        col = 'first_day_status' if day == 1 else 'second_day_status'
+
+        # Fetch old value for audit
+        async with db.execute(
+            f'SELECT frontdesk_id, {col} AS old_val FROM clients WHERE id = ?', (client_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='Client not found')
+
+        old_val = row['old_val']
+        frontdesk_id = row['frontdesk_id']
+
+        await db.execute(
+            f"UPDATE clients SET {col} = ?, updated_at = datetime('now') WHERE id = ?",
+            (status, client_id),
+        )
+        await db.commit()
+
+    # Phase 24: Auto-recalculate daily stats for this staff member
+    try:
+        today = date.today().isoformat()
+        await _recalculate_staff_daily_stats(frontdesk_id, today)
+    except Exception as e:
+        logger.warning(f'Auto-stats recalculate failed after day-status update: {e}')
+
+    # Phase 24: Audit log
+    await _audit(user, 'update', 'client', client_id,
+                 old_values={col: old_val}, new_values={col: status})
+
+    return {'ok': True}
+
+
+# ─── Feature 2: Granular Performance ─────────────────────────────────────────
+
+
+@app.get('/api/performance/granular')
+async def performance_granular(
+    date: str = None, team: str = None, user=Depends(get_current_user),
+):
+    """Get per-person per-category granular performance data."""
+    async with _connect_db() as db:
+        d = date or datetime.now().strftime('%Y-%m-%d')
+        query = (
+            'SELECT dp.id, dp.staff_id, dp.stat_date, dp.category, dp.powder_count, '
+            'dp.no_reply_start, dp.reply_rate, dp.stuck_explanation, dp.blocked_playing, '
+            'dp.been_scammed, dp.sent_link_no_reply, dp.completed_registration, dp.audit_rate, '
+            'dp.completed_training, dp.scheduled_time, dp.withdrawal, dp.new_order, '
+            'dp.conversion_rate, dp.new_kill, dp.dead_client, dp.note, '
+            's.display_name, s.team '
+            'FROM daily_performance dp '
+            'JOIN staff s ON dp.staff_id = s.id '
+            'WHERE dp.stat_date = ?'
+        )
+        params: list = [d]
+        if team and team != 'all':
+            query += ' AND s.team = ?'
+            params.append(team)
+        query += ' ORDER BY s.team, s.display_name, dp.category'
+        cursor = await db.execute(query, params)
+        rows = [dict(r) for r in await cursor.fetchall()]
+        return {'date': d, 'rows': rows}
+
+
+@app.post('/api/performance/granular')
+async def upsert_granular_performance(
+    body: dict = Body(...), user=Depends(_require_owner_or_admin),
+):
+    """Insert or update a daily performance record."""
+    async with _connect_db() as db:
+        cols = [
+            'staff_id', 'stat_date', 'category', 'powder_count', 'no_reply_start',
+            'reply_rate', 'stuck_explanation', 'blocked_playing', 'been_scammed',
+            'sent_link_no_reply', 'completed_registration', 'audit_rate',
+            'completed_training', 'scheduled_time', 'withdrawal', 'new_order',
+            'conversion_rate', 'new_kill', 'dead_client', 'note',
+        ]
+        values = [
+            body.get(c, 0 if c not in ('staff_id', 'stat_date', 'category', 'note') else body.get(c))
+            for c in cols
+        ]
+        placeholders = ', '.join(['?'] * len(cols))
+        col_names = ', '.join(cols)
+        update_cols = ', '.join([
+            f'{c} = excluded.{c}' for c in cols
+            if c not in ('staff_id', 'stat_date', 'category')
+        ])
+        await db.execute(
+            f'INSERT INTO daily_performance ({col_names}) VALUES ({placeholders}) '
+            f"ON CONFLICT(staff_id, stat_date, category) DO UPDATE SET {update_cols}, updated_at = datetime('now')",
+            values,
+        )
+        await db.commit()
+        return {'ok': True}
+
+
+@app.get('/api/performance/blown-accounts')
+async def get_blown_accounts(
+    date: str = None, team: str = None, user=Depends(get_current_user),
+):
+    async with _connect_db() as db:
+        d = date or datetime.now().strftime('%Y-%m-%d')
+        query = (
+            'SELECT ba.id, ba.staff_id, ba.blown_date, ba.account_type, ba.phone_number, '
+            'ba.account_identifier, ba.reason, ba.category, ba.created_at, '
+            's.display_name, s.team '
+            'FROM blown_accounts ba '
+            'JOIN staff s ON ba.staff_id = s.id '
+            'WHERE ba.blown_date = ?'
+        )
+        params: list = [d]
+        if team and team != 'all':
+            query += ' AND s.team = ?'
+            params.append(team)
+        cursor = await db.execute(query, params)
+        return [dict(r) for r in await cursor.fetchall()]
+
+
+@app.post('/api/performance/blown-accounts')
+async def add_blown_account(
+    body: dict = Body(...), user=Depends(_require_owner_or_admin),
+):
+    async with _connect_db() as db:
+        await db.execute(
+            'INSERT INTO blown_accounts (staff_id, blown_date, account_type, phone_number, '
+            'account_identifier, reason, category) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            (
+                body['staff_id'],
+                body.get('blown_date', datetime.now().strftime('%Y-%m-%d')),
+                body.get('account_type', 'whatsapp'),
+                body.get('phone_number'),
+                body.get('account_identifier'),
+                body.get('reason'),
+                body.get('category'),
+            ),
+        )
+        await db.commit()
+        return {'ok': True}
+
+
+# ─── Feature 3: Group Comparison ─────────────────────────────────────────────
+
+
+@app.get('/api/groups/compare')
+async def group_compare(date: str = None, user=Depends(get_current_user)):
+    """Get all groups with daily + cumulative stats for comparison."""
+    async with _connect_db() as db:
+        d = date or datetime.now().strftime('%Y-%m-%d')
+        cursor = await db.execute(
+            'SELECT DISTINCT team FROM staff WHERE team IS NOT NULL AND is_active = 1',
+        )
+        teams = [r[0] for r in await cursor.fetchall()]
+
+        result = []
+        for team_name in teams:
+            # Today stats from daily_performance
+            cursor = await db.execute(
+                'SELECT dp.staff_id, s.display_name, dp.category, dp.powder_count, '
+                'dp.completed_registration, dp.completed_training, dp.withdrawal, '
+                'dp.new_order, dp.conversion_rate, dp.reply_rate '
+                'FROM daily_performance dp '
+                'JOIN staff s ON dp.staff_id = s.id '
+                'WHERE dp.stat_date = ? AND s.team = ? ORDER BY s.display_name',
+                (d, team_name),
+            )
+            today_rows = [dict(r) for r in await cursor.fetchall()]
+
+            # Cumulative stats (all time for this team)
+            cursor = await db.execute(
+                'SELECT dp.staff_id, s.display_name, '
+                'SUM(dp.powder_count) as powder_count, '
+                'SUM(dp.completed_registration) as completed_registration, '
+                'SUM(dp.completed_training) as completed_training, '
+                'SUM(dp.withdrawal) as withdrawal, '
+                'SUM(dp.new_order) as new_order, '
+                'CASE WHEN SUM(dp.powder_count) > 0 '
+                'THEN ROUND(CAST(SUM(dp.new_order) AS REAL) / SUM(dp.powder_count) * 100, 1) '
+                'ELSE 0 END as conversion_rate '
+                'FROM daily_performance dp '
+                'JOIN staff s ON dp.staff_id = s.id '
+                'WHERE s.team = ? GROUP BY dp.staff_id ORDER BY s.display_name',
+                (team_name,),
+            )
+            cumulative_rows = [dict(r) for r in await cursor.fetchall()]
+
+            # Get leader
+            cursor = await db.execute(
+                "SELECT display_name FROM staff WHERE team = ? AND role IN ('leader', 'maintenance') LIMIT 1",
+                (team_name,),
+            )
+            leader_row = await cursor.fetchone()
+
+            result.append({
+                'team': team_name,
+                'leader': leader_row[0] if leader_row else None,
+                'today': today_rows,
+                'cumulative': cumulative_rows,
+            })
+
+        return {'date': d, 'groups': result}
+
+
+# ─── Feature 4: Exam System ──────────────────────────────────────────────────
+
+
+@app.get('/api/exams')
+async def get_exams(user=Depends(get_current_user)):
+    async with _connect_db() as db:
+        cursor = await db.execute(
+            'SELECT id, exam_name, team, start_date, end_date, status, created_at '
+            'FROM exam_periods ORDER BY created_at DESC',
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+
+
+@app.post('/api/exams')
+async def create_exam(body: dict = Body(...), user=Depends(_require_owner_or_admin)):
+    async with _connect_db() as db:
+        cursor = await db.execute(
+            'INSERT INTO exam_periods (exam_name, team, start_date, end_date, created_by) '
+            'VALUES (?, ?, ?, ?, ?)',
+            (body['exam_name'], body.get('team'), body['start_date'], body['end_date'], user.get('staff_id')),
+        )
+        await db.commit()
+        return {'ok': True, 'id': cursor.lastrowid}
+
+
+@app.get('/api/exams/{exam_id}/results')
+async def exam_results(exam_id: int, user=Depends(get_current_user)):
+    async with _connect_db() as db:
+        cursor = await db.execute(
+            'SELECT id, exam_name, team, start_date, end_date, status '
+            'FROM exam_periods WHERE id = ?',
+            (exam_id,),
+        )
+        exam_row = await cursor.fetchone()
+        if not exam_row:
+            raise HTTPException(status_code=404, detail='Exam not found')
+        exam = dict(exam_row)
+
+        # Aggregate daily_performance for exam date range
+        query = (
+            'SELECT dp.staff_id, s.display_name, s.team, s.role, '
+            'SUM(dp.powder_count) as total_powder, '
+            'CASE WHEN SUM(dp.powder_count) > 0 '
+            'THEN ROUND(CAST(SUM(CASE WHEN dp.reply_rate > 0 '
+            'THEN dp.powder_count * dp.reply_rate / 100 ELSE 0 END) AS REAL) '
+            '/ SUM(dp.powder_count) * 100, 1) ELSE 0 END as avg_reply_rate, '
+            'SUM(dp.completed_registration) as total_registrations, '
+            'SUM(dp.completed_training) as total_training, '
+            'SUM(dp.withdrawal) as total_withdrawals, '
+            'SUM(dp.new_order) as total_new_orders, '
+            'CASE WHEN SUM(dp.powder_count) > 0 '
+            'THEN ROUND(CAST(SUM(dp.new_order) AS REAL) / SUM(dp.powder_count) * 100, 1) '
+            'ELSE 0 END as conversion_rate, '
+            'SUM(dp.new_kill) as total_new_kills '
+            'FROM daily_performance dp '
+            'JOIN staff s ON dp.staff_id = s.id '
+            'WHERE dp.stat_date BETWEEN ? AND ?'
+        )
+        params: list = [exam['start_date'], exam['end_date']]
+        if exam.get('team'):
+            query += ' AND s.team = ?'
+            params.append(exam['team'])
+        query += ' GROUP BY dp.staff_id ORDER BY total_new_orders DESC, total_powder DESC'
+
+        cursor = await db.execute(query, params)
+        rows = [dict(r) for r in await cursor.fetchall()]
+
+        return {'exam': exam, 'results': rows}
+
+
+@app.put('/api/exams/{exam_id}/close')
+async def close_exam(exam_id: int, user=Depends(_require_owner_or_admin)):
+    async with _connect_db() as db:
+        await db.execute(
+            "UPDATE exam_periods SET status = 'completed' WHERE id = ?", (exam_id,),
+        )
+        await db.commit()
+        return {'ok': True}
+
+
+# ─── Feature 5: Maintainer Deposits ──────────────────────────────────────────
+
+
+@app.get('/api/maintainer/deposits')
+async def maintainer_deposits(
+    group_number: str = None, team: str = None, user=Depends(get_current_user),
+):
+    async with _connect_db() as db:
+        query = (
+            'SELECT d.id, d.client_id, c.phone, d.amount, '
+            'd.pressure_amount, d.total_in, d.deposit_group_id, d.platform, d.deposit_date, '
+            'dg.group_number, dg.total_pressure, dg.total_collected, dg.cut_count '
+            'FROM deposits d '
+            'JOIN clients c ON d.client_id = c.id '
+            'LEFT JOIN deposit_groups dg ON d.deposit_group_id = dg.id '
+            'WHERE 1=1'
+        )
+        params: list = []
+        if group_number:
+            query += ' AND dg.group_number = ?'
+            params.append(group_number)
+        query += ' ORDER BY d.deposit_date DESC LIMIT 200'
+        cursor = await db.execute(query, params)
+        return [dict(r) for r in await cursor.fetchall()]
+
+
+@app.post('/api/maintainer/deposits')
+async def create_maintainer_deposit(
+    body: dict = Body(...), user=Depends(get_current_user),
+):
+    async with _connect_db() as db:
+        # Create or get deposit group
+        group_id = body.get('deposit_group_id')
+        if not group_id and body.get('group_number'):
+            cursor = await db.execute(
+                'INSERT INTO deposit_groups (client_id, group_number, total_pressure) '
+                'VALUES (?, ?, ?)',
+                (body['client_id'], body['group_number'], body.get('pressure_amount', 0)),
+            )
+            await db.commit()
+            group_id = cursor.lastrowid
+
+        staff_id = user.get('staff_id')
+        if not staff_id:
+            raise HTTPException(status_code=400, detail='No staff_id linked to your account')
+
+        cursor = await db.execute(
+            'INSERT INTO deposits (client_id, frontdesk_id, amount, currency, platform, '
+            'pressure_amount, total_in, deposit_group_id, '
+            'deposit_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (
+                body['client_id'], staff_id, body.get('amount', 0),
+                body.get('currency', 'USD'), body.get('platform'),
+                body.get('pressure_amount', 0), body.get('total_in', 0),
+                group_id,
+                body.get('deposit_date', datetime.now().strftime('%Y-%m-%d')),
+            ),
+        )
+        await db.commit()
+
+        # Update deposit group totals
+        if group_id:
+            await db.execute(
+                'UPDATE deposit_groups SET '
+                'total_collected = (SELECT COALESCE(SUM(amount), 0) FROM deposits WHERE deposit_group_id = ?), '
+                'cut_count = (SELECT COUNT(id) FROM deposits WHERE deposit_group_id = ?), '
+                "updated_at = datetime('now') WHERE id = ?",
+                (group_id, group_id, group_id),
+            )
+            await db.commit()
+
+        return {'ok': True, 'id': cursor.lastrowid}
+
+
+# ─── Feature 6: CS Financial ─────────────────────────────────────────────────
+
+
+@app.get('/api/cs/crypto-ledger')
+async def crypto_ledger(
+    from_date: str = None, to_date: str = None, user=Depends(get_current_user),
+):
+    async with _connect_db() as db:
+        query = (
+            'SELECT ct.id, ct.txn_type, ct.client_name, ct.client_number, ct.maintainer_id, '
+            'ct.country, ct.amount_usdt, ct.situation, ct.group_name, ct.txn_date, ct.created_at, '
+            's.display_name as maintainer_name '
+            'FROM crypto_transactions ct '
+            'LEFT JOIN staff s ON ct.maintainer_id = s.id '
+            'WHERE 1=1'
+        )
+        params: list = []
+        if from_date:
+            query += ' AND ct.txn_date >= ?'
+            params.append(from_date)
+        if to_date:
+            query += ' AND ct.txn_date <= ?'
+            params.append(to_date)
+        query += ' ORDER BY ct.txn_date DESC, ct.created_at DESC'
+        cursor = await db.execute(query, params)
+        return [dict(r) for r in await cursor.fetchall()]
+
+
+@app.post('/api/cs/crypto-ledger')
+async def add_crypto_transaction(
+    body: dict = Body(...), user=Depends(_require_owner_or_admin),
+):
+    async with _connect_db() as db:
+        cursor = await db.execute(
+            'INSERT INTO crypto_transactions (txn_type, client_name, client_number, '
+            'maintainer_id, country, amount_usdt, situation, group_name, txn_date, created_by) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (
+                body['txn_type'], body['client_name'], body.get('client_number'),
+                body.get('maintainer_id'), body.get('country'), body['amount_usdt'],
+                body.get('situation'), body.get('group_name'),
+                body.get('txn_date', datetime.now().strftime('%Y-%m-%d')),
+                user.get('staff_id'),
+            ),
+        )
+        await db.commit()
+        return {'ok': True, 'id': cursor.lastrowid}
+
+
+@app.get('/api/cs/daily-financial')
+async def daily_financial(date: str = None, user=Depends(get_current_user)):
+    async with _connect_db() as db:
+        d = date or datetime.now().strftime('%Y-%m-%d')
+        cursor = await db.execute(
+            'SELECT summary_date, country, new_orders, deposit_count, total_deposits, '
+            'avg_per_client, second_filter_in, second_filter_out, rcs_in, rcs_out '
+            'FROM daily_financial_summary WHERE summary_date = ? ORDER BY country',
+            (d,),
+        )
+        rows = [dict(r) for r in await cursor.fetchall()]
+
+        # Auto-calculate from deposits if no manual summary exists
+        if not rows:
+            country_map = {
+                '+47': 'Norway', '+46': 'Sweden', '+41': 'Switzerland', '+33': 'France',
+            }
+            cursor = await db.execute(
+                'SELECT c.phone, d.amount FROM deposits d '
+                'JOIN clients c ON d.client_id = c.id WHERE d.deposit_date = ?',
+                (d,),
+            )
+            deposit_rows = await cursor.fetchall()
+            country_data: dict = {}
+            for dr in deposit_rows:
+                phone = dr[0] or ''
+                country = 'Other'
+                for prefix, name in country_map.items():
+                    if phone.startswith(prefix) or phone.lstrip('+').startswith(prefix.lstrip('+')):
+                        country = name
+                        break
+                if country not in country_data:
+                    country_data[country] = {'new_orders': 0, 'deposit_count': 0, 'total_deposits': 0}
+                country_data[country]['deposit_count'] += 1
+                country_data[country]['total_deposits'] += dr[1] or 0
+
+            rows = [
+                {
+                    'summary_date': d, 'country': c,
+                    'new_orders': v['new_orders'], 'deposit_count': v['deposit_count'],
+                    'total_deposits': v['total_deposits'],
+                    'avg_per_client': round(v['total_deposits'] / max(v['deposit_count'], 1), 2),
+                }
+                for c, v in country_data.items()
+            ]
+
+        return {'date': d, 'countries': rows}
+
+
+@app.post('/api/cs/daily-financial')
+async def upsert_daily_financial(
+    body: dict = Body(...), user=Depends(_require_owner_or_admin),
+):
+    async with _connect_db() as db:
+        await db.execute(
+            'INSERT INTO daily_financial_summary (summary_date, country, new_orders, '
+            'deposit_count, total_deposits, avg_per_client, second_filter_in, second_filter_out, '
+            'rcs_in, rcs_out, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+            'ON CONFLICT(summary_date, country) DO UPDATE SET '
+            'new_orders=excluded.new_orders, deposit_count=excluded.deposit_count, '
+            'total_deposits=excluded.total_deposits, avg_per_client=excluded.avg_per_client, '
+            'second_filter_in=excluded.second_filter_in, second_filter_out=excluded.second_filter_out, '
+            'rcs_in=excluded.rcs_in, rcs_out=excluded.rcs_out',
+            (
+                body['summary_date'], body['country'], body.get('new_orders', 0),
+                body.get('deposit_count', 0), body.get('total_deposits', 0),
+                body.get('avg_per_client', 0), body.get('second_filter_in', 0),
+                body.get('second_filter_out', 0), body.get('rcs_in', 0),
+                body.get('rcs_out', 0), user.get('staff_id'),
+            ),
+        )
+        await db.commit()
+        return {'ok': True}
+
+
+# ─── Phase 24: Audit Log Helper ──────────────────────────────────────────────
+
+async def _audit(user: dict, action: str, entity_type: str,
+                 entity_id: Optional[int] = None,
+                 old_values: Optional[dict] = None,
+                 new_values: Optional[dict] = None,
+                 ip_address: Optional[str] = None):
+    """Write an audit log entry. Non-blocking — errors are logged, not raised."""
+    try:
+        async with _connect_db() as db:
+            await db.execute(
+                """INSERT INTO audit_log
+                   (user_id, username, action, entity_type, entity_id,
+                    old_values, new_values, ip_address)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (user.get('user_id', 0), user.get('username', 'unknown'),
+                 action, entity_type, entity_id,
+                 json.dumps(old_values) if old_values else None,
+                 json.dumps(new_values) if new_values else None,
+                 ip_address))
+            await db.commit()
+    except Exception as e:
+        logger.warning(f'audit_log write failed: {e}')
+
+
+# ─── Phase 24: Auto-Stats Recalculate Helper ────────────────────────────────
+
+async def _recalculate_staff_daily_stats(staff_id: int, stat_date: str):
+    """Recalculate daily_stats for a single staff member on a given date."""
+    async with _connect_db() as db:
+        counts = {}
+        for status_name in ['new', 'contacted', 'replied', 'registered', 'training',
+                            'withdrew', 'ordered', 'ghosted', 'blocked', 'dead']:
+            col_map = {
+                'new': 'created_at', 'contacted': 'contacted_at', 'replied': 'replied_at',
+                'registered': 'registered_at', 'training': 'training_at',
+                'withdrew': 'withdrew_at', 'ordered': 'first_order_at',
+            }
+            if status_name in ('ghosted', 'blocked', 'dead'):
+                async with db.execute(
+                    "SELECT COUNT(*) FROM clients WHERE frontdesk_id = ? AND status = ?",
+                    (staff_id, status_name)
+                ) as c:
+                    counts[status_name] = (await c.fetchone())[0]
+            else:
+                date_col = col_map.get(status_name, 'created_at')
+                async with db.execute(
+                    f"SELECT COUNT(*) FROM clients WHERE frontdesk_id = ? AND DATE({date_col}) = ?",
+                    (staff_id, stat_date)
+                ) as c:
+                    counts[status_name] = (await c.fetchone())[0]
+
+        async with db.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM deposits WHERE frontdesk_id = ? AND DATE(deposit_date) = ?",
+            (staff_id, stat_date)
+        ) as c:
+            total_dep = (await c.fetchone())[0]
+
+        nl = counts.get('new', 0)
+        rp = counts.get('replied', 0)
+        reg = counts.get('registered', 0)
+        no = counts.get('ordered', 0)
+        reply_rate = round(rp / max(nl, 1) * 100, 2)
+        conv_rate = round(no / max(reg, 1) * 100, 2)
+
+        await db.execute(
+            """INSERT INTO daily_stats
+               (staff_id, stat_date, new_leads, contacted, replied, registered,
+                training, withdrew, new_orders, ghosted, blocked, dead,
+                reply_rate, conversion_rate, total_deposit)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(staff_id, stat_date)
+               DO UPDATE SET new_leads=excluded.new_leads, contacted=excluded.contacted,
+                 replied=excluded.replied, registered=excluded.registered,
+                 training=excluded.training, withdrew=excluded.withdrew,
+                 new_orders=excluded.new_orders, ghosted=excluded.ghosted,
+                 blocked=excluded.blocked, dead=excluded.dead,
+                 reply_rate=excluded.reply_rate, conversion_rate=excluded.conversion_rate,
+                 total_deposit=excluded.total_deposit""",
+            (staff_id, stat_date, nl, counts.get('contacted', 0), rp, reg,
+             counts.get('training', 0), counts.get('withdrew', 0), no,
+             counts.get('ghosted', 0), counts.get('blocked', 0), counts.get('dead', 0),
+             reply_rate, conv_rate, total_dep)
+        )
+        await db.commit()
+
+
+# ─── Phase 24: Client Comments API ──────────────────────────────────────────
+
+
+class CreateCommentRequest(BaseModel):
+    content: str
+    parent_comment_id: Optional[int] = None
+
+
+class UpdateCommentRequest(BaseModel):
+    content: str
+
+
+@app.get('/api/clients/{client_id}/comments')
+async def get_client_comments(
+    client_id: int,
+    user: dict = Depends(get_current_user),
+):
+    """Get all comments for a client (threaded)."""
+    async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
+        async with db.execute(
+            'SELECT id FROM clients WHERE id = ?', (client_id,)
+        ) as cur:
+            if not await cur.fetchone():
+                raise HTTPException(status_code=404, detail='Client not found')
+
+        async with db.execute(
+            """SELECT id, client_id, staff_id, staff_name, content,
+                      parent_comment_id, is_system, is_deleted,
+                      created_at, updated_at
+               FROM client_comments
+               WHERE client_id = ? AND is_deleted = 0
+               ORDER BY created_at ASC LIMIT 100""",
+            (client_id,)
+        ) as cur:
+            return [row_to_dict(r) for r in await cur.fetchall()]
+
+
+@app.post('/api/clients/{client_id}/comments')
+async def create_client_comment(
+    client_id: int,
+    body: CreateCommentRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Add a comment to a client thread."""
+    if not body.content or not body.content.strip():
+        raise HTTPException(status_code=400, detail='Comment content cannot be empty')
+
+    async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
+        async with db.execute(
+            'SELECT id FROM clients WHERE id = ?', (client_id,)
+        ) as cur:
+            if not await cur.fetchone():
+                raise HTTPException(status_code=404, detail='Client not found')
+
+        # Validate parent exists if specified
+        if body.parent_comment_id is not None:
+            async with db.execute(
+                'SELECT id, client_id FROM client_comments WHERE id = ? AND is_deleted = 0',
+                (body.parent_comment_id,)
+            ) as cur:
+                parent = await cur.fetchone()
+            if not parent:
+                raise HTTPException(status_code=404, detail='Parent comment not found')
+            if parent['client_id'] != client_id:
+                raise HTTPException(status_code=400, detail='Parent comment belongs to a different client')
+
+        staff_id = user.get('staff_id') or 0
+        staff_name = user.get('display_name', user.get('username', 'Unknown'))
+
+        cur = await db.execute(
+            """INSERT INTO client_comments
+               (client_id, staff_id, staff_name, content, parent_comment_id, is_system)
+               VALUES (?, ?, ?, ?, ?, 0)""",
+            (client_id, staff_id, staff_name, body.content.strip(), body.parent_comment_id))
+        comment_id = cur.lastrowid
+        await db.commit()
+
+    await _audit(user, 'create', 'client_comment', comment_id,
+                 new_values={'client_id': client_id, 'content': body.content.strip()})
+
+    return {'ok': True, 'comment_id': comment_id}
+
+
+@app.put('/api/comments/{comment_id}')
+async def update_comment(
+    comment_id: int,
+    body: UpdateCommentRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Edit own comment."""
+    if not body.content or not body.content.strip():
+        raise HTTPException(status_code=400, detail='Comment content cannot be empty')
+
+    async with _connect_db() as db:
+        async with db.execute(
+            """SELECT id, client_id, staff_id, staff_name, content, is_deleted
+               FROM client_comments WHERE id = ?""",
+            (comment_id,)
+        ) as cur:
+            comment = await cur.fetchone()
+        if not comment:
+            raise HTTPException(status_code=404, detail='Comment not found')
+        if comment['is_deleted']:
+            raise HTTPException(status_code=410, detail='Comment has been deleted')
+
+        # Only the author or owner/admin can edit
+        comment_staff_id = comment['staff_id']
+        user_staff_id = user.get('staff_id')
+        if user['role'] not in ('owner', 'admin') and comment_staff_id != user_staff_id:
+            raise HTTPException(status_code=403, detail='Can only edit your own comments')
+
+        old_content = comment['content']
+        await db.execute(
+            """UPDATE client_comments
+               SET content = ?, updated_at = datetime('now')
+               WHERE id = ? AND is_deleted = 0""",
+            (body.content.strip(), comment_id))
+        await db.commit()
+
+    await _audit(user, 'update', 'client_comment', comment_id,
+                 old_values={'content': old_content},
+                 new_values={'content': body.content.strip()})
+
+    return {'ok': True}
+
+
+@app.delete('/api/comments/{comment_id}')
+async def delete_comment(
+    comment_id: int,
+    user: dict = Depends(get_current_user),
+):
+    """Soft-delete a comment. Author or admin/owner."""
+    async with _connect_db() as db:
+        async with db.execute(
+            """SELECT id, client_id, staff_id, content, is_deleted
+               FROM client_comments WHERE id = ?""",
+            (comment_id,)
+        ) as cur:
+            comment = await cur.fetchone()
+        if not comment:
+            raise HTTPException(status_code=404, detail='Comment not found')
+        if comment['is_deleted']:
+            raise HTTPException(status_code=410, detail='Comment already deleted')
+
+        comment_staff_id = comment['staff_id']
+        user_staff_id = user.get('staff_id')
+        if user['role'] not in ('owner', 'admin') and comment_staff_id != user_staff_id:
+            raise HTTPException(status_code=403, detail='Can only delete your own comments')
+
+        await db.execute(
+            """UPDATE client_comments
+               SET is_deleted = 1, updated_at = datetime('now')
+               WHERE id = ?""",
+            (comment_id,))
+        await db.commit()
+
+    await _audit(user, 'delete', 'client_comment', comment_id,
+                 old_values={'content': comment['content'], 'client_id': comment['client_id']})
+
+    return {'ok': True}
+
+
+# ─── Phase 24: Audit Log API ────────────────────────────────────────────────
+
+
+@app.get('/api/audit-log')
+async def get_audit_log(
+    entity_type: Optional[str] = Query(None),
+    entity_id: Optional[int] = Query(None),
+    user_id: Optional[int] = Query(None, alias='user_id'),
+    from_date: Optional[str] = Query(None, alias='from'),
+    to_date: Optional[str] = Query(None, alias='to'),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    user: dict = Depends(_require_owner_or_admin),
+):
+    """Query audit log. Owner/Admin only."""
+    conditions: list[str] = []
+    params: list = []
+    if entity_type:
+        conditions.append('entity_type = ?')
+        params.append(entity_type)
+    if entity_id is not None:
+        conditions.append('entity_id = ?')
+        params.append(entity_id)
+    if user_id is not None:
+        conditions.append('user_id = ?')
+        params.append(user_id)
+    if from_date:
+        conditions.append('created_at >= ?')
+        params.append(from_date)
+    if to_date:
+        conditions.append('created_at <= ?')
+        params.append(to_date)
+
+    where = ('WHERE ' + ' AND '.join(conditions)) if conditions else ''
+    offset = (page - 1) * per_page
+
+    async with _connect_db() as db:
+        async with db.execute(
+            f'SELECT COUNT(*) AS cnt FROM audit_log {where}', params
+        ) as cur:
+            total = (await cur.fetchone())['cnt']
+
+        async with db.execute(
+            f"""SELECT id, user_id, username, action, entity_type, entity_id,
+                       old_values, new_values, ip_address, created_at
+                FROM audit_log {where}
+                ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+            params + [per_page, offset]
+        ) as cur:
+            entries = [row_to_dict(r) for r in await cur.fetchall()]
+
+    return {'total': total, 'page': page, 'per_page': per_page, 'entries': entries}
+
+
+# ─── Phase 24: Phone Registry Enhanced ───────────────────────────────────────
+
+
+@app.get('/api/phone-registry/duplicates')
+async def phone_registry_duplicates(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    user: dict = Depends(get_current_user),
+):
+    """List all cross-user duplicate phone numbers."""
+    async with _connect_db() as db:
+        count_sql = """
+            SELECT COUNT(*) AS cnt FROM (
+                SELECT phone_normalized
+                FROM chat_export_phones
+                WHERE phone_normalized IS NOT NULL
+                GROUP BY phone_normalized
+                HAVING COUNT(DISTINCT submitter_tg_id) > 1
+            )
+        """
+        try:
+            async with db.execute(count_sql) as cur:
+                total = (await cur.fetchone())['cnt']
+        except Exception:
+            return {'total': 0, 'page': page, 'per_page': per_page, 'results': []}
+
+        offset = (page - 1) * per_page
+        async with db.execute(
+            """SELECT cep.phone_normalized, cep.phone,
+                      COUNT(DISTINCT cep.submitter_tg_id) AS submitter_count,
+                      GROUP_CONCAT(DISTINCT cep.submitter_name) AS submitters,
+                      MIN(cep.first_submitted_at) AS earliest,
+                      MAX(cep.last_submitted_at) AS latest
+               FROM chat_export_phones cep
+               WHERE cep.phone_normalized IS NOT NULL
+               GROUP BY cep.phone_normalized
+               HAVING COUNT(DISTINCT cep.submitter_tg_id) > 1
+               ORDER BY submitter_count DESC, earliest ASC
+               LIMIT ? OFFSET ?""",
+            (per_page, offset)
+        ) as cur:
+            results = [row_to_dict(r) for r in await cur.fetchall()]
+
+    return {'total': total, 'page': page, 'per_page': per_page, 'results': results}
+
+
+@app.get('/api/phone-registry/history/{phone}')
+async def phone_registry_history(
+    phone: str,
+    user: dict = Depends(get_current_user),
+):
+    """Full submission history for a phone number from all sources."""
+    normalized = _normalize_phone(phone)
+    entries: list[dict] = []
+    async with _connect_db() as db:
+        # phone_registry entries
+        async with db.execute(
+            """SELECT 'phone_registry' AS source_table, id, phone, phone_normalized,
+                      submitter_name, submitter_staff_id, source, submitted_at, created_at
+               FROM phone_registry WHERE phone_normalized = ?""",
+            (normalized,)
+        ) as cur:
+            entries.extend([row_to_dict(r) for r in await cur.fetchall()])
+
+        # chat_export_phones entries
+        try:
+            async with db.execute(
+                """SELECT 'chat_export' AS source_table, id, phone, phone_normalized,
+                          submitter_name, submitter_tg_id, staff_id AS submitter_staff_id,
+                          first_submitted_at AS submitted_at, message_count,
+                          is_duplicate_flagged, imported_at AS created_at
+                   FROM chat_export_phones WHERE phone_normalized = ?
+                   ORDER BY first_submitted_at ASC""",
+                (normalized,)
+            ) as cur:
+                entries.extend([row_to_dict(r) for r in await cur.fetchall()])
+        except Exception:
+            pass
+
+        # phone_registry_log entries
+        async with db.execute(
+            """SELECT 'registry_log' AS source_table, id, phone_normalized,
+                      action, actor_name, actor_staff_id, details, created_at
+               FROM phone_registry_log WHERE phone_normalized = ?
+               ORDER BY created_at ASC""",
+            (normalized,)
+        ) as cur:
+            entries.extend([row_to_dict(r) for r in await cur.fetchall()])
+
+    return {'phone': phone, 'normalized': normalized, 'entries': entries}
+
+
+class BulkCheckRequest(BaseModel):
+    phones: list[str]
+
+
+@app.post('/api/phone-registry/bulk-check')
+async def phone_registry_bulk_check(
+    body: BulkCheckRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Check multiple phone numbers at once."""
+    if len(body.phones) > 500:
+        raise HTTPException(status_code=400, detail='Maximum 500 phones per request')
+
+    results: list[dict] = []
+    async with _connect_db() as db:
+        for phone in body.phones:
+            normalized = _normalize_phone(phone)
+            if not normalized:
+                results.append({'phone': phone, 'normalized': '', 'found': False})
+                continue
+
+            async with db.execute(
+                """SELECT id, phone, submitter_name, submitter_staff_id, source, submitted_at
+                   FROM phone_registry WHERE phone_normalized = ?""",
+                (normalized,)
+            ) as cur:
+                row = await cur.fetchone()
+
+            if row:
+                d = row_to_dict(row)
+                d['phone_input'] = phone
+                d['normalized'] = normalized
+                d['found'] = True
+                d['source_table'] = 'phone_registry'
+                results.append(d)
+                continue
+
+            # Fallback: check chat_export_phones
+            try:
+                async with db.execute(
+                    """SELECT id, phone, submitter_name, submitter_tg_id, staff_id,
+                              first_submitted_at AS submitted_at, is_duplicate_flagged
+                       FROM chat_export_phones WHERE phone_normalized = ?
+                       ORDER BY first_submitted_at ASC LIMIT 1""",
+                    (normalized,)
+                ) as cur:
+                    erow = await cur.fetchone()
+                if erow:
+                    d = row_to_dict(erow)
+                    d['phone_input'] = phone
+                    d['normalized'] = normalized
+                    d['found'] = True
+                    d['source_table'] = 'chat_export'
+                    results.append(d)
+                    continue
+            except Exception:
+                pass
+
+            results.append({'phone': phone, 'phone_input': phone, 'normalized': normalized, 'found': False})
+
+    return {'total': len(results), 'found': sum(1 for r in results if r['found']), 'results': results}
+
+
+@app.get('/api/phone-registry/by-staff/{staff_id}')
+async def phone_registry_by_staff(
+    staff_id: int,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    user: dict = Depends(get_current_user),
+):
+    """All phone numbers submitted by a specific staff member."""
+    async with _connect_db() as db:
+        async with db.execute(
+            'SELECT COUNT(*) AS cnt FROM phone_registry WHERE submitter_staff_id = ?',
+            (staff_id,)
+        ) as cur:
+            total = (await cur.fetchone())['cnt']
+
+        offset = (page - 1) * per_page
+        async with db.execute(
+            """SELECT id, phone, phone_normalized, submitter_name,
+                      source, submitted_at, created_at
+               FROM phone_registry
+               WHERE submitter_staff_id = ?
+               ORDER BY submitted_at DESC LIMIT ? OFFSET ?""",
+            (staff_id, per_page, offset)
+        ) as cur:
+            results = [row_to_dict(r) for r in await cur.fetchall()]
+
+    return {'total': total, 'page': page, 'per_page': per_page, 'results': results}
+
+
+# ─── Phase 26: Client Pipeline ──────────────────────────────────────────────
+
+# Mapping of valid step names to their SQL for pipeline upsert (avoids f-string SQL injection)
+_PIPELINE_STEP_SQL = {
+    'contacted_at': 'INSERT INTO client_pipeline_status (client_id, contacted_at) VALUES (?, ?) ON CONFLICT(client_id) DO UPDATE SET contacted_at = ?, updated_at = CURRENT_TIMESTAMP',
+    'replied_at': 'INSERT INTO client_pipeline_status (client_id, replied_at) VALUES (?, ?) ON CONFLICT(client_id) DO UPDATE SET replied_at = ?, updated_at = CURRENT_TIMESTAMP',
+    'registered_at': 'INSERT INTO client_pipeline_status (client_id, registered_at) VALUES (?, ?) ON CONFLICT(client_id) DO UPDATE SET registered_at = ?, updated_at = CURRENT_TIMESTAMP',
+    'training_completed_at': 'INSERT INTO client_pipeline_status (client_id, training_completed_at) VALUES (?, ?) ON CONFLICT(client_id) DO UPDATE SET training_completed_at = ?, updated_at = CURRENT_TIMESTAMP',
+    'bonus_withdrew_at': 'INSERT INTO client_pipeline_status (client_id, bonus_withdrew_at) VALUES (?, ?) ON CONFLICT(client_id) DO UPDATE SET bonus_withdrew_at = ?, updated_at = CURRENT_TIMESTAMP',
+    'day1_complete': 'INSERT INTO client_pipeline_status (client_id, day1_complete) VALUES (?, ?) ON CONFLICT(client_id) DO UPDATE SET day1_complete = ?, updated_at = CURRENT_TIMESTAMP',
+    'day2_training_at': 'INSERT INTO client_pipeline_status (client_id, day2_training_at) VALUES (?, ?) ON CONFLICT(client_id) DO UPDATE SET day2_training_at = ?, updated_at = CURRENT_TIMESTAMP',
+    'own_tasks_started_at': 'INSERT INTO client_pipeline_status (client_id, own_tasks_started_at) VALUES (?, ?) ON CONFLICT(client_id) DO UPDATE SET own_tasks_started_at = ?, updated_at = CURRENT_TIMESTAMP',
+    'insufficient_funds_at': 'INSERT INTO client_pipeline_status (client_id, insufficient_funds_at) VALUES (?, ?) ON CONFLICT(client_id) DO UPDATE SET insufficient_funds_at = ?, updated_at = CURRENT_TIMESTAMP',
+}
+
+_VALID_ROLE_TYPES = ['frontdesk', 'maintainer', 'group_hype', 'newbie_actor', 'customer_service', 'opener_legacy', 'full_line']
+_VALID_KILL_TYPES = ['register_kill', 'new_order_kill', 'pressure_kill', 'salary_kill']
+_VALID_ACTOR_ROLES = ['newbie_actor', 'group_hype', 'passerby']
+_VALID_UNIT_TYPES = ['organization', 'branch', 'group', 'subgroup']
+
+class PipelineUpdateRequest(BaseModel):
+    step: str  # contacted, replied, registered, training_completed, bonus_withdrew, day1_complete, day2_training, own_tasks_started, insufficient_funds
+    value: Optional[str] = None  # timestamp or amount
+
+@app.get('/api/clients/{client_id}/pipeline')
+async def get_client_pipeline(client_id: int, user: dict = Depends(get_current_user)):
+    async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
+        cur = await db.execute(
+            'SELECT id, client_id, contacted_at, replied_at, registered_at, training_completed_at, bonus_withdrew_at, day1_complete, day2_training_at, own_tasks_started_at, insufficient_funds_at, new_order_amount, new_order_at, pressure_amount, pressure_at, kill_type, kill_knife, kill_at, is_unkilled, unkill_reason, total_deposited, updated_at FROM client_pipeline_status WHERE client_id = ?',
+            (client_id,)
+        )
+        row = await cur.fetchone()
+        if not row:
+            # Auto-create empty pipeline row
+            try:
+                await db.execute(
+                    'INSERT INTO client_pipeline_status (client_id) VALUES (?)',
+                    (client_id,)
+                )
+                await db.commit()
+            except sqlite3.IntegrityError:
+                pass  # race condition — row was created between SELECT and INSERT
+            cur = await db.execute(
+                'SELECT id, client_id, contacted_at, replied_at, registered_at, training_completed_at, bonus_withdrew_at, day1_complete, day2_training_at, own_tasks_started_at, insufficient_funds_at, new_order_amount, new_order_at, pressure_amount, pressure_at, kill_type, kill_knife, kill_at, is_unkilled, unkill_reason, total_deposited, updated_at FROM client_pipeline_status WHERE client_id = ?',
+                (client_id,)
+            )
+            row = await cur.fetchone()
+        return row_to_dict(row)
+
+@app.put('/api/clients/{client_id}/pipeline')
+async def update_client_pipeline(client_id: int, body: PipelineUpdateRequest, user: dict = Depends(get_current_user)):
+    sql = _PIPELINE_STEP_SQL.get(body.step)
+    if not sql:
+        raise HTTPException(400, f'Invalid step: {body.step}. Must be one of: {list(_PIPELINE_STEP_SQL.keys())}')
+    val = body.value or datetime.now(UTC).isoformat()
+    if body.step == 'day1_complete':
+        val = '1'
+    async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
+        try:
+            await db.execute(sql, (client_id, val, val))
+            await db.commit()
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(409, f'Conflict: {e}')
+    return {'ok': True}
+
+
+# ─── Phase 26: Role Assignments ─────────────────────────────────────────────
+
+class RoleAssignRequest(BaseModel):
+    staff_id: int
+    role_type: str  # frontdesk, maintainer, group_hype, newbie_actor, customer_service, opener_legacy, full_line
+
+@app.get('/api/clients/{client_id}/roles')
+async def get_client_roles(client_id: int, user: dict = Depends(get_current_user)):
+    async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
+        cur = await db.execute(
+            '''SELECT cra.id, cra.client_id, cra.staff_id, cra.role_type, cra.assigned_at, cra.ended_at, cra.handoff_reason, cra.is_active, s.display_name AS staff_name
+               FROM client_role_assignments cra
+               LEFT JOIN staff s ON cra.staff_id = s.id
+               WHERE cra.client_id = ?
+               ORDER BY cra.assigned_at''',
+            (client_id,)
+        )
+        return [row_to_dict(r) for r in await cur.fetchall()]
+
+@app.post('/api/clients/{client_id}/roles', status_code=201)
+async def assign_client_role(client_id: int, body: RoleAssignRequest, user: dict = Depends(_require_owner_or_admin)):
+    if body.role_type not in _VALID_ROLE_TYPES:
+        raise HTTPException(400, f'Invalid role_type. Must be one of: {_VALID_ROLE_TYPES}')
+    async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
+        try:
+            await db.execute(
+                'INSERT INTO client_role_assignments (client_id, staff_id, role_type) VALUES (?, ?, ?)',
+                (client_id, body.staff_id, body.role_type)
+            )
+            await db.commit()
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(409, f'Conflict: {e}')
+    return {'ok': True}
+
+@app.post('/api/clients/{client_id}/handoff')
+async def record_handoff(client_id: int, body: dict = Body(...), user: dict = Depends(get_current_user)):
+    """Record frontdesk->maintainer handoff at insufficient funds."""
+    maintainer_id = body.get('maintainer_staff_id')
+    if not maintainer_id:
+        raise HTTPException(400, 'maintainer_staff_id required')
+    async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
+        try:
+            # End frontdesk assignment
+            await db.execute(
+                "UPDATE client_role_assignments SET is_active = 0, ended_at = CURRENT_TIMESTAMP, handoff_reason = 'insufficient_funds' WHERE client_id = ? AND role_type = 'frontdesk' AND is_active = 1",
+                (client_id,)
+            )
+            # Create maintainer assignment
+            await db.execute(
+                "INSERT INTO client_role_assignments (client_id, staff_id, role_type) VALUES (?, ?, 'maintainer')",
+                (client_id, maintainer_id)
+            )
+            # Update pipeline
+            await db.execute(
+                'INSERT INTO client_pipeline_status (client_id, insufficient_funds_at) VALUES (?, CURRENT_TIMESTAMP) ON CONFLICT(client_id) DO UPDATE SET insufficient_funds_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP',
+                (client_id,)
+            )
+            await db.commit()
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(409, f'Conflict: {e}')
+    return {'ok': True}
+
+
+# ─── Phase 26: Knife Deposits ───────────────────────────────────────────────
+
+class KnifeDepositRequest(BaseModel):
+    knife_number: int
+    amount: float
+    deposit_day: Optional[int] = None
+    platform: Optional[str] = None
+    notes: Optional[str] = None
+
+@app.get('/api/clients/{client_id}/knives')
+async def get_knife_deposits(client_id: int, user: dict = Depends(get_current_user)):
+    async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
+        cur = await db.execute(
+            'SELECT id, client_id, knife_number, amount, deposit_day, platform, maintainer_id, notes, created_at FROM knife_deposits WHERE client_id = ? ORDER BY knife_number',
+            (client_id,)
+        )
+        return [row_to_dict(r) for r in await cur.fetchall()]
+
+@app.post('/api/clients/{client_id}/knives', status_code=201)
+async def add_knife_deposit(client_id: int, body: KnifeDepositRequest, user: dict = Depends(get_current_user)):
+    if body.knife_number < 1:
+        raise HTTPException(400, 'knife_number must be >= 1')
+    if body.amount <= 0:
+        raise HTTPException(400, 'amount must be > 0')
+    staff_id = user.get('staff_id')
+    async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
+        try:
+            await db.execute(
+                'INSERT INTO knife_deposits (client_id, knife_number, amount, deposit_day, platform, maintainer_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                (client_id, body.knife_number, body.amount, body.deposit_day, body.platform, staff_id, body.notes)
+            )
+            # Update total_deposited in pipeline (SUM recalculates, no need for body.amount param)
+            await db.execute(
+                'INSERT INTO client_pipeline_status (client_id, total_deposited) VALUES (?, 0) ON CONFLICT(client_id) DO UPDATE SET total_deposited = (SELECT COALESCE(SUM(amount), 0) FROM knife_deposits WHERE client_id = ?), updated_at = CURRENT_TIMESTAMP',
+                (client_id, client_id)
+            )
+            await db.commit()
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(409, f'Conflict: {e}')
+    return {'ok': True}
+
+class KillRequest(BaseModel):
+    kill_type: str  # register_kill, new_order_kill, pressure_kill, salary_kill
+    kill_knife: Optional[int] = None
+
+@app.put('/api/clients/{client_id}/kill')
+async def record_kill(client_id: int, body: KillRequest, user: dict = Depends(_require_owner_or_admin)):
+    if body.kill_type not in _VALID_KILL_TYPES:
+        raise HTTPException(400, f'Invalid kill_type. Must be one of: {_VALID_KILL_TYPES}')
+    async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
+        try:
+            await db.execute(
+                'INSERT INTO client_pipeline_status (client_id, kill_type, kill_knife, kill_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(client_id) DO UPDATE SET kill_type = ?, kill_knife = ?, kill_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP',
+                (client_id, body.kill_type, body.kill_knife, body.kill_type, body.kill_knife)
+            )
+            await db.commit()
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(409, f'Conflict: {e}')
+    return {'ok': True}
+
+@app.put('/api/clients/{client_id}/unkill')
+async def unkill_client(client_id: int, body: dict = Body(...), user: dict = Depends(_require_owner_or_admin)):
+    reason = body.get('reason', '')
+    async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
+        # Check current knife - only allow unkill at knife 1 or 2
+        cur = await db.execute(
+            'SELECT kill_knife FROM client_pipeline_status WHERE client_id = ?', (client_id,)
+        )
+        row = await cur.fetchone()
+        if row and row['kill_knife'] and row['kill_knife'] > 2:
+            raise HTTPException(400, 'Cannot unkill after knife 2. Only knife 1 and knife 2 are reversible.')
+        try:
+            await db.execute(
+                'UPDATE client_pipeline_status SET kill_type = NULL, kill_knife = NULL, kill_at = NULL, is_unkilled = 1, unkill_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE client_id = ?',
+                (reason, client_id)
+            )
+            await db.commit()
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(409, f'Conflict: {e}')
+    return {'ok': True}
+
+
+# ─── Phase 26: Cross-Role Notes ─────────────────────────────────────────────
+
+class CrossRoleNoteRequest(BaseModel):
+    from_role: str
+    content: str
+
+@app.get('/api/clients/{client_id}/role-notes')
+async def get_cross_role_notes(client_id: int, role: Optional[str] = None, user: dict = Depends(get_current_user)):
+    async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
+        if role:
+            cur = await db.execute(
+                'SELECT id, client_id, from_role, from_staff_id, content, created_at FROM cross_role_notes WHERE client_id = ? AND from_role = ? ORDER BY created_at DESC',
+                (client_id, role)
+            )
+        else:
+            cur = await db.execute(
+                'SELECT id, client_id, from_role, from_staff_id, content, created_at FROM cross_role_notes WHERE client_id = ? ORDER BY created_at DESC',
+                (client_id,)
+            )
+        return [row_to_dict(r) for r in await cur.fetchall()]
+
+@app.post('/api/clients/{client_id}/role-notes', status_code=201)
+async def add_cross_role_note(client_id: int, body: CrossRoleNoteRequest, user: dict = Depends(get_current_user)):
+    if body.from_role not in _VALID_ROLE_TYPES:
+        raise HTTPException(400, f'Invalid from_role. Must be one of: {_VALID_ROLE_TYPES}')
+    if not body.content or not body.content.strip():
+        raise HTTPException(400, 'content must not be empty')
+    staff_id = user.get('staff_id')
+    async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
+        try:
+            await db.execute(
+                'INSERT INTO cross_role_notes (client_id, from_role, from_staff_id, content) VALUES (?, ?, ?, ?)',
+                (client_id, body.from_role, staff_id, body.content)
+            )
+            await db.commit()
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(409, f'Conflict: {e}')
+    return {'ok': True}
+
+
+# ─── Phase 26: Group Interactions ────────────────────────────────────────────
+
+class GroupInteractionRequest(BaseModel):
+    group_id: Optional[str] = None
+    actor_role: str  # newbie_actor, group_hype, passerby
+    day_number: Optional[int] = None
+    script_completed: Optional[bool] = False
+    client_read_messages: Optional[bool] = False
+    client_replied: Optional[bool] = False
+    client_pm_character: Optional[bool] = False
+    client_left_group: Optional[bool] = False
+    notes: Optional[str] = None
+
+@app.get('/api/clients/{client_id}/group-interactions')
+async def get_group_interactions(client_id: int, user: dict = Depends(get_current_user)):
+    async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
+        cur = await db.execute(
+            '''SELECT gi.id, gi.client_id, gi.group_id, gi.actor_staff_id, gi.actor_role, gi.day_number,
+                      gi.script_completed, gi.client_read_messages, gi.client_replied,
+                      gi.client_pm_character, gi.client_left_group, gi.notes, gi.created_at,
+                      s.display_name AS actor_name
+               FROM group_interactions gi
+               LEFT JOIN staff s ON gi.actor_staff_id = s.id
+               WHERE gi.client_id = ?
+               ORDER BY gi.day_number, gi.created_at''',
+            (client_id,)
+        )
+        return [row_to_dict(r) for r in await cur.fetchall()]
+
+@app.post('/api/clients/{client_id}/group-interactions', status_code=201)
+async def add_group_interaction(client_id: int, body: GroupInteractionRequest, user: dict = Depends(get_current_user)):
+    if body.actor_role not in _VALID_ACTOR_ROLES:
+        raise HTTPException(400, f'Invalid actor_role. Must be one of: {_VALID_ACTOR_ROLES}')
+    staff_id = user.get('staff_id')
+    async with _connect_db() as db:
+        await _check_client_access(client_id, user, db)
+        try:
+            await db.execute(
+                '''INSERT INTO group_interactions
+                   (client_id, group_id, actor_staff_id, actor_role, day_number,
+                    script_completed, client_read_messages, client_replied,
+                    client_pm_character, client_left_group, notes)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (client_id, body.group_id, staff_id, body.actor_role, body.day_number,
+                 int(body.script_completed or 0), int(body.client_read_messages or 0),
+                 int(body.client_replied or 0), int(body.client_pm_character or 0),
+                 int(body.client_left_group or 0), body.notes)
+            )
+            await db.commit()
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(409, f'Conflict: {e}')
+    return {'ok': True}
+
+
+# ─── Phase 26: Organization Units ───────────────────────────────────────────
+
+class OrgUnitRequest(BaseModel):
+    name: str
+    unit_type: str  # organization, branch, group, subgroup
+    parent_id: Optional[int] = None
+    leader_staff_id: Optional[int] = None
+
+@app.get('/api/org/tree')
+async def get_org_tree(user: dict = Depends(get_current_user)):
+    async with _connect_db() as db:
+        cur = await db.execute(
+            '''SELECT ou.id, ou.name, ou.unit_type, ou.parent_id, ou.leader_staff_id, ou.is_active,
+                      s.display_name AS leader_name
+               FROM organization_units ou
+               LEFT JOIN staff s ON ou.leader_staff_id = s.id
+               WHERE ou.is_active = 1
+               ORDER BY ou.unit_type, ou.name'''
+        )
+        units = [row_to_dict(r) for r in await cur.fetchall()]
+
+        # Build tree
+        by_id = {u['id']: {**u, 'children': []} for u in units}
+        roots = []
+        for u in units:
+            node = by_id[u['id']]
+            if u['parent_id'] and u['parent_id'] in by_id:
+                by_id[u['parent_id']]['children'].append(node)
+            else:
+                roots.append(node)
+        return roots
+
+@app.post('/api/org/units', status_code=201)
+async def create_org_unit(body: OrgUnitRequest, user: dict = Depends(_require_owner_or_admin)):
+    if body.unit_type not in _VALID_UNIT_TYPES:
+        raise HTTPException(400, f'Invalid unit_type. Must be one of: {_VALID_UNIT_TYPES}')
+    if not body.name or not body.name.strip():
+        raise HTTPException(400, 'name must not be empty')
+    async with _connect_db() as db:
+        try:
+            cur = await db.execute(
+                'INSERT INTO organization_units (name, unit_type, parent_id, leader_staff_id) VALUES (?, ?, ?, ?)',
+                (body.name, body.unit_type, body.parent_id, body.leader_staff_id)
+            )
+            await db.commit()
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(409, f'Conflict: {e}')
+        return {'ok': True, 'id': cur.lastrowid}
 
 
 # ─── Serve built React app ────────────────────────────────────────────────────

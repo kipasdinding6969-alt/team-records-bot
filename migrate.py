@@ -277,3 +277,51 @@ async def migrate():
 
 if __name__ == '__main__':
     asyncio.run(migrate())
+
+
+async def migrate_phase20(db):
+    """Phase 20: chat_export_phones, client_links, client_comments tables."""
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS chat_export_phones (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone TEXT NOT NULL,
+            submitter_name TEXT,
+            submitter_tg_id INTEGER,
+            submitted_at TEXT NOT NULL,
+            source_message_id INTEGER,
+            imported_at TEXT NOT NULL DEFAULT (datetime('now')),
+            matched_staff_id INTEGER,
+            UNIQUE(phone, source_message_id)
+        )
+    """)
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_cep_phone ON chat_export_phones(phone)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_cep_submitter ON chat_export_phones(submitter_tg_id)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_cep_submitted_at ON chat_export_phones(submitted_at)")
+
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS client_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_a_id INTEGER NOT NULL,
+            client_b_id INTEGER NOT NULL,
+            link_type TEXT NOT NULL CHECK(link_type IN ('same_person','referral','family','related','conflict')),
+            created_by INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            note TEXT,
+            UNIQUE(client_a_id, client_b_id, link_type)
+        )
+    """)
+
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS client_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id INTEGER NOT NULL,
+            parent_comment_id INTEGER,
+            author_id INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT
+        )
+    """)
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_cc_client ON client_comments(client_id)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_cc_parent ON client_comments(parent_comment_id)")
+    await db.commit()

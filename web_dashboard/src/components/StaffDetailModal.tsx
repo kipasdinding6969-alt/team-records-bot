@@ -20,6 +20,14 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<any>({});
   const [saving, setSaving] = useState(false);
+  const [gamification, setGamification] = useState<any>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [onClose])
 
   useEffect(() => {
     api.allStaff()
@@ -37,6 +45,10 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
       })
       .catch(console.error)
       .finally(() => setLoading(false));
+
+    api.staffGamification(staffId)
+      .then(setGamification)
+      .catch(console.error);
   }, [staffId]);
 
   if (!staff && !loading) {
@@ -59,7 +71,8 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
       setStaff(all.find((s: any) => s.id === staffId));
     } catch (e) {
       console.error(e);
-      alert('Failed to update staff');
+      setError(t('common.update_failed', lang as any));
+      setTimeout(() => setError(''), 3000);
     } finally {
       setSaving(false);
     }
@@ -73,15 +86,21 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
     }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{
-        background: theme.cardBg, borderRadius: 16, padding: 24, width: 500, maxWidth: '90vw',
+        background: theme.cardBg, borderRadius: theme.radiusCard, padding: theme.paddingCard, width: 500, maxWidth: '90vw',
+        maxHeight: '90vh', overflowY: 'auto',
         boxShadow: theme.shadow, border: `1px solid ${theme.cardBorder}`
       }}>
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: theme.textSecondary }}>{t('common.loading', lang)}...</div>
+          <div style={{ padding: 40, textAlign: 'center', color: theme.textSecondary }}>{t('common.loading', lang as any)}...</div>
         ) : (
           <>
+            {error && (
+              <div className="alert alert-error" style={{ marginBottom: 16 }}>
+                {error}
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{
                   width: 48, height: 48, borderRadius: '50%', background: theme.accent, color: '#fff',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 700
@@ -92,7 +111,7 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
                   <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: theme.textPrimary }}>{staff.display_name}</h2>
                   <div style={{ fontSize: 13, color: theme.textSecondary, marginTop: 4 }}>
                     <span style={{
-                      background: theme.activeNav, padding: '2px 8px', borderRadius: 10,
+                      background: theme.activeNav, padding: '2px 8px', borderRadius: theme.radiusCard,
                       color: theme.accent, fontWeight: 600, fontSize: 11, textTransform: 'uppercase'
                     }}>{staff.role}</span>
                     <span style={{ marginLeft: 8 }}>{staff.team || t('org.unassigned', lang)}</span>
@@ -103,81 +122,122 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
             </div>
 
             {!isEditing ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div style={{ background: theme.bg, padding: 12, borderRadius: 8, border: `1px solid ${theme.cardBorder}` }}>
-                    <div style={{ fontSize: 11, color: theme.textSecondary, textTransform: 'uppercase' }}>{t('org.daily_target', lang)}</div>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: theme.textPrimary, marginTop: 4 }}>{staff.daily_target}</div>
+                  <div className="metric-card" style={{ padding: 12 }}>
+                    <div className="metric-label">{t('org.daily_target', lang)}</div>
+                    <div className="metric-value" style={{ fontSize: 16, color: theme.textPrimary }}>{staff.daily_target}</div>
                   </div>
-                  <div style={{ background: theme.bg, padding: 12, borderRadius: 8, border: `1px solid ${theme.cardBorder}` }}>
-                    <div style={{ fontSize: 11, color: theme.textSecondary, textTransform: 'uppercase' }}>Phone</div>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: theme.textPrimary, marginTop: 4 }}>{staff.phone || '—'}</div>
+                  <div className="metric-card" style={{ padding: 12 }}>
+                    <div className="metric-label">{t('staff.phone', lang)}</div>
+                    <div className="metric-value" style={{ fontSize: 16, color: theme.textPrimary }}>{staff.phone || '—'}</div>
                   </div>
-                  <div style={{ background: theme.bg, padding: 12, borderRadius: 8, border: `1px solid ${theme.cardBorder}` }}>
-                    <div style={{ fontSize: 11, color: theme.textSecondary, textTransform: 'uppercase' }}>Language</div>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: theme.textPrimary, marginTop: 4 }}>{staff.language || '—'}</div>
+                  <div className="metric-card" style={{ padding: 12 }}>
+                    <div className="metric-label">{t('staff.language', lang)}</div>
+                    <div className="metric-value" style={{ fontSize: 16, color: theme.textPrimary }}>{staff.language || '—'}</div>
                   </div>
-                  <div style={{ background: theme.bg, padding: 12, borderRadius: 8, border: `1px solid ${theme.cardBorder}` }}>
-                    <div style={{ fontSize: 11, color: theme.textSecondary, textTransform: 'uppercase' }}>Clients</div>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: theme.textPrimary, marginTop: 4 }}>{staff.client_count}</div>
+                  <div className="metric-card" style={{ padding: 12 }}>
+                    <div className="metric-label">{t('team.clients', lang)}</div>
+                    <div className="metric-value" style={{ fontSize: 16, color: theme.textPrimary }}>{staff.client_count}</div>
                   </div>
                 </div>
+
+                {gamification && (
+                  <div style={{ marginTop: 12, padding: theme.paddingCard, borderRadius: theme.radiusCard, background: theme.cardBg, border: `1px solid ${theme.cardBorder}` }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      🎮 {t('staff.gamification', lang)}
+                    </h3>
+                    {gamification.total_xp === 0 ? (
+                      <div style={{ fontSize: 13, color: theme.textSecondary, fontStyle: 'italic' }}>{t('gamification.no_activity', lang)}</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4, fontWeight: 600, color: theme.textSecondary }}>
+                            <span>{t('gamification.xp', lang)}: <span style={{ color: theme.accent }}>{gamification.total_xp.toLocaleString()}</span></span>
+                            {gamification.streak?.current_streak > 0 && <span style={{ color: theme.chartLine }}>🔥 {gamification.streak.current_streak} {t('gamification.streak', lang)}</span>}
+                          </div>
+                          <div style={{ height: 8, background: theme.bg, borderRadius: theme.radiusCard, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${Math.min(100, (gamification.total_xp % 1000) / 10)}%`, background: theme.accent, transition: 'width 1s ease-out' }} />
+                          </div>
+                        </div>
+                        {gamification.badges?.length > 0 && (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {gamification.badges.map((b: any, i: number) => (
+                              <span key={i} title={b.name} style={{ fontSize: 24, filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}>{b.emoji}</span>
+                            ))}
+                          </div>
+                        )}
+                        {gamification.recent_xp?.length > 0 && (
+                          <div style={{ marginTop: 8, fontSize: 12, color: theme.textSecondary }}>
+                            <strong style={{ display: 'block', marginBottom: 4 }}>{t('staff.recent_activity', lang)}</strong>
+                            {gamification.recent_xp.slice(0, 3).map((xp: any, i: number) => (
+                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, padding: '4px 8px', background: theme.bg, borderRadius: theme.radiusCard }}>
+                                <span>{xp.action}</span>
+                                <span style={{ color: theme.success, fontWeight: 600 }}>{t('gamification.plus_xp', lang).replace('{xp}', xp.xp_amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
                   {canEdit && (
                     <button className="glass-btn" onClick={() => setIsEditing(true)} style={{
                       flex: 1, padding: '10px', background: theme.cardBg, border: `1px solid ${theme.cardBorder}`,
-                      borderRadius: 8, color: theme.textPrimary, fontWeight: 600, cursor: 'pointer'
+                      borderRadius: theme.radiusBtn, color: theme.textPrimary, fontWeight: 600, cursor: 'pointer'
                     }}>
                       {t('org.edit_staff', lang)}
                     </button>
                   )}
                   <button className="glass-btn" onClick={() => { onClose(); nav(`/clients?search=${encodeURIComponent(staff.display_name)}`); }} style={{
                     flex: 1, padding: '10px', background: theme.accent, border: 'none',
-                    borderRadius: 8, color: '#fff', fontWeight: 600, cursor: 'pointer'
+                    borderRadius: theme.radiusBtn, color: '#fff', fontWeight: 600, cursor: 'pointer'
                   }}>
                     {t('org.view_clients', lang)}
                   </button>
                 </div>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div>
-                  <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>Team</label>
+                  <label className="field-label">{t('team.team', lang)}</label>
                   <input
+                    className="input"
                     value={editData.team}
                     onChange={e => setEditData({ ...editData, team: e.target.value })}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.inputBg, color: theme.textPrimary, boxSizing: 'border-box' }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>Role</label>
+                  <label className="field-label">{t('team.role', lang)}</label>
                   <select
+                    className="input"
                     value={editData.role}
                     onChange={e => setEditData({ ...editData, role: e.target.value })}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.inputBg, color: theme.textPrimary, boxSizing: 'border-box' }}
                   >
-                    <option value="viewer">viewer</option>
-                    <option value="newbie">newbie</option>
-                    <option value="frontdesk">frontdesk</option>
-                    <option value="customer_service">customer_service</option>
+                    <option value="viewer">{t('role.viewer', lang as any)}</option>
+                    <option value="newbie">{t('role.newbie', lang as any)}</option>
+                    <option value="frontdesk">{t('role.frontdesk', lang as any)}</option>
+                    <option value="customer_service">{t('role.customer_service', lang as any)}</option>
                     {currentUserRole === 'owner' && (
                       <>
-                        <option value="maintenance">maintenance</option>
-                        <option value="leader">leader</option>
-                        <option value="manager">manager</option>
-                        <option value="admin">admin</option>
+                        <option value="maintenance">{t('role.maintenance', lang as any)}</option>
+                        <option value="leader">{t('role.leader', lang as any)}</option>
+                        <option value="manager">{t('role.manager', lang as any)}</option>
+                        <option value="admin">{t('role.admin', lang as any)}</option>
                       </>
                     )}
                   </select>
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 4 }}>Daily Target</label>
+                  <label className="field-label">{t('org.daily_target', lang)}</label>
                   <input
+                    className="input"
                     type="number"
                     value={editData.daily_target}
                     onChange={e => setEditData({ ...editData, daily_target: e.target.value })}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.inputBg, color: theme.textPrimary, boxSizing: 'border-box' }}
                   />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -186,20 +246,20 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
                     checked={editData.is_active}
                     onChange={e => setEditData({ ...editData, is_active: e.target.checked })}
                   />
-                  <label style={{ fontSize: 13, color: theme.textPrimary }}>Active</label>
+                  <label style={{ fontSize: 13, color: theme.textPrimary }}>{t('staff.active', lang)}</label>
                 </div>
                 <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
                   <button className="glass-btn" onClick={() => setIsEditing(false)} style={{
                     flex: 1, padding: '10px', background: theme.cardBg, border: `1px solid ${theme.cardBorder}`,
-                    borderRadius: 8, color: theme.textPrimary, fontWeight: 600, cursor: 'pointer'
+                    borderRadius: theme.radiusBtn, color: theme.textPrimary, fontWeight: 600, cursor: 'pointer'
                   }}>
-                    Cancel
+                    {t('common.cancel', lang)}
                   </button>
                   <button className="glass-btn" onClick={handleSave} disabled={saving} style={{
                     flex: 1, padding: '10px', background: theme.accent, border: 'none',
-                    borderRadius: 8, color: '#fff', fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.7 : 1
+                    borderRadius: theme.radiusBtn, color: '#fff', fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.7 : 1
                   }}>
-                    {saving ? '...' : t('org.save_changes', lang)}
+                    {saving ? t('common.saving', lang as any) : t('org.save_changes', lang as any)}
                   </button>
                 </div>
               </div>

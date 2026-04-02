@@ -128,6 +128,10 @@ class DatabaseV2:
                     platform        TEXT,
                     total_deposited REAL DEFAULT 0,
                     sheet_gid       INTEGER,
+                    first_day_status  TEXT DEFAULT 'pending',
+                    second_day_status TEXT DEFAULT 'pending',
+                    client_condition  TEXT,
+                    category          TEXT,
                     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
@@ -536,6 +540,292 @@ class DatabaseV2:
                     UNIQUE(staff_id, command)
                 );
                 CREATE INDEX IF NOT EXISTS idx_permission_overrides_staff ON permission_overrides(staff_id);
+
+                -- Phase 22: Granular daily performance (per-person, per-day, per-category)
+                CREATE TABLE IF NOT EXISTS daily_performance (
+                    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+                    staff_id                INTEGER NOT NULL REFERENCES staff(id),
+                    stat_date               DATE NOT NULL,
+                    category                TEXT NOT NULL,
+                    powder_count            INTEGER DEFAULT 0,
+                    no_reply_start          INTEGER DEFAULT 0,
+                    reply_rate              REAL DEFAULT 0,
+                    stuck_explanation       INTEGER DEFAULT 0,
+                    blocked_playing         INTEGER DEFAULT 0,
+                    been_scammed            INTEGER DEFAULT 0,
+                    sent_link_no_reply      INTEGER DEFAULT 0,
+                    completed_registration  INTEGER DEFAULT 0,
+                    audit_rate              REAL DEFAULT 0,
+                    completed_training      INTEGER DEFAULT 0,
+                    scheduled_time          INTEGER DEFAULT 0,
+                    withdrawal              INTEGER DEFAULT 0,
+                    new_order               INTEGER DEFAULT 0,
+                    conversion_rate         REAL DEFAULT 0,
+                    new_kill                INTEGER DEFAULT 0,
+                    dead_client             INTEGER DEFAULT 0,
+                    note                    TEXT,
+                    created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(staff_id, stat_date, category)
+                );
+                CREATE INDEX IF NOT EXISTS idx_daily_perf_staff_date ON daily_performance(staff_id, stat_date);
+                CREATE INDEX IF NOT EXISTS idx_daily_perf_date ON daily_performance(stat_date);
+                CREATE INDEX IF NOT EXISTS idx_daily_perf_category ON daily_performance(category);
+
+                -- Phase 22: Blown accounts tracking
+                CREATE TABLE IF NOT EXISTS blown_accounts (
+                    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                    staff_id            INTEGER NOT NULL REFERENCES staff(id),
+                    blown_date          DATE NOT NULL,
+                    account_type        TEXT NOT NULL DEFAULT 'whatsapp',
+                    phone_number        TEXT,
+                    account_identifier  TEXT,
+                    reason              TEXT,
+                    category            TEXT,
+                    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_blown_staff_date ON blown_accounts(staff_id, blown_date);
+
+                -- Phase 22: 5-day exam periods
+                CREATE TABLE IF NOT EXISTS exam_periods (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    exam_name       TEXT NOT NULL,
+                    team            TEXT,
+                    start_date      DATE NOT NULL,
+                    end_date        DATE NOT NULL,
+                    status          TEXT DEFAULT 'active',
+                    created_by      INTEGER REFERENCES staff(id),
+                    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    CHECK(end_date >= start_date)
+                );
+                CREATE INDEX IF NOT EXISTS idx_exam_dates ON exam_periods(start_date, end_date);
+
+                -- Phase 22: Per-staff exam results
+                CREATE TABLE IF NOT EXISTS exam_results (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    exam_id         INTEGER NOT NULL REFERENCES exam_periods(id),
+                    staff_id        INTEGER NOT NULL REFERENCES staff(id),
+                    total_powder            INTEGER DEFAULT 0,
+                    total_reply_rate        REAL DEFAULT 0,
+                    total_registrations     INTEGER DEFAULT 0,
+                    total_training          INTEGER DEFAULT 0,
+                    total_withdrawals       INTEGER DEFAULT 0,
+                    total_new_orders        INTEGER DEFAULT 0,
+                    total_conversion_rate   REAL DEFAULT 0,
+                    total_new_kills         INTEGER DEFAULT 0,
+                    rank_position           INTEGER,
+                    pass_fail               TEXT DEFAULT 'pending',
+                    evaluator_note          TEXT,
+                    evaluated_by            INTEGER REFERENCES staff(id),
+                    evaluated_at            TIMESTAMP,
+                    created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(exam_id, staff_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_exam_results_exam ON exam_results(exam_id);
+
+                -- Phase 22: Multi-stage deposit groups
+                CREATE TABLE IF NOT EXISTS deposit_groups (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id       INTEGER NOT NULL REFERENCES clients(id),
+                    group_number    TEXT,
+                    total_pressure  REAL DEFAULT 0,
+                    total_collected REAL DEFAULT 0,
+                    cut_count       INTEGER DEFAULT 0,
+                    status          TEXT DEFAULT 'active',
+                    note            TEXT,
+                    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_deposit_groups_client ON deposit_groups(client_id);
+
+                -- Phase 22: Deposit role assignments
+                CREATE TABLE IF NOT EXISTS deposit_roles (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    deposit_id      INTEGER NOT NULL REFERENCES deposits(id),
+                    staff_id        INTEGER NOT NULL REFERENCES staff(id),
+                    role_type       TEXT NOT NULL,
+                    credit_share    REAL DEFAULT 1.0,
+                    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(deposit_id, staff_id, role_type)
+                );
+                CREATE INDEX IF NOT EXISTS idx_deposit_roles_deposit ON deposit_roles(deposit_id);
+                CREATE INDEX IF NOT EXISTS idx_deposit_roles_staff ON deposit_roles(staff_id);
+
+                -- Phase 22: Crypto transactions
+                CREATE TABLE IF NOT EXISTS crypto_transactions (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    txn_type        TEXT NOT NULL CHECK(txn_type IN ('in', 'out')),
+                    client_name     TEXT NOT NULL,
+                    client_number   TEXT,
+                    maintainer_id   INTEGER REFERENCES staff(id),
+                    country         TEXT,
+                    amount_usdt     REAL NOT NULL,
+                    situation       TEXT,
+                    group_name      TEXT,
+                    txn_date        DATE NOT NULL,
+                    created_by      INTEGER REFERENCES staff(id),
+                    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_crypto_txn_date ON crypto_transactions(txn_date);
+                CREATE INDEX IF NOT EXISTS idx_crypto_txn_type ON crypto_transactions(txn_type);
+
+                -- Phase 22: Daily financial summary by country
+                CREATE TABLE IF NOT EXISTS daily_financial_summary (
+                    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                    summary_date        DATE NOT NULL,
+                    country             TEXT NOT NULL,
+                    new_orders          INTEGER DEFAULT 0,
+                    deposit_count       INTEGER DEFAULT 0,
+                    total_deposits      REAL DEFAULT 0,
+                    avg_per_client      REAL DEFAULT 0,
+                    second_filter_in    REAL DEFAULT 0,
+                    second_filter_out   REAL DEFAULT 0,
+                    rcs_in              REAL DEFAULT 0,
+                    rcs_out             REAL DEFAULT 0,
+                    note                TEXT,
+                    created_by          INTEGER REFERENCES staff(id),
+                    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(summary_date, country)
+                );
+                CREATE INDEX IF NOT EXISTS idx_daily_fin_date ON daily_financial_summary(summary_date);
+
+                -- Phase 24: Client Comments (threaded)
+                CREATE TABLE IF NOT EXISTS client_comments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id INTEGER NOT NULL REFERENCES clients(id),
+                    staff_id INTEGER NOT NULL REFERENCES staff(id),
+                    staff_name TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    parent_comment_id INTEGER REFERENCES client_comments(id),
+                    is_system INTEGER DEFAULT 0,
+                    is_deleted INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_comments_client ON client_comments(client_id);
+                CREATE INDEX IF NOT EXISTS idx_comments_staff ON client_comments(staff_id);
+
+                -- Phase 24: Audit Log
+                CREATE TABLE IF NOT EXISTS audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    username TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    entity_id INTEGER,
+                    old_values TEXT,
+                    new_values TEXT,
+                    ip_address TEXT,
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id);
+                CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id);
+                CREATE INDEX IF NOT EXISTS idx_audit_date ON audit_log(created_at);
+
+                -- Phase 26: Organization Units (hierarchical org tree)
+                CREATE TABLE IF NOT EXISTS organization_units (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    unit_type TEXT NOT NULL CHECK(unit_type IN ('organization', 'branch', 'group', 'subgroup')),
+                    parent_id INTEGER REFERENCES organization_units(id),
+                    leader_staff_id INTEGER REFERENCES staff(id),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    is_active INTEGER DEFAULT 1
+                );
+                CREATE INDEX IF NOT EXISTS idx_org_units_parent ON organization_units(parent_id);
+                CREATE INDEX IF NOT EXISTS idx_org_units_type ON organization_units(unit_type);
+
+                -- Phase 26: Client Role Assignments (multi-role per client)
+                CREATE TABLE IF NOT EXISTS client_role_assignments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id INTEGER NOT NULL REFERENCES clients(id),
+                    staff_id INTEGER NOT NULL REFERENCES staff(id),
+                    role_type TEXT NOT NULL CHECK(role_type IN (
+                        'frontdesk', 'maintainer', 'group_hype', 'newbie_actor',
+                        'customer_service', 'opener_legacy', 'full_line'
+                    )),
+                    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    ended_at TIMESTAMP,
+                    handoff_reason TEXT,
+                    is_active INTEGER DEFAULT 1
+                );
+                CREATE INDEX IF NOT EXISTS idx_cra_client ON client_role_assignments(client_id);
+                CREATE INDEX IF NOT EXISTS idx_cra_staff ON client_role_assignments(staff_id);
+                CREATE INDEX IF NOT EXISTS idx_cra_role ON client_role_assignments(role_type);
+
+                -- Phase 26: Client Pipeline Status (full lifecycle tracking)
+                CREATE TABLE IF NOT EXISTS client_pipeline_status (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id INTEGER NOT NULL UNIQUE REFERENCES clients(id),
+                    contacted_at TIMESTAMP,
+                    replied_at TIMESTAMP,
+                    registered_at TIMESTAMP,
+                    training_completed_at TIMESTAMP,
+                    bonus_withdrew_at TIMESTAMP,
+                    day1_complete INTEGER DEFAULT 0,
+                    day2_training_at TIMESTAMP,
+                    own_tasks_started_at TIMESTAMP,
+                    insufficient_funds_at TIMESTAMP,
+                    new_order_amount REAL,
+                    new_order_at TIMESTAMP,
+                    pressure_amount REAL,
+                    pressure_at TIMESTAMP,
+                    kill_type TEXT CHECK(kill_type IN ('register_kill', 'new_order_kill', 'pressure_kill', 'salary_kill')),
+                    kill_knife INTEGER,
+                    kill_at TIMESTAMP,
+                    is_unkilled INTEGER DEFAULT 0,
+                    unkill_reason TEXT,
+                    total_deposited REAL DEFAULT 0,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_cps_client ON client_pipeline_status(client_id);
+                CREATE INDEX IF NOT EXISTS idx_cps_kill ON client_pipeline_status(kill_type);
+
+                -- Phase 26: Knife Deposits (per-knife deposit tracking)
+                CREATE TABLE IF NOT EXISTS knife_deposits (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id INTEGER NOT NULL REFERENCES clients(id),
+                    knife_number INTEGER NOT NULL,
+                    amount REAL NOT NULL,
+                    deposit_day INTEGER,
+                    platform TEXT,
+                    maintainer_id INTEGER REFERENCES staff(id),
+                    notes TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(client_id, knife_number)
+                );
+                CREATE INDEX IF NOT EXISTS idx_kd_client ON knife_deposits(client_id);
+
+                -- Phase 26: Cross-Role Notes (handoff context between roles)
+                CREATE TABLE IF NOT EXISTS cross_role_notes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id INTEGER NOT NULL REFERENCES clients(id),
+                    from_role TEXT NOT NULL,
+                    from_staff_id INTEGER REFERENCES staff(id),
+                    content TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_crn_client ON cross_role_notes(client_id);
+                CREATE INDEX IF NOT EXISTS idx_crn_role ON cross_role_notes(from_role);
+
+                -- Phase 26: Group Interactions (group activity tracking)
+                CREATE TABLE IF NOT EXISTS group_interactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id INTEGER NOT NULL REFERENCES clients(id),
+                    group_id TEXT,
+                    actor_staff_id INTEGER REFERENCES staff(id),
+                    actor_role TEXT CHECK(actor_role IN ('newbie_actor', 'group_hype', 'passerby')),
+                    day_number INTEGER,
+                    script_completed INTEGER DEFAULT 0,
+                    client_read_messages INTEGER DEFAULT 0,
+                    client_replied INTEGER DEFAULT 0,
+                    client_pm_character INTEGER DEFAULT 0,
+                    client_left_group INTEGER DEFAULT 0,
+                    notes TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_gi_client ON group_interactions(client_id);
+                CREATE INDEX IF NOT EXISTS idx_gi_group ON group_interactions(group_id);
             """)
             await db.commit()
 
@@ -559,6 +849,26 @@ class DatabaseV2:
             ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN client_condition TEXT'),
             ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN team_name TEXT'),
             ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN leader_name TEXT'),
+            # Phase 22: clients day-status tracking
+            ('clients', 'ALTER TABLE clients ADD COLUMN category TEXT'),
+            ('clients', 'ALTER TABLE clients ADD COLUMN first_day_status TEXT'),
+            ('clients', 'ALTER TABLE clients ADD COLUMN second_day_status TEXT'),
+            ('clients', 'ALTER TABLE clients ADD COLUMN client_condition TEXT'),
+            # Phase 22: deposits multi-stage extensions
+            ('deposits', 'ALTER TABLE deposits ADD COLUMN pressure_amount REAL DEFAULT 0'),
+            ('deposits', 'ALTER TABLE deposits ADD COLUMN total_in REAL DEFAULT 0'),
+            ('deposits', 'ALTER TABLE deposits ADD COLUMN deposit_group_id INTEGER'),
+            # Phase 24: Permission sections
+            ('permission_overrides', 'ALTER TABLE permission_overrides ADD COLUMN section TEXT'),
+            # Phase 24: Phone registry origin tracking
+            ('phone_registry', "ALTER TABLE phone_registry ADD COLUMN origin TEXT DEFAULT 'web_entry'"),
+            ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN tg_user_id TEXT'),
+            ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN country_code TEXT'),
+            ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN duplicate_count INTEGER DEFAULT 0'),
+            ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN first_seen_at TEXT'),
+            ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN last_seen_at TEXT'),
+            # Phase 26: Staff org unit reference
+            ('staff', 'ALTER TABLE staff ADD COLUMN org_unit_id INTEGER REFERENCES organization_units(id)'),
         ]
         async with self.get_connection() as db:
             for _tbl, sql in migrations:
@@ -2270,19 +2580,25 @@ class DatabaseV2:
     async def get_xp_leaderboard(self, period: str = 'today', team_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """XP-based leaderboard with streak info."""
         today = _utc_today()
+        params: list = []
         if period == 'today':
-            date_filter = today.isoformat()
-            xp_sql = f"AND DATE(xe.created_at) = '{date_filter}'"
+            xp_sql = "AND DATE(xe.created_at) = ?"
+            params.append(today.isoformat())
         elif period == 'week':
             week_start = (today - timedelta(days=today.weekday())).isoformat()
-            xp_sql = f"AND DATE(xe.created_at) >= '{week_start}'"
+            xp_sql = "AND DATE(xe.created_at) >= ?"
+            params.append(week_start)
         elif period == 'month':
             month_start = today.replace(day=1).isoformat()
-            xp_sql = f"AND DATE(xe.created_at) >= '{month_start}'"
+            xp_sql = "AND DATE(xe.created_at) >= ?"
+            params.append(month_start)
         else:
             xp_sql = ''
 
-        team_clause = f"AND s.team = '{team_id}'" if team_id else ''
+        team_clause = ''
+        if team_id:
+            team_clause = "AND s.team = ?"
+            params.append(team_id)
 
         query = f"""
             SELECT s.id, s.display_name, s.team,
@@ -2297,7 +2613,7 @@ class DatabaseV2:
             LIMIT 20
         """
         async with self.get_connection() as db:
-            cur = await db.execute(query)
+            cur = await db.execute(query, params)
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
 
@@ -3635,6 +3951,278 @@ class DatabaseV2:
                    ORDER BY c.created_at DESC LIMIT 20""",
                 (f'%{suffix}%',))
             return [dict(r) for r in await cur.fetchall()]
+
+    # ─── Phase 24: Client Comments (threaded) ────────────────────────────────
+
+    async def add_client_comment_v2(self, client_id: int, staff_id: int,
+                                     staff_name: str, content: str,
+                                     parent_comment_id: Optional[int] = None,
+                                     is_system: int = 0) -> int:
+        """Add a threaded comment to a client. Returns comment id."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """INSERT INTO client_comments
+                   (client_id, staff_id, staff_name, content, parent_comment_id, is_system)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (client_id, staff_id, staff_name, content, parent_comment_id, is_system))
+            await db.commit()
+            return cur.lastrowid
+
+    async def get_client_comments_v2(self, client_id: int, limit: int = 100) -> List[Dict]:
+        """Get all non-deleted comments for a client, newest first."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT id, client_id, staff_id, staff_name, content,
+                          parent_comment_id, is_system, is_deleted,
+                          created_at, updated_at
+                   FROM client_comments
+                   WHERE client_id = ? AND is_deleted = 0
+                   ORDER BY created_at ASC LIMIT ?""",
+                (client_id, limit))
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def update_comment(self, comment_id: int, content: str) -> bool:
+        """Update a comment's content. Returns True if updated."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """UPDATE client_comments
+                   SET content = ?, updated_at = datetime('now')
+                   WHERE id = ? AND is_deleted = 0""",
+                (content, comment_id))
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def soft_delete_comment(self, comment_id: int) -> bool:
+        """Soft-delete a comment. Returns True if deleted."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """UPDATE client_comments
+                   SET is_deleted = 1, updated_at = datetime('now')
+                   WHERE id = ? AND is_deleted = 0""",
+                (comment_id,))
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def get_comment_by_id(self, comment_id: int) -> Optional[Dict]:
+        """Get a single comment by id."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT id, client_id, staff_id, staff_name, content,
+                          parent_comment_id, is_system, is_deleted,
+                          created_at, updated_at
+                   FROM client_comments WHERE id = ?""",
+                (comment_id,))
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+    # ─── Phase 24: Audit Log ─────────────────────────────────────────────────
+
+    async def add_audit_log(self, user_id: int, username: str, action: str,
+                             entity_type: str, entity_id: Optional[int] = None,
+                             old_values: Optional[str] = None,
+                             new_values: Optional[str] = None,
+                             ip_address: Optional[str] = None) -> int:
+        """Insert an audit log entry. Returns row id."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """INSERT INTO audit_log
+                   (user_id, username, action, entity_type, entity_id,
+                    old_values, new_values, ip_address)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, username, action, entity_type, entity_id,
+                 old_values, new_values, ip_address))
+            await db.commit()
+            return cur.lastrowid
+
+    async def get_audit_log(self, entity_type: Optional[str] = None,
+                             entity_id: Optional[int] = None,
+                             user_id: Optional[int] = None,
+                             from_date: Optional[str] = None,
+                             to_date: Optional[str] = None,
+                             page: int = 1, per_page: int = 50) -> Dict:
+        """Query audit log with filters. Returns {total, page, per_page, entries}."""
+        conditions: List[str] = []
+        params: list = []
+        if entity_type:
+            conditions.append('entity_type = ?')
+            params.append(entity_type)
+        if entity_id is not None:
+            conditions.append('entity_id = ?')
+            params.append(entity_id)
+        if user_id is not None:
+            conditions.append('user_id = ?')
+            params.append(user_id)
+        if from_date:
+            conditions.append('created_at >= ?')
+            params.append(from_date)
+        if to_date:
+            conditions.append('created_at <= ?')
+            params.append(to_date)
+
+        where = ('WHERE ' + ' AND '.join(conditions)) if conditions else ''
+        offset = (page - 1) * per_page
+
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                f'SELECT COUNT(*) AS cnt FROM audit_log {where}', params)
+            total = (await cur.fetchone())['cnt']
+
+            cur = await db.execute(
+                f"""SELECT id, user_id, username, action, entity_type, entity_id,
+                           old_values, new_values, ip_address, created_at
+                    FROM audit_log {where}
+                    ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+                params + [per_page, offset])
+            entries = [dict(r) for r in await cur.fetchall()]
+
+        return {'total': total, 'page': page, 'per_page': per_page, 'entries': entries}
+
+    # ─── Phase 24: Phone Registry Enhanced ───────────────────────────────────
+
+    async def phone_registry_duplicates(self, page: int = 1, per_page: int = 50) -> Dict:
+        """Find phones submitted by multiple users across phone_registry and chat_export_phones."""
+        offset = (page - 1) * per_page
+        async with self.get_connection() as db:
+            # Find phones appearing from multiple submitters in chat_export_phones
+            count_sql = """
+                SELECT COUNT(*) AS cnt FROM (
+                    SELECT phone_normalized
+                    FROM chat_export_phones
+                    WHERE phone_normalized IS NOT NULL
+                    GROUP BY phone_normalized
+                    HAVING COUNT(DISTINCT submitter_tg_id) > 1
+                )
+            """
+            try:
+                cur = await db.execute(count_sql)
+                total = (await cur.fetchone())['cnt']
+            except Exception:
+                # chat_export_phones may not exist
+                return {'total': 0, 'page': page, 'per_page': per_page, 'results': []}
+
+            cur = await db.execute(
+                """SELECT cep.phone_normalized, cep.phone,
+                          COUNT(DISTINCT cep.submitter_tg_id) AS submitter_count,
+                          GROUP_CONCAT(DISTINCT cep.submitter_name) AS submitters,
+                          MIN(cep.first_submitted_at) AS earliest,
+                          MAX(cep.last_submitted_at) AS latest
+                   FROM chat_export_phones cep
+                   WHERE cep.phone_normalized IS NOT NULL
+                   GROUP BY cep.phone_normalized
+                   HAVING COUNT(DISTINCT cep.submitter_tg_id) > 1
+                   ORDER BY submitter_count DESC, earliest ASC
+                   LIMIT ? OFFSET ?""",
+                (per_page, offset))
+            results = [dict(r) for r in await cur.fetchall()]
+
+        return {'total': total, 'page': page, 'per_page': per_page, 'results': results}
+
+    async def phone_registry_history(self, phone: str) -> List[Dict]:
+        """Full submission history from both phone_registry and chat_export_phones."""
+        normalized = self.normalize_phone(phone)
+        entries: List[Dict] = []
+        async with self.get_connection() as db:
+            # phone_registry entries
+            cur = await db.execute(
+                """SELECT 'phone_registry' AS source_table, id, phone, phone_normalized,
+                          submitter_name, submitter_staff_id, source, submitted_at, created_at
+                   FROM phone_registry WHERE phone_normalized = ?""",
+                (normalized,))
+            entries.extend([dict(r) for r in await cur.fetchall()])
+
+            # chat_export_phones entries
+            try:
+                cur = await db.execute(
+                    """SELECT 'chat_export' AS source_table, id, phone, phone_normalized,
+                              submitter_name, submitter_tg_id, staff_id AS submitter_staff_id,
+                              first_submitted_at AS submitted_at, message_count,
+                              is_duplicate_flagged, imported_at AS created_at
+                       FROM chat_export_phones WHERE phone_normalized = ?
+                       ORDER BY first_submitted_at ASC""",
+                    (normalized,))
+                entries.extend([dict(r) for r in await cur.fetchall()])
+            except Exception:
+                pass  # table may not exist
+
+            # phone_registry_log entries
+            cur = await db.execute(
+                """SELECT 'registry_log' AS source_table, id, phone_normalized,
+                          action, actor_name, actor_staff_id, details, created_at
+                   FROM phone_registry_log WHERE phone_normalized = ?
+                   ORDER BY created_at ASC""",
+                (normalized,))
+            entries.extend([dict(r) for r in await cur.fetchall()])
+
+        return entries
+
+    async def phone_registry_bulk_check(self, phones: List[str]) -> List[Dict]:
+        """Check multiple phones at once. Returns list with status per phone."""
+        results: List[Dict] = []
+        async with self.get_connection() as db:
+            for phone in phones:
+                normalized = self.normalize_phone(phone)
+                if not normalized:
+                    results.append({'phone': phone, 'normalized': '', 'found': False})
+                    continue
+
+                cur = await db.execute(
+                    """SELECT id, phone, submitter_name, submitter_staff_id, source, submitted_at
+                       FROM phone_registry WHERE phone_normalized = ?""",
+                    (normalized,))
+                row = await cur.fetchone()
+                if row:
+                    d = dict(row)
+                    d['phone_input'] = phone
+                    d['normalized'] = normalized
+                    d['found'] = True
+                    d['source_table'] = 'phone_registry'
+                    results.append(d)
+                    continue
+
+                # Fallback: check chat_export_phones
+                try:
+                    cur = await db.execute(
+                        """SELECT id, phone, submitter_name, submitter_tg_id, staff_id,
+                                  first_submitted_at AS submitted_at, is_duplicate_flagged
+                           FROM chat_export_phones WHERE phone_normalized = ?
+                           ORDER BY first_submitted_at ASC LIMIT 1""",
+                        (normalized,))
+                    erow = await cur.fetchone()
+                    if erow:
+                        d = dict(erow)
+                        d['phone_input'] = phone
+                        d['normalized'] = normalized
+                        d['found'] = True
+                        d['source_table'] = 'chat_export'
+                        results.append(d)
+                        continue
+                except Exception:
+                    pass
+
+                results.append({'phone': phone, 'phone_input': phone, 'normalized': normalized, 'found': False})
+
+        return results
+
+    async def phone_registry_by_staff(self, staff_id: int, page: int = 1,
+                                       per_page: int = 50) -> Dict:
+        """All phone numbers submitted by a specific staff member."""
+        offset = (page - 1) * per_page
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                'SELECT COUNT(*) AS cnt FROM phone_registry WHERE submitter_staff_id = ?',
+                (staff_id,))
+            total = (await cur.fetchone())['cnt']
+
+            cur = await db.execute(
+                """SELECT id, phone, phone_normalized, submitter_name,
+                          source, submitted_at, created_at
+                   FROM phone_registry
+                   WHERE submitter_staff_id = ?
+                   ORDER BY submitted_at DESC LIMIT ? OFFSET ?""",
+                (staff_id, per_page, offset))
+            results = [dict(r) for r in await cur.fetchall()]
+
+        return {'total': total, 'page': page, 'per_page': per_page, 'results': results}
 
 
 # Global singleton

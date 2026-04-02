@@ -19,6 +19,8 @@ os.environ['JWT_SECRET'] = 'test-secret-phase17'
 try:
     import aiosqlite
     from fastapi.testclient import TestClient
+    if 'web_dashboard_api' in sys.modules:
+        del sys.modules['web_dashboard_api']
     import web_dashboard_api
     from web_dashboard_api import app, _hash_password
     HAS_FASTAPI = True

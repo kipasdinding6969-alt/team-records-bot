@@ -13,6 +13,7 @@ export function setTheme(mode: ThemeMode) {
 export interface Theme {
   fontFamily: string
   bg: string
+  bgElevated: string
   cardBg: string
   cardBorder: string
   sidebarBg: string
@@ -23,6 +24,7 @@ export interface Theme {
   accent: string
   accentHover: string
   accentLight: string
+  accentSubtle: string
   activeNav: string
   activeNavText: string
   activeNavBorder: string
@@ -30,12 +32,15 @@ export interface Theme {
   inputBorder: string
   shadow: string
   shadowHover: string
+  shadowCard: string
   danger: string
   dangerBg: string
   success: string
   successBg: string
   warning: string
   warningBg: string
+  info: string
+  infoBg: string
   badgeGreen: string
   badgeYellow: string
   badgeRed: string
@@ -45,82 +50,148 @@ export interface Theme {
   glassBorder: string
   glowAmbient: string
   navHoverBg: string
+  radiusCard: number
+  radiusBtn: number
+  radiusInput: number
+  paddingCard: number
+  paddingInput: string
+  gapSection: number
+  marginCard: number
 }
 
 export const darkTheme: Theme = {
   fontFamily: "'Inter', -apple-system, sans-serif",
-  bg: '#000000',
-  cardBg: '#121212',
-  cardBorder: '#262626',
-  sidebarBg: '#000000',
-  sidebarBorder: '#262626',
-  textPrimary: '#ffffff',
-  textSecondary: '#a1a1aa',
-  textMuted: '#52525b',
-  accent: '#818cf8', // Made accent slightly brighter for hyper-creative look
-  accentHover: '#a5b4fc',
-  accentLight: 'rgba(129, 140, 248, 0.15)',
-  activeNav: 'linear-gradient(90deg, rgba(129, 140, 248, 0.15) 0%, transparent 100%)',
-  activeNavText: '#ffffff',
-  activeNavBorder: '#818cf8',
-  inputBg: '#121212',
-  inputBorder: '#262626',
-  shadow: '0 4px 20px -2px rgba(0, 0, 0, 0.6)',
-  shadowHover: '0 12px 30px -4px rgba(129, 140, 248, 0.2), 0 4px 6px -4px rgba(0, 0, 0, 0.5)',
-  danger: '#f87171',
-  dangerBg: 'rgba(248, 113, 113, 0.15)',
+  bg: '#111827',
+  bgElevated: '#151d2e',
+  cardBg: '#1e293b',
+  cardBorder: 'rgba(255, 255, 255, 0.08)',
+  sidebarBg: '#111827',
+  sidebarBorder: 'rgba(255, 255, 255, 0.06)',
+  textPrimary: '#f1f5f9',
+  textSecondary: '#94a3b8',
+  textMuted: '#64748b',
+  accent: '#2dd4bf',
+  accentHover: '#5eead4',
+  accentLight: 'rgba(45, 212, 191, 0.12)',
+  accentSubtle: 'rgba(45, 212, 191, 0.06)',
+  activeNav: 'rgba(45, 212, 191, 0.12)',
+  activeNavText: '#f1f5f9',
+  activeNavBorder: '#2dd4bf',
+  inputBg: '#1e293b',
+  inputBorder: 'rgba(255, 255, 255, 0.1)',
+  shadow: '0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.12)',
+  shadowHover: '0 8px 25px -5px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.15)',
+  shadowCard: '0 1px 3px rgba(0, 0, 0, 0.12)',
+  danger: '#fb7185',
+  dangerBg: 'rgba(251, 113, 133, 0.12)',
   success: '#34d399',
-  successBg: 'rgba(52, 211, 153, 0.15)',
+  successBg: 'rgba(52, 211, 153, 0.12)',
   warning: '#fbbf24',
-  warningBg: 'rgba(251, 191, 36, 0.15)',
-  badgeGreen: 'rgba(52, 211, 153, 0.15)',
-  badgeYellow: 'rgba(251, 191, 36, 0.15)',
-  badgeRed: 'rgba(248, 113, 113, 0.15)',
-  chartBar: '#818cf8',
+  warningBg: 'rgba(251, 191, 36, 0.12)',
+  info: '#94a3b8',
+  infoBg: 'rgba(148, 163, 184, 0.1)',
+  badgeGreen: 'rgba(52, 211, 153, 0.12)',
+  badgeYellow: 'rgba(251, 191, 36, 0.12)',
+  badgeRed: 'rgba(251, 113, 133, 0.12)',
+  chartBar: '#2dd4bf',
   chartLine: '#34d399',
-  glassBg: 'rgba(18, 18, 18, 0.5)',
-  glassBorder: 'rgba(255, 255, 255, 0.08)',
-  glowAmbient: 'radial-gradient(circle at 50% -20%, rgba(99, 102, 241, 0.15), rgba(0, 0, 0, 0) 60%), radial-gradient(circle at 100% 50%, rgba(139, 92, 246, 0.08), rgba(0, 0, 0, 0) 50%)',
-  navHoverBg: 'rgba(255, 255, 255, 0.05)',
+  glassBg: 'rgba(30, 41, 59, 0.7)',
+  glassBorder: 'rgba(255, 255, 255, 0.06)',
+  glowAmbient: 'none',
+  navHoverBg: 'rgba(255, 255, 255, 0.04)',
+  radiusCard: 12,
+  radiusBtn: 8,
+  radiusInput: 8,
+  paddingCard: 20,
+  paddingInput: '0 14px',
+  gapSection: 20,
+  marginCard: 20,
 }
 
 export const lightTheme: Theme = {
   fontFamily: "'Inter', -apple-system, sans-serif",
-  bg: '#f7f8fa',
+  bg: '#f8fafc',
+  bgElevated: '#f1f5f9',
   cardBg: '#ffffff',
-  cardBorder: '#e5e7eb',
-  sidebarBg: '#f7f8fa',
-  sidebarBorder: '#e5e7eb',
+  cardBorder: '#e2e8f0',
+  sidebarBg: '#ffffff',
+  sidebarBorder: '#e2e8f0',
   textPrimary: '#0f172a',
-  textSecondary: '#64748b',
-  textMuted: '#94a3b8',
-  accent: '#6366f1',
-  accentHover: '#4f46e5',
-  accentLight: 'rgba(99, 102, 241, 0.1)',
-  activeNav: 'linear-gradient(90deg, rgba(99, 102, 241, 0.1) 0%, transparent 100%)',
+  textSecondary: '#475569',
+  textMuted: '#64748b',
+  accent: '#0d9488',
+  accentHover: '#0f766e',
+  accentLight: 'rgba(13, 148, 136, 0.1)',
+  accentSubtle: 'rgba(13, 148, 136, 0.04)',
+  activeNav: 'rgba(13, 148, 136, 0.08)',
   activeNavText: '#0f172a',
-  activeNavBorder: '#6366f1',
+  activeNavBorder: '#0d9488',
   inputBg: '#ffffff',
   inputBorder: '#d1d5db',
-  shadow: '0 4px 20px -2px rgba(0, 0, 0, 0.05)',
-  shadowHover: '0 12px 30px -4px rgba(99, 102, 241, 0.15), 0 4px 6px -4px rgba(0, 0, 0, 0.05)',
+  shadow: '0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06)',
+  shadowHover: '0 10px 25px -4px rgba(13, 148, 136, 0.12), 0 4px 6px -4px rgba(0, 0, 0, 0.05)',
+  shadowCard: '0 1px 3px rgba(0, 0, 0, 0.06)',
   danger: '#ef4444',
   dangerBg: '#fee2e2',
   success: '#10b981',
   successBg: '#d1fae5',
   warning: '#f59e0b',
   warningBg: '#fef3c7',
+  info: '#64748b',
+  infoBg: 'rgba(100, 116, 139, 0.08)',
   badgeGreen: '#d1fae5',
   badgeYellow: '#fef3c7',
   badgeRed: '#fee2e2',
-  chartBar: '#6366f1',
+  chartBar: '#0d9488',
   chartLine: '#10b981',
-  glassBg: 'rgba(255, 255, 255, 0.7)',
-  glassBorder: 'rgba(0, 0, 0, 0.05)',
-  glowAmbient: 'radial-gradient(circle at 50% -20%, rgba(99, 102, 241, 0.08), rgba(255, 255, 255, 0) 60%), radial-gradient(circle at 100% 50%, rgba(139, 92, 246, 0.05), rgba(255, 255, 255, 0) 50%)',
+  glassBg: 'rgba(255, 255, 255, 0.9)',
+  glassBorder: 'rgba(0, 0, 0, 0.06)',
+  glowAmbient: 'none',
   navHoverBg: 'rgba(0, 0, 0, 0.03)',
+  radiusCard: 12,
+  radiusBtn: 8,
+  radiusInput: 8,
+  paddingCard: 20,
+  paddingInput: '0 14px',
+  gapSection: 20,
+  marginCard: 20,
 }
 
 export function resolveTheme(mode: ThemeMode): Theme {
   return mode === 'light' ? lightTheme : darkTheme
+}
+
+/** Inject theme tokens as CSS variables on :root so global CSS classes work */
+export function applyThemeCssVars(theme: Theme): void {
+  const root = document.documentElement
+  root.style.setProperty('--bg', theme.bg)
+  root.style.setProperty('--bg-elevated', theme.bgElevated)
+  root.style.setProperty('--card-bg', theme.cardBg)
+  root.style.setProperty('--card-border', theme.cardBorder)
+  root.style.setProperty('--sidebar-bg', theme.sidebarBg)
+  root.style.setProperty('--sidebar-border', theme.sidebarBorder)
+  root.style.setProperty('--text-primary', theme.textPrimary)
+  root.style.setProperty('--text-secondary', theme.textSecondary)
+  root.style.setProperty('--text-muted', theme.textMuted)
+  root.style.setProperty('--accent', theme.accent)
+  root.style.setProperty('--accent-hover', theme.accentHover)
+  root.style.setProperty('--accent-light', theme.accentLight)
+  root.style.setProperty('--accent-subtle', theme.accentSubtle)
+  root.style.setProperty('--input-bg', theme.inputBg)
+  root.style.setProperty('--input-border', theme.inputBorder)
+  root.style.setProperty('--danger', theme.danger)
+  root.style.setProperty('--danger-bg', theme.dangerBg)
+  root.style.setProperty('--success', theme.success)
+  root.style.setProperty('--success-bg', theme.successBg)
+  root.style.setProperty('--warning', theme.warning)
+  root.style.setProperty('--warning-bg', theme.warningBg)
+  root.style.setProperty('--info', theme.info)
+  root.style.setProperty('--info-bg', theme.infoBg)
+  root.style.setProperty('--shadow', theme.shadow)
+  root.style.setProperty('--shadow-hover', theme.shadowHover)
+  root.style.setProperty('--shadow-card', theme.shadowCard)
+  root.style.setProperty('--nav-hover-bg', theme.navHoverBg)
+  root.style.setProperty('--glass-bg', theme.glassBg)
+  root.style.setProperty('--glass-border', theme.glassBorder)
+  root.style.setProperty('--scrollbar-thumb', theme.cardBorder)
 }

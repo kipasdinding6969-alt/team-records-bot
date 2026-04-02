@@ -16,14 +16,17 @@ import {
 } from 'recharts'
 import { api } from '../api'
 import type { DashboardStats, Trends } from '../types'
-import { STATUS_COLORS, STATUS_LABELS } from '../types'
-import { Empty, PageHeader, SectionTitle, Spinner } from './Dashboard'
+import { STATUS_COLORS } from '../types'
+import { Empty, PageHeader, SectionTitle, Spinner } from '../components/SharedUI'
 import { useTheme } from '../ThemeContext'
+import { t, getLang } from '../i18n'
 
 type Period = 'daily' | 'weekly' | 'monthly'
 
 export default function Reports() {
   const { theme } = useTheme()
+  const lang = getLang()
+  const [error, setError] = useState('');
   const [period, setPeriod] = useState<Period>('daily')
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [trends, setTrends] = useState<Trends | null>(null)
@@ -31,11 +34,11 @@ export default function Reports() {
 
   useEffect(() => {
     Promise.all([api.dashboard(), api.trends()])
-      .then(([s, t]) => {
-        setStats(s)
-        setTrends(t)
+      .then(([statsData, trendsData]) => {
+        setStats(statsData)
+        setTrends(trendsData)
       })
-      .catch(console.error)
+      .catch(e => { console.error(e); setError(t('common.error', lang)); })
       .finally(() => setLoading(false))
   }, [])
 
@@ -44,102 +47,80 @@ export default function Reports() {
   const donutData = stats
     ? Object.entries(stats.by_status)
         .filter(([, v]) => v > 0)
-        .map(([k, v]) => ({ name: STATUS_LABELS[k] || k, value: v, status: k }))
+        .map(([k, v]) => ({ name: t(`status.${k}`, getLang()) !== `status.${k}` ? t(`status.${k}`, getLang()) : k, value: v, status: k }))
     : []
 
-  const CARD: React.CSSProperties = {
-    background: theme.cardBg,
-    border: `1px solid ${theme.cardBorder}`,
-    borderRadius: 8,
-    padding: 20,
-    marginBottom: 24,
-  }
-
   return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <PageHeader title="报告分析" />
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+    <div className="page-container">
+      {error && <div className="alert alert-error">{error}</div>}
+
+      <div className="toolbar">
+        <PageHeader title={t('reports.title', getLang())} />
+        <div className="toolbar-spacer" />
+        <div className="tab-bar" style={{ marginBottom: 0 }}>
           {(['daily', 'weekly', 'monthly'] as Period[]).map(p => (
-            <button className="glass-btn"
+            <button
+              className={`tab-btn ${period === p ? 'active' : ''}`}
               key={p}
               onClick={() => setPeriod(p)}
-              style={{
-                padding: '6px 14px',
-                background: period === p ? '${theme.cardBorder}' : 'transparent',
-                border: `1px solid ${theme.cardBorder}`,
-                borderRadius: 4,
-                color: period === p ? '${theme.textPrimary}' : theme.textSecondary,
-                cursor: 'pointer',
-                fontSize: 12,
-              }}
             >
-              {p === 'daily' ? '日报' : p === 'weekly' ? '周报' : '月报'}
+              {t(`reports.${p}`, getLang())}
             </button>
           ))}
-          <button className="glass-btn"
-            onClick={() => api.exportReport(period).catch(console.error)}
-            style={{
-              padding: '6px 14px',
-              background: `${theme.accent}20`,
-              border: `1px solid ${theme.accent}`,
-              borderRadius: 4,
-              color: theme.accent,
-              cursor: 'pointer',
-              fontSize: 12,
-              marginLeft: 8,
-            }}
-          >
-            导出报告
-          </button>
         </div>
+        <button
+          className="btn-secondary"
+          onClick={() => api.exportReport(period).catch(e => { console.error(e); setError(t('common.update_failed', '' as any)); })}
+        >
+          {t('reports.export', getLang())}
+        </button>
       </div>
 
       {/* Line charts: new clients + orders */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 0 }}>
-        <div style={CARD}>
-          <SectionTitle>新客户趋势</SectionTitle>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+        <div className="card">
+          <SectionTitle>{t('reports.new_client_trend', getLang())}</SectionTitle>
           {!trends?.daily_new.length ? (
             <Empty />
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={trends.daily_new} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="${theme.cardBorder}" />
+                <CartesianGrid strokeDasharray="3 3" stroke={theme.cardBorder} />
                 <XAxis
                   dataKey="day"
-                  tick={{ fill: theme.textSecondary, fontSize: 10 }}
+                  tick={{ fill: theme.textSecondary, fontSize: 12 }}
                   tickFormatter={(v: string) => v.slice(5)}
                   interval="preserveStartEnd"
                 />
-                <YAxis tick={{ fill: theme.textSecondary, fontSize: 11 }} />
+                <YAxis tick={{ fill: theme.textSecondary, fontSize: 12 }} />
                 <Tooltip
-                  contentStyle={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 4 }}
+                  contentStyle={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 8 }}
                 />
-                <Line type="monotone" dataKey="new_clients" stroke="${theme.accent}" dot={false} strokeWidth={2} name="新客户" />
+                <Line type="monotone" dataKey="new_clients" stroke={theme.accent} dot={false} strokeWidth={2} name={t('reports.new_clients_label', getLang())} />
               </LineChart>
             </ResponsiveContainer>
           )}
         </div>
 
-        <div style={CARD}>
-          <SectionTitle>下单趋势</SectionTitle>
+        <div className="card">
+          <SectionTitle>{t('reports.order_trend', getLang())}</SectionTitle>
           {!trends?.daily_orders.length ? (
             <Empty />
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={trends.daily_orders} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="${theme.cardBorder}" />
+                <CartesianGrid strokeDasharray="3 3" stroke={theme.cardBorder} />
                 <XAxis
                   dataKey="day"
-                  tick={{ fill: theme.textSecondary, fontSize: 10 }}
+                  tick={{ fill: theme.textSecondary, fontSize: 12 }}
                   tickFormatter={(v: string) => v.slice(5)}
                   interval="preserveStartEnd"
                 />
-                <YAxis tick={{ fill: theme.textSecondary, fontSize: 11 }} />
+                <YAxis tick={{ fill: theme.textSecondary, fontSize: 12 }} />
                 <Tooltip
-                  contentStyle={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 4 }}
+                  contentStyle={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 8 }}
                 />
-                <Line type="monotone" dataKey="orders" stroke="${theme.chartLine}" dot={false} strokeWidth={2} name="下单" />
+                <Line type="monotone" dataKey="orders" stroke={theme.chartLine} dot={false} strokeWidth={2} name={t('reports.orders_label', getLang())} />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -147,35 +128,35 @@ export default function Reports() {
       </div>
 
       {/* Deposit trend + status donut */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24 }}>
-        <div style={CARD}>
-          <SectionTitle>存款趋势 (30天)</SectionTitle>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20, marginBottom: 20 }}>
+        <div className="card">
+          <SectionTitle>{t('reports.deposit_trend_30', getLang())}</SectionTitle>
           {!trends?.daily_deposits.length ? (
             <Empty />
           ) : (
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={trends.daily_deposits} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="${theme.cardBorder}" />
+              <BarChart data={trends.daily_deposits} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={theme.cardBorder} />
                 <XAxis
                   dataKey="day"
-                  tick={{ fill: theme.textSecondary, fontSize: 10 }}
+                  tick={{ fill: theme.textSecondary, fontSize: 12 }}
                   tickFormatter={(v: string) => v.slice(5)}
                   interval="preserveStartEnd"
                 />
-                <YAxis tick={{ fill: theme.textSecondary, fontSize: 11 }} tickFormatter={(v: number) => `$${v}`} />
+                <YAxis tick={{ fill: theme.textSecondary, fontSize: 12 }} tickFormatter={(v: number) => `$${v}`} />
                 <Tooltip
-                  contentStyle={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 4 }}
-                  formatter={(v: number) => [`$${v.toFixed(0)}`, '存款']}
+                  contentStyle={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 8 }}
+                  formatter={(v: number) => [`$${v.toFixed(0)}`, t('reports.deposit_label', getLang())]}
                 />
-                <Bar dataKey="total" fill="${theme.accent}" radius={[3, 3, 0, 0]} name="存款" />
+                <Bar dataKey="total" fill={theme.accent} radius={[4, 4, 0, 0]} name={t('reports.deposit_label', getLang())} />
               </BarChart>
             </ResponsiveContainer>
           )}
         </div>
 
         {/* Status distribution donut */}
-        <div style={CARD}>
-          <SectionTitle>状态分布</SectionTitle>
+        <div className="card">
+          <SectionTitle>{t('reports.status_distribution', getLang())}</SectionTitle>
           {donutData.length === 0 ? (
             <Empty />
           ) : (
@@ -191,14 +172,14 @@ export default function Reports() {
                   dataKey="value"
                 >
                   {donutData.map((entry, index) => (
-                    <Cell key={index} fill={STATUS_COLORS[entry.status] || '${theme.textSecondary}'} />
+                    <Cell key={index} fill={STATUS_COLORS[entry.status] || theme.textSecondary} />
                   ))}
                 </Pie>
                 <Tooltip
-                  contentStyle={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 4 }}
+                  contentStyle={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 8 }}
                 />
                 <Legend
-                  wrapperStyle={{ fontSize: 11, color: theme.textSecondary }}
+                  wrapperStyle={{ fontSize: 12, color: theme.textSecondary }}
                   iconSize={8}
                 />
               </PieChart>
@@ -209,23 +190,23 @@ export default function Reports() {
 
       {/* Conversion rate card */}
       {stats && (
-        <div style={{ ...CARD, display: 'flex', gap: 40, alignItems: 'center' }}>
+        <div className="card" style={{ display: 'flex', gap: 32 }}>
           <div>
-            <div style={{ fontSize: 12, color: theme.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
-              整体转化率
+            <div className="field-label" style={{ marginBottom: 8 }}>
+              {t('reports.overall_conversion', getLang())}
             </div>
-            <div style={{ fontSize: 40, fontWeight: 700, color: theme.accent }}>
+            <div className="metric-value" style={{ color: theme.accent }}>
               {stats.conversion_rate}%
             </div>
             <div style={{ fontSize: 12, color: theme.textSecondary, marginTop: 4 }}>
-              {stats.by_status['ordered'] || 0} 下单 / {stats.total_clients} 总客户
+              {stats.by_status['ordered'] || 0} {t('reports.orders_label', getLang())} / {stats.total_clients} {t('dash.total_clients', getLang())}
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 12, color: theme.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
-              总存款
+            <div className="field-label" style={{ marginBottom: 8 }}>
+              {t('reports.total_deposit', getLang())}
             </div>
-            <div style={{ fontSize: 40, fontWeight: 700, color: theme.accent }}>
+            <div className="metric-value" style={{ color: theme.accent }}>
               ${stats.total_deposits.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </div>
           </div>

@@ -30,175 +30,12 @@ interface PhoneStats {
   duplicates_blocked: number
 }
 
-const getStyles = (theme: any) => ({
-  page: {
-    padding: 0,
-    color: theme.textPrimary,
-    minHeight: '100%',
-  } as React.CSSProperties,
-  header: {
-    marginBottom: 24,
-  } as React.CSSProperties,
-  title: {
-    fontSize: 24,
-    fontWeight: 700,
-    color: theme.textPrimary,
-    margin: 0,
-    letterSpacing: '-0.02em',
-  } as React.CSSProperties,
-  searchRow: {
-    display: 'flex',
-    gap: 12,
-    marginBottom: 32,
-    maxWidth: 600,
-  } as React.CSSProperties,
-  input: {
-    flex: 1,
-    padding: '12px 16px',
-    background: theme.inputBg,
-    border: `1px solid ${theme.inputBorder}`,
-    color: theme.textPrimary,
-    borderRadius: 8,
-    fontSize: 15,
-    outline: 'none',
-    boxShadow: theme.shadow,
-    transition: 'all 0.2s',
-  } as React.CSSProperties,
-  btn: {
-    padding: '12px 24px',
-    background: theme.accent,
-    border: 'none',
-    color: '#fff',
-    borderRadius: 8,
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: 'pointer',
-    boxShadow: theme.shadow,
-    transition: 'all 0.2s',
-  } as React.CSSProperties,
-  btnSecondary: {
-    padding: '10px 20px',
-    background: theme.cardBg,
-    border: `1px solid ${theme.cardBorder}`,
-    color: theme.textPrimary,
-    borderRadius: 8,
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-  } as React.CSSProperties,
-  card: {
-    background: theme.cardBg,
-    border: `1px solid ${theme.cardBorder}`,
-    borderRadius: 12,
-    padding: 24,
-    marginBottom: 24,
-    boxShadow: theme.shadow,
-  } as React.CSSProperties,
-  cardTitle: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: theme.textPrimary,
-    letterSpacing: '-0.01em',
-    marginBottom: 16,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  },
-  row: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: 24,
-    marginBottom: 12,
-  } as React.CSSProperties,
-  field: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: 6,
-  } as React.CSSProperties,
-  label: {
-    fontSize: 12,
-    color: theme.textSecondary,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
-    fontWeight: 600,
-  },
-  value: {
-    fontSize: 15,
-    color: theme.textPrimary,
-    fontWeight: 500,
-  },
-  notFound: {
-    background: theme.dangerBg,
-    border: `1px solid ${theme.danger}40`,
-    borderRadius: 12,
-    padding: 24,
-    color: theme.danger,
-    fontSize: 15,
-    fontWeight: 500,
-    marginBottom: 24,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-  } as React.CSSProperties,
-  logRow: {
-    display: 'flex',
-    gap: 16,
-    padding: '12px 0',
-    borderBottom: `1px solid ${theme.cardBorder}`,
-    fontSize: 14,
-    alignItems: 'center',
-  } as React.CSSProperties,
-  badge: {
-    fontSize: 11,
-    fontWeight: 700,
-    padding: '4px 8px',
-    borderRadius: 6,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase' as const,
-    background: theme.accentLight,
-    color: theme.accent,
-    flexShrink: 0,
-  },
-  clientRow: {
-    display: 'flex',
-    gap: 16,
-    padding: '12px 0',
-    borderBottom: `1px solid ${theme.cardBorder}`,
-    fontSize: 14,
-    alignItems: 'center',
-  } as React.CSSProperties,
-  statsGrid: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: 20,
-  } as React.CSSProperties,
-  statCard: {
-    background: theme.bg,
-    border: `1px solid ${theme.cardBorder}`,
-    borderRadius: 10,
-    padding: '20px 24px',
-  } as React.CSSProperties,
-  statValue: {
-    fontSize: 32,
-    fontWeight: 700,
-    color: theme.textPrimary,
-    letterSpacing: '-0.02em',
-  },
-  statLabel: {
-    fontSize: 13,
-    color: theme.textSecondary,
-    marginTop: 4,
-    fontWeight: 500,
-  },
-})
-
 function NoteForm({ clientId, lang }: { clientId: number; lang: any }) {
   const { theme } = useTheme()
-  const S = getStyles(theme)
   const [content, setContent] = useState('')
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
+  const [msgType, setMsgType] = useState<'success' | 'error'>('success')
 
   async function handleSave() {
     if (!content.trim()) return
@@ -207,36 +44,39 @@ function NoteForm({ clientId, lang }: { clientId: number; lang: any }) {
     try {
       await api.addClientNote(clientId, { content: content.trim(), note_type: 'comment' })
       setContent('')
-      setMsg('Saved successfully')
+      setMsg(t('phone.saved', lang))
+      setMsgType('success')
     } catch {
-      setMsg('Failed to save')
+      setMsg(t('phone.save_failed', lang))
+      setMsgType('error')
     }
     setSaving(false)
   }
 
   return (
-    <div style={{ ...S.card, background: theme.bg }}>
-      <div style={S.cardTitle}>✏️ {t('detail.add_note', lang)}</div>
+    <div className="card" style={{ marginBottom: 20 }}>
+      <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {t('detail.add_note', lang)}
+      </div>
       <div style={{ display: 'flex', gap: 12 }}>
         <input
-          style={S.input}
+          className="input"
           placeholder={t('detail.note_placeholder', lang)}
           value={content}
           onChange={e => setContent(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSave()}
         />
-        <button className="glass-btn" style={S.btn} onClick={handleSave} disabled={saving || !content.trim()}>
+        <button className="btn-primary" onClick={handleSave} disabled={saving || !content.trim()}>
           {saving ? '...' : t('common.save', lang)}
         </button>
       </div>
-      {msg && <div style={{ fontSize: 13, marginTop: 8, fontWeight: 500, color: msg.includes('Failed') ? theme.danger : theme.success }}>{msg}</div>}
+      {msg && <div className={`alert ${msgType === 'error' ? 'alert-error' : 'alert-success'}`} style={{ marginTop: 8, marginBottom: 0, padding: '8px 12px', fontSize: 13 }}>{msg}</div>}
     </div>
   )
 }
 
 export default function NumberLookup() {
   const { theme } = useTheme()
-  const S = getStyles(theme)
   const lang = getLang()
   const auth = getAuthState()
   const isAdmin = auth?.role === 'owner' || auth?.role === 'admin'
@@ -283,12 +123,12 @@ export default function NumberLookup() {
         overrideSubmitter.trim(),
         overrideStaffId ? parseInt(overrideStaffId) : undefined
       )
-      setOverrideMsg('Override saved.')
+      setOverrideMsg(t('phone.override_saved', lang))
       setOverrideMode(false)
       const refreshed = await api.phoneRegistryLookup(result.phone)
       setResult(refreshed)
     } catch (e: any) {
-      setOverrideMsg(e.message || 'Override failed')
+      setOverrideMsg(e.message || t('phone.override_failed', lang))
     } finally {
       setOverrideLoading(false)
     }
@@ -301,110 +141,118 @@ export default function NumberLookup() {
   const isOwnedByMe = result?.submitter_staff_id === auth?.staff_id;
 
   return (
-    <div style={S.page}>
-      <div style={S.header}>
-        <h1 style={S.title}>{t('phone.title', lang)}</h1>
-        <p style={{ color: theme.textSecondary, marginTop: 6, fontSize: 15 }}>Check phone number availability and history.</p>
+    <div className="page-container">
+      <div style={{ marginBottom: 24 }}>
+        <h1 className="page-title">{t('phone.title', lang)}</h1>
+        <p className="page-subtitle">{t('phone.description', lang)}</p>
       </div>
 
-      <div style={S.searchRow}>
-        <input
-          style={{...S.input, fontSize: 16}}
-          placeholder="Enter phone number..."
-          value={phone}
-          onChange={e => setPhone(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSearch()}
-          autoFocus
-        />
-        <button className="glass-btn" style={{...S.btn, fontSize: 15, padding: '0 28px'}} onClick={handleSearch} disabled={loading}>
-          {loading ? 'Searching...' : 'Search'}
-        </button>
+      {/* Prominent search bar */}
+      <div className="card" style={{ marginBottom: 24, padding: 24 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div style={{ position: 'relative', flex: 1 }}>
+            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 20, color: theme.textMuted }}>&#x2315;</span>
+            <input
+              className="input"
+              style={{ fontSize: 16, paddingLeft: 40, height: 48 }}
+              placeholder={t('phone.search_placeholder', lang)}
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              autoFocus
+            />
+          </div>
+          <button className="btn-primary" style={{ height: 48, padding: '0 32px', fontSize: 14 }} onClick={handleSearch} disabled={loading}>
+            {loading ? t('phone.searching', lang) : t('common.search', lang)}
+          </button>
+        </div>
       </div>
 
       {error && (
-        <div style={S.notFound}>⚠️ {error}</div>
+        <div className="alert alert-error">
+          {error}
+        </div>
       )}
 
       {result !== null && !result.found && (
-        <div style={{ ...S.notFound, background: theme.successBg, border: `1px solid ${theme.success}40`, color: theme.success }}>
-          ✨ Number is available! No records found.
+        <div className="alert alert-success">
+          {t('clients.phone_available', lang)}
         </div>
       )}
 
       {result?.found && (
         <>
-          <div style={{
-            ...S.card, 
+          <div className="card" style={{
+            marginBottom: 20,
             border: `2px solid ${isOwnedByMe ? theme.success : theme.danger}`,
             background: isOwnedByMe ? theme.successBg : theme.dangerBg,
-            boxShadow: `0 8px 24px -4px ${isOwnedByMe ? theme.success : theme.danger}20`
+            boxShadow: `0 8px 24px -4px ${isOwnedByMe ? theme.success : theme.danger}20`,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <div style={{ fontSize: 18, fontWeight: 700, color: isOwnedByMe ? theme.success : theme.danger, display: 'flex', alignItems: 'center', gap: 8 }}>
-                {isOwnedByMe ? '✅ Owned by You' : '🔒 Owned by Someone Else'}
+              <div style={{ fontSize: 16, fontWeight: 700, color: isOwnedByMe ? theme.success : theme.danger }}>
+                {isOwnedByMe ? t('phone.owned_self', lang) : t('phone.owned_other', lang)}
               </div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: isOwnedByMe ? theme.success : theme.danger, padding: '4px 12px', background: `${isOwnedByMe ? theme.success : theme.danger}20`, borderRadius: 20 }}>
-                {isOwnedByMe ? 'Editable' : 'Locked'}
+              <span className={isOwnedByMe ? 'badge-success' : 'badge-danger'} style={{ fontSize: 13, fontWeight: 600, padding: '4px 12px' }}>
+                {isOwnedByMe ? t('phone.editable', lang) : t('phone.locked', lang)}
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20, marginBottom: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span className="field-label" style={{ color: isOwnedByMe ? theme.success : theme.danger }}>{t('phone.owner', lang)}</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: theme.textPrimary }}>{result.submitter_name}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span className="field-label" style={{ color: isOwnedByMe ? theme.success : theme.danger }}>{t('clients.phone', lang)}</span>
+                <span style={{ fontSize: 14, fontWeight: 500, color: theme.textPrimary }}>{result.phone}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span className="field-label" style={{ color: isOwnedByMe ? theme.success : theme.danger }}>{t('phone.normalized', lang)}</span>
+                <span style={{ fontSize: 14, fontWeight: 500, color: theme.textPrimary }}>{result.phone_normalized}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span className="field-label" style={{ color: isOwnedByMe ? theme.success : theme.danger }}>{t('clients.source', lang)}</span>
+                <span style={{ fontSize: 14, fontWeight: 500, color: theme.textPrimary }}>{result.source}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span className="field-label" style={{ color: isOwnedByMe ? theme.success : theme.danger }}>{t('phone.registered_on', lang)}</span>
+                <span style={{ fontSize: 14, fontWeight: 500, color: theme.textPrimary }}>{result.submitted_at ? formatDate(result.submitted_at) : '—'}</span>
               </div>
             </div>
-            
-            <div style={S.row}>
-              <div style={S.field}>
-                <span style={{...S.label, color: isOwnedByMe ? theme.success : theme.danger, opacity: 0.8}}>Owner</span>
-                <span style={{...S.value, color: theme.textPrimary, fontSize: 18, fontWeight: 700}}>{result.submitter_name}</span>
-              </div>
-              <div style={S.field}>
-                <span style={{...S.label, color: isOwnedByMe ? theme.success : theme.danger, opacity: 0.8}}>Phone</span>
-                <span style={S.value}>{result.phone}</span>
-              </div>
-              <div style={S.field}>
-                <span style={{...S.label, color: isOwnedByMe ? theme.success : theme.danger, opacity: 0.8}}>Normalized</span>
-                <span style={S.value}>{result.phone_normalized}</span>
-              </div>
-              <div style={S.field}>
-                <span style={{...S.label, color: isOwnedByMe ? theme.success : theme.danger, opacity: 0.8}}>Source</span>
-                <span style={S.value}>{result.source}</span>
-              </div>
-              <div style={S.field}>
-                <span style={{...S.label, color: isOwnedByMe ? theme.success : theme.danger, opacity: 0.8}}>Registered On</span>
-                <span style={S.value}>{result.submitted_at ? formatDate(result.submitted_at) : '—'}</span>
-              </div>
-            </div>
-            
+
             {isAdmin && (
-              <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${isOwnedByMe ? theme.success : theme.danger}30`, display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${isOwnedByMe ? theme.success : theme.danger}30`, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                 {!overrideMode ? (
-                  <button className="glass-btn" style={{...S.btnSecondary, background: 'transparent', borderColor: isOwnedByMe ? theme.success : theme.danger, color: isOwnedByMe ? theme.success : theme.danger}} onClick={() => setOverrideMode(true)}>
-                    Admin Override Owner
+                  <button className="btn-secondary" style={{ borderColor: isOwnedByMe ? theme.success : theme.danger, color: isOwnedByMe ? theme.success : theme.danger }} onClick={() => setOverrideMode(true)}>
+                    {t('phone.admin_override', lang)}
                   </button>
                 ) : (
-                  <div className="glass-card" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', width: '100%', padding: 16, borderRadius: 8 }}>
+                  <div className="card" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', width: '100%', padding: 20 }}>
                     <input
-                      style={{ ...S.input, flex: 1, minWidth: 200 }}
-                      placeholder="New owner name"
+                      className="input"
+                      style={{ flex: 1, minWidth: 200 }}
+                      placeholder={t("phone.new_owner", lang)}
                       value={overrideSubmitter}
                       onChange={e => setOverrideSubmitter(e.target.value)}
                     />
                     <input
-                      style={{ ...S.input, width: 140 }}
-                      placeholder="Staff ID (opt)"
+                      className="input"
+                      style={{ width: 140 }}
+                      placeholder={t("phone.staff_id_opt", lang)}
                       value={overrideStaffId}
                       onChange={e => setOverrideStaffId(e.target.value)}
                       type="number"
                     />
-                    <button className="glass-btn" style={S.btn} onClick={handleOverride} disabled={overrideLoading}>
-                      {overrideLoading ? 'Saving...' : 'Confirm'}
+                    <button className="btn-primary" onClick={handleOverride} disabled={overrideLoading}>
+                      {overrideLoading ? t('common.saving', lang) : t('common.confirm', lang)}
                     </button>
-                    <button className="glass-btn"
-                      style={{ ...S.btnSecondary }}
-                      onClick={() => { setOverrideMode(false); setOverrideMsg('') }}
-                    >
-                      Cancel
+                    <button className="btn-secondary" onClick={() => { setOverrideMode(false); setOverrideMsg('') }}>
+                      {t('common.cancel', lang)}
                     </button>
                   </div>
                 )}
                 {overrideMsg && (
-                  <span style={{ fontSize: 14, fontWeight: 600, color: overrideMsg.includes('failed') ? theme.danger : theme.success }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: overrideMsg.includes('failed') ? theme.danger : theme.success }}>
                     {overrideMsg}
                   </span>
                 )}
@@ -416,36 +264,31 @@ export default function NumberLookup() {
             <NoteForm clientId={result.linked_clients[0].id} lang={lang} />
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 20 }}>
             {result.linked_clients !== undefined && (
-              <div style={{...S.card, marginBottom: 0}}>
-                <div style={S.cardTitle}>
-                  🔗 {t('phone.linked_clients', lang)} <span style={{ color: theme.textMuted, fontWeight: 400 }}>({result.linked_clients.length})</span>
+              <div className="card">
+                <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {t('phone.linked_clients', lang)} <span style={{ color: theme.textMuted, fontWeight: 400 }}>({result.linked_clients.length})</span>
                 </div>
                 {result.linked_clients.length === 0 ? (
-                  <div className="empty-state" style={{ padding: '24px' }}>
-                    <div style={{ fontSize: 32, opacity: 0.5, marginBottom: 8 }}>📭</div>
-                    <div>No linked clients found.</div>
+                  <div className="empty-state" style={{ padding: 20 }}>
+                    <div style={{ fontSize: 32, opacity: 0.5, marginBottom: 8 }}></div>
+                    <div>{t('phone.no_linked', lang)}</div>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     {result.linked_clients.map((c: any, i: number) => (
-                      <div key={i} style={{...S.clientRow, borderBottom: i === result.linked_clients!.length - 1 ? 'none' : `1px solid ${theme.cardBorder}`}}>
+                      <div key={i} style={{ display: 'flex', gap: 12, padding: '12px 0', borderBottom: i === result.linked_clients!.length - 1 ? 'none' : `1px solid ${theme.cardBorder}`, fontSize: 14, alignItems: 'center' }}>
                         <a
                           href={`/clients/${c.id}`}
-                          className="pill-badge" style={{ color: theme.accent, fontWeight: 600, textDecoration: 'none', cursor: 'pointer', padding: '4px 12px', background: theme.accentLight,  }}
+                          className="pill-badge" style={{ color: theme.accent, fontWeight: 600, textDecoration: 'none', background: theme.accentLight }}
                         >
                           #{c.id}
                         </a>
-                        <span style={{ fontWeight: 600, color: theme.textPrimary }}>
-                          {c.phone}
-                        </span>
-                        <span style={{ color: theme.textSecondary, fontSize: 13 }}>• {c.status}</span>
+                        <span style={{ fontWeight: 600, color: theme.textPrimary }}>{c.phone}</span>
+                        <span style={{ color: theme.textSecondary, fontSize: 13 }}>{c.status}</span>
                         {c.frontdesk_name && (
-                          <span style={{
-                            background: theme.bg, border: `1px solid ${theme.cardBorder}`, color: theme.textSecondary, padding: '2px 8px',
-                            borderRadius: 6, fontSize: 12, fontWeight: 500, marginLeft: 'auto'
-                          }}>
+                          <span className="pill-badge" style={{ marginLeft: 'auto', background: theme.bg, border: `1px solid ${theme.cardBorder}`, color: theme.textSecondary, fontSize: 12 }}>
                             {c.frontdesk_name}
                           </span>
                         )}
@@ -457,22 +300,28 @@ export default function NumberLookup() {
             )}
 
             {result.log && result.log.length > 0 && (
-              <div style={{...S.card, marginBottom: 0}}>
-                <div style={S.cardTitle}>📜 {t('phone.history', lang)}</div>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {result.log.map((entry, i) => (
-                    <div key={i} style={{...S.logRow, borderBottom: i === result.log!.length - 1 ? 'none' : `1px solid ${theme.cardBorder}`}}>
-                      <span style={S.badge}>{entry.action}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ color: theme.textPrimary, fontWeight: 500 }}>{entry.actor_name}</div>
-                        {entry.details && (
-                          <div style={{ color: theme.textSecondary, fontSize: 13, marginTop: 2 }}>{entry.details}</div>
-                        )}
-                      </div>
-                      <span style={{ color: theme.textMuted, fontSize: 12 }}>{formatDate(entry.created_at)}</span>
-                    </div>
-                  ))}
-                </div>
+              <div className="card" style={{ overflow: 'hidden' }}>
+                <div className="section-title">{t('phone.history', lang)}</div>
+                <table className="data-grid-table">
+                  <tbody>
+                    {result.log.map((entry, i) => (
+                      <tr key={i}>
+                        <td>
+                          <span className="badge-info" style={{ fontSize: 12, fontWeight: 700, padding: '4px 8px', textTransform: 'uppercase', letterSpacing: 0.5 }}>{entry.action}</span>
+                        </td>
+                        <td style={{ width: '100%' }}>
+                          <div style={{ color: theme.textPrimary, fontWeight: 500 }}>{entry.actor_name}</div>
+                          {entry.details && (
+                            <div style={{ color: theme.textSecondary, fontSize: 13, marginTop: 4 }}>{entry.details}</div>
+                          )}
+                        </td>
+                        <td style={{ color: theme.textMuted, fontSize: 12, whiteSpace: 'nowrap', textAlign: 'right' }}>
+                          {formatDate(entry.created_at)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -480,16 +329,16 @@ export default function NumberLookup() {
       )}
 
       {stats && !result?.found && (
-        <div style={{ ...S.card, marginTop: 16 }}>
-          <div style={S.cardTitle}>📊 {t('phone.stats', lang)}</div>
-          <div style={S.statsGrid}>
-            <div style={S.statCard}>
-              <div style={S.statLabel}>{t('phone.total_numbers', lang)}</div>
-              <div style={S.statValue}>{stats.total_registered.toLocaleString() ?? 0}</div>
+        <div className="card" style={{ marginTop: 20 }}>
+          <div className="section-title">{t('phone.stats', lang)}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            <div className="metric-card">
+              <div className="metric-label">{t('phone.total_numbers', lang)}</div>
+              <div className="metric-value" style={{ color: theme.textPrimary }}>{stats.total_registered.toLocaleString() ?? 0}</div>
             </div>
-            <div style={S.statCard}>
-              <div style={S.statLabel}>{t('phone.duplicates_blocked', lang)}</div>
-              <div style={S.statValue}>{stats.duplicates_blocked.toLocaleString() ?? 0}</div>
+            <div className="metric-card">
+              <div className="metric-label">{t('phone.duplicates_blocked', lang)}</div>
+              <div className="metric-value" style={{ color: theme.textPrimary }}>{stats.duplicates_blocked.toLocaleString() ?? 0}</div>
             </div>
           </div>
         </div>

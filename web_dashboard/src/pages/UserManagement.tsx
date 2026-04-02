@@ -3,6 +3,7 @@ import { api, getAuthState } from '../api'
 import type { DashboardUser } from '../types'
 import { ROLE_COLORS, ROLE_LABELS } from '../types'
 import { useTheme } from '../ThemeContext'
+import { t, getLang } from '../i18n'
 
 type ModalMode = 'add' | 'edit' | 'reset' | null
 
@@ -24,30 +25,16 @@ const defaultForm: FormState = {
   staff_id: '',
 }
 
-
-
 export default function UserManagement() {
   const { theme } = useTheme()
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '9px 11px',
-    background: theme.bg,
-    border: `1px solid ${theme.cardBorder}`,
-    borderRadius: 4,
-    color: theme.textPrimary,
-    fontSize: 13,
-    outline: 'none',
-    boxSizing: 'border-box',
-  }
-
-  const selectStyle: React.CSSProperties = {
-    ...inputStyle,
-    cursor: 'pointer',
-  }
-
   const auth = getAuthState()
   const isOwner = auth?.role === 'owner'
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') closeModal() }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [])
 
   const [users, setUsers] = useState<DashboardUser[]>([])
   const [loading, setLoading] = useState(true)
@@ -65,7 +52,7 @@ export default function UserManagement() {
     try {
       setUsers(await api.listUsers())
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : '加载失败')
+      setError(e instanceof Error ? e.message : t('common.error', getLang()))
     } finally {
       setLoading(false)
     }
@@ -117,7 +104,7 @@ export default function UserManagement() {
     try {
       if (modal === 'add') {
         if (!form.username || !form.display_name || !form.password) {
-          setFormError('请填写所有必填字段')
+          setFormError(t('users.all_required', getLang()))
           return
         }
         await api.createUser({
@@ -141,7 +128,7 @@ export default function UserManagement() {
         }
       } else if (modal === 'reset' && editTarget) {
         if (!resetPwd || resetPwd.length < 6) {
-          setFormError('密码至少 6 个字符')
+          setFormError(t('users.pwd_min_6', getLang()))
           return
         }
         await api.resetPassword(editTarget.id, resetPwd)
@@ -149,7 +136,7 @@ export default function UserManagement() {
       closeModal()
       await load()
     } catch (e: unknown) {
-      setFormError(e instanceof Error ? e.message : '操作失败')
+      setFormError(e instanceof Error ? e.message : t('common.error', getLang()))
     } finally {
       setSaving(false)
     }
@@ -161,7 +148,7 @@ export default function UserManagement() {
       setConfirmDeactivate(null)
       await load()
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : '停用失败')
+      setError(e instanceof Error ? e.message : t('common.error', getLang()))
     }
   }
 
@@ -170,7 +157,7 @@ export default function UserManagement() {
       await api.updateUser(u.id, { is_active: true })
       await load()
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : '启用失败')
+      setError(e instanceof Error ? e.message : t('common.error', getLang()))
     }
   }
 
@@ -180,109 +167,79 @@ export default function UserManagement() {
     return u.role === 'member' && u.team_scope === auth.team_scope
   }
 
-  const th: React.CSSProperties = {
-    padding: '10px 12px',
-    textAlign: 'left',
-    fontSize: 11,
-    color: theme.textSecondary,
-    fontWeight: 600,
-    letterSpacing: 0.5,
-    borderBottom: `1px solid ${theme.cardBorder}`,
-  }
-
-  const td: React.CSSProperties = {
-    padding: '10px 12px',
-    fontSize: 13,
-    color: theme.textPrimary,
-    borderBottom: `1px solid ${theme.cardBorder}`,
-    verticalAlign: 'middle',
-  }
-
   return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: theme.textPrimary }}>用户管理</h2>
-        <button className="glass-btn"
-          onClick={openAdd}
-          style={{
-            padding: '8px 16px',
-            background: theme.accent,
-            border: 'none',
-            borderRadius: 4,
-            color: '#fff',
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
-          ＋ 添加用户
+    <div className="page-container">
+      <div className="toolbar">
+        <h1 className="page-title">{t('users.title', getLang())}</h1>
+        <div className="toolbar-spacer" />
+        <button className="btn-primary" onClick={openAdd}>
+          + {t('users.add', getLang())}
         </button>
       </div>
 
       {error && (
-        <div style={{ background: theme.badgeRed, border: `1px solid ${theme.badgeRed}`, color: theme.badgeRed, padding: '8px 12px', borderRadius: 4, marginBottom: 16, fontSize: 13 }}>
-          {error}
-        </div>
+        <div className="alert alert-error">{error}</div>
       )}
 
       {loading ? (
-        <div style={{ color: theme.textSecondary, padding: 20, textAlign: 'center' }}>加载中...</div>
+        <div style={{ color: theme.textSecondary, padding: 20, textAlign: 'center' }}>{t('common.loading', getLang())}</div>
       ) : (
-        <div style={{ background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 6, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <table className="data-grid-table">
             <thead>
-              <tr className="glass-table-row">
-                {['显示名称', '用户名', '角色', '团队', '状态', '最后登录', '操作'].map(h => (
-                  <th key={h} style={th}>{h}</th>
-                ))}
+              <tr>
+                <th>{t('users.display_name', getLang())}</th>
+                <th>{t('users.username', getLang())}</th>
+                <th>{t('users.role', getLang())}</th>
+                <th>{t('users.team', getLang())}</th>
+                <th>{t('users.status', getLang())}</th>
+                <th>{t('users.last_login', getLang())}</th>
+                <th>{t('users.actions', getLang())}</th>
               </tr>
             </thead>
             <tbody>
               {users.map(u => (
-                <tr className="glass-table-row" key={u.id} style={{ opacity: u.is_active ? 1 : 0.5 }}>
-                  <td style={td}>{u.display_name}</td>
-                  <td style={{ ...td, color: theme.textSecondary }}>{u.username}</td>
-                  <td style={td}>
-                    <span style={{
-                      fontSize: 10, fontWeight: 700,
+                <tr key={u.id} style={{ opacity: u.is_active ? 1 : 0.5 }}>
+                  <td>{u.display_name}</td>
+                  <td style={{ color: theme.textSecondary }}>{u.username}</td>
+                  <td>
+                    <span className="pill-badge" style={{
                       color: ROLE_COLORS[u.role],
                       background: `${ROLE_COLORS[u.role]}22`,
                       border: `1px solid ${ROLE_COLORS[u.role]}`,
-                      borderRadius: 3, padding: '2px 7px',
-                      letterSpacing: 0.5, textTransform: 'uppercase',
                     }}>
                       {ROLE_LABELS[u.role] || u.role}
                     </span>
                   </td>
-                  <td style={{ ...td, color: theme.textSecondary }}>{u.team_scope ?? '全部'}</td>
-                  <td style={td}>
-                    <span style={{ color: u.is_active ? '${theme.accent}' : theme.badgeRed, fontSize: 12 }}>
-                      {u.is_active ? '活跃' : '已停用'}
+                  <td style={{ color: theme.textSecondary }}>{u.team_scope ?? t('users.all_teams', getLang())}</td>
+                  <td>
+                    <span className={u.is_active ? 'badge-success' : 'badge-danger'} style={{ fontSize: 12 }}>
+                      {u.is_active ? t('users.active', getLang()) : t('users.deactivated', getLang())}
                     </span>
                   </td>
-                  <td style={{ ...td, color: theme.textSecondary, fontSize: 12 }}>
-                    {u.last_login ? new Date(u.last_login).toLocaleDateString('zh-CN') : '—'}
+                  <td style={{ color: theme.textSecondary, fontSize: 12 }}>
+                    {u.last_login ? new Date(u.last_login).toLocaleDateString(getLang() === 'zh' ? 'zh-CN' : 'en-US') : '\u2014'}
                   </td>
-                  <td style={td}>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                  <td>
+                    <div style={{ display: 'flex', gap: 8 }}>
                       {canEdit(u) && (
                         <>
-                          <button className="glass-btn" onClick={() => openEdit(u)} style={actionBtn('${theme.cardBorder}', '${theme.textSecondary}')}>编辑</button>
-                          <button className="glass-btn" onClick={() => openReset(u)} style={actionBtn('${theme.cardBorder}', '${theme.chartLine}')}>重置密码</button>
+                          <button className="btn-secondary" style={{ height: 32, padding: '0 12px', fontSize: 12 }} onClick={() => openEdit(u)}>{t('common.edit', getLang())}</button>
+                          <button className="btn-secondary" style={{ height: 32, padding: '0 12px', fontSize: 12 }} onClick={() => openReset(u)}>{t('users.reset_password', getLang())}</button>
                         </>
                       )}
                       {canEdit(u) && u.is_active && auth?.user_id !== u.id && (
                         confirmDeactivate === u.id ? (
                           <>
-                            <button className="glass-btn" onClick={() => deactivate(u.id)} style={actionBtn('${theme.badgeRed}', '${theme.badgeRed}')}>确认停用</button>
-                            <button className="glass-btn" onClick={() => setConfirmDeactivate(null)} style={actionBtn('${theme.cardBorder}', '${theme.textSecondary}')}>取消</button>
+                            <button className="btn-danger" style={{ height: 32, padding: '0 12px', fontSize: 12 }} onClick={() => deactivate(u.id)}>{t('users.confirm_deactivate', getLang())}</button>
+                            <button className="btn-secondary" style={{ height: 32, padding: '0 12px', fontSize: 12 }} onClick={() => setConfirmDeactivate(null)}>{t('common.cancel', getLang())}</button>
                           </>
                         ) : (
-                          <button className="glass-btn" onClick={() => setConfirmDeactivate(u.id)} style={actionBtn('${theme.cardBorder}', '${theme.badgeRed}')}>停用</button>
+                          <button className="btn-danger" style={{ height: 32, padding: '0 12px', fontSize: 12 }} onClick={() => setConfirmDeactivate(u.id)}>{t('users.deactivate', getLang())}</button>
                         )
                       )}
                       {canEdit(u) && !u.is_active && isOwner && (
-                        <button className="glass-btn" onClick={() => reactivate(u)} style={actionBtn('${theme.cardBorder}', '${theme.accent}')}>启用</button>
+                        <button className="btn-secondary" style={{ height: 32, padding: '0 12px', fontSize: 12, color: theme.accent }} onClick={() => reactivate(u)}>{t('users.reactivate', getLang())}</button>
                       )}
                     </div>
                   </td>
@@ -295,104 +252,73 @@ export default function UserManagement() {
 
       {/* Modal */}
       {modal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-        }}>
-          <div style={{
-            background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 8,
-            padding: 32, width: 400, maxWidth: '90vw',
-          }}>
-            <h3 style={{ margin: '0 0 20px', fontSize: 16, color: theme.textPrimary }}>
-              {modal === 'add' ? '添加用户' : modal === 'edit' ? '编辑用户' : '重置密码'}
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ width: 480 }}>
+            <h3 className="modal-title">
+              {modal === 'add' ? t('users.add', getLang()) : modal === 'edit' ? t('users.edit', getLang()) : t('users.reset_password', getLang())}
             </h3>
 
             {modal === 'reset' ? (
-              <>
-                <p style={{ color: theme.textSecondary, fontSize: 13, marginTop: 0 }}>
-                  为 <strong style={{ color: theme.textPrimary }}>{editTarget?.display_name}</strong> 设置新密码
+              <div className="form-grid">
+                <p style={{ color: theme.textSecondary, fontSize: 13, margin: 0 }}>
+                  {t('users.set_pwd_for', getLang())} <strong style={{ color: theme.textPrimary }}>{editTarget?.display_name}</strong>
                 </p>
-                <label style={{ display: 'block', marginBottom: 16 }}>
-                  <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 6 }}>新密码</span>
-                  <input type="password" value={resetPwd} onChange={e => setResetPwd(e.target.value)} style={inputStyle} autoFocus />
+                <label>
+                  <span className="field-label">{t('users.new_password', getLang())}</span>
+                  <input className="input" type="password" value={resetPwd} onChange={e => setResetPwd(e.target.value)} autoFocus />
                 </label>
-              </>
+              </div>
             ) : (
-              <>
-                <label style={{ display: 'block', marginBottom: 14 }}>
-                  <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 5 }}>显示名称 *</span>
-                  <input value={form.display_name} onChange={e => setF('display_name', e.target.value)} style={inputStyle} autoFocus={modal === 'add'} />
+              <div className="form-grid">
+                <label>
+                  <span className="field-label">{t('users.display_name', getLang())} *</span>
+                  <input className="input" value={form.display_name} onChange={e => setF('display_name', e.target.value)} autoFocus={modal === 'add'} />
                 </label>
 
                 {modal === 'add' && (
                   <>
-                    <label style={{ display: 'block', marginBottom: 14 }}>
-                      <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 5 }}>用户名 *</span>
-                      <input value={form.username} onChange={e => setF('username', e.target.value)} style={inputStyle} />
+                    <label>
+                      <span className="field-label">{t('users.username', getLang())} *</span>
+                      <input className="input" value={form.username} onChange={e => setF('username', e.target.value)} />
                     </label>
-                    <label style={{ display: 'block', marginBottom: 14 }}>
-                      <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 5 }}>密码 *</span>
-                      <input type="password" value={form.password} onChange={e => setF('password', e.target.value)} style={inputStyle} />
+                    <label>
+                      <span className="field-label">{t('users.password', getLang())} *</span>
+                      <input className="input" type="password" value={form.password} onChange={e => setF('password', e.target.value)} />
                     </label>
                   </>
                 )}
 
-                <label style={{ display: 'block', marginBottom: 14 }}>
-                  <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 5 }}>角色</span>
-                  <select
-                    value={form.role}
-                    onChange={e => setF('role', e.target.value)}
-                    style={selectStyle}
-                    disabled={!isOwner}
-                  >
-                    {isOwner && <option value="owner">拥有者</option>}
-                    {isOwner && <option value="admin">管理员</option>}
-                    <option value="member">成员</option>
+                <label>
+                  <span className="field-label">{t('users.role', getLang())}</span>
+                  <select className="input" value={form.role} onChange={e => setF('role', e.target.value)} disabled={!isOwner}>
+                    {isOwner && <option value="owner">{t('role.owner', getLang())}</option>}
+                    {isOwner && <option value="admin">{t('role.admin', getLang())}</option>}
+                    <option value="member">{t('role.member', getLang())}</option>
                   </select>
                 </label>
 
-                <label style={{ display: 'block', marginBottom: 14 }}>
-                  <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 5 }}>团队</span>
-                  <input
-                    value={form.team_scope}
-                    onChange={e => setF('team_scope', e.target.value)}
-                    placeholder="留空表示全部"
-                    style={inputStyle}
-                    disabled={!isOwner}
-                  />
+                <label>
+                  <span className="field-label">{t('users.team', getLang())}</span>
+                  <input className="input" value={form.team_scope} onChange={e => setF('team_scope', e.target.value)} placeholder={t('users.all_teams', getLang())} disabled={!isOwner} />
                 </label>
 
-                <label style={{ display: 'block', marginBottom: 14 }}>
-                  <span style={{ fontSize: 12, color: theme.textSecondary, display: 'block', marginBottom: 5 }}>关联员工 ID</span>
-                  <input
-                    type="number"
-                    value={form.staff_id}
-                    onChange={e => setF('staff_id', e.target.value)}
-                    placeholder="可选"
-                    style={inputStyle}
-                  />
+                <label>
+                  <span className="field-label">{t('users.linked_staff', getLang())}</span>
+                  <input className="input" type="number" value={form.staff_id} onChange={e => setF('staff_id', e.target.value)} placeholder={t('users.optional', getLang())} />
                 </label>
-              </>
+              </div>
             )}
 
             {formError && (
-              <div style={{ color: theme.badgeRed, fontSize: 12, marginBottom: 14, background: theme.badgeRed, padding: '6px 10px', borderRadius: 4 }}>
+              <div className="alert alert-error" style={{ marginTop: 12, marginBottom: 0, padding: '8px 12px', fontSize: 12 }}>
                 {formError}
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button className="glass-btn" onClick={closeModal} style={actionBtn('${theme.cardBorder}', '${theme.textSecondary}')}>取消</button>
-              <button className="glass-btn"
-                onClick={saveUser}
-                disabled={saving}
-                style={{
-                  padding: '8px 16px', background: saving ? '${theme.cardBorder}' : theme.accent,
-                  border: 'none', borderRadius: 4, color: '#fff', fontSize: 13,
-                  fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {saving ? '保存中...' : '保存'}
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={closeModal}>{t('common.cancel', getLang())}</button>
+              <button className="btn-primary" onClick={saveUser} disabled={saving}>
+                {saving ? t('users.saving', getLang()) : t('common.save', getLang())}
               </button>
             </div>
           </div>
@@ -400,17 +326,4 @@ export default function UserManagement() {
       )}
     </div>
   )
-}
-
-function actionBtn(bg: string, color: string): React.CSSProperties {
-  return {
-    padding: '5px 10px',
-    background: bg,
-    border: `1px solid ${color}`,
-    borderRadius: 3,
-    color,
-    fontSize: 11,
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-  }
 }

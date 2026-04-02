@@ -3,14 +3,6 @@ import { api, getAuthState } from '../api'
 import { getLang, t } from '../i18n'
 import { useTheme } from '../ThemeContext'
 
-const TEAMS = [
-  { key: 'all', zh: '全线', en: 'All Teams' },
-  { key: '阿毛', zh: '阿毛组', en: 'A Mao' },
-  { key: '阿俊', zh: '阿俊组', en: 'A Jun' },
-  { key: '何军', zh: '何军组', en: 'He Jun' },
-  { key: 'Juan Juan', zh: 'Juan Juan组', en: 'Juan Juan' },
-]
-
 interface StaffPerf {
   staff_id: number
   display_name: string
@@ -27,59 +19,16 @@ interface StaffPerf {
   registration_rate: number
   training_rate: number
   conversion_rate: number
-  trend?: number[] // Optional 7-day trend
+  trend?: number[]
 }
 
-const getStyles = (theme: any) => ({
-  page: { padding: 0, color: theme.textPrimary, minHeight: '100%' } as React.CSSProperties,
-  title: { fontSize: 28, fontWeight: 700, color: theme.textPrimary, margin: '0 0 8px', letterSpacing: '-0.02em' } as React.CSSProperties,
-  subtitle: { fontSize: 15, color: theme.textSecondary, marginBottom: 32, fontWeight: 500 } as React.CSSProperties,
-  controls: { display: 'flex', gap: 12, marginBottom: 32, flexWrap: 'wrap' as const, alignItems: 'center' } as React.CSSProperties,
-  input: {
-    padding: '10px 16px', background: theme.inputBg, border: `1px solid ${theme.inputBorder}`,
-    color: theme.textPrimary, borderRadius: 8, fontSize: 14, outline: 'none', boxShadow: theme.shadow,
-  } as React.CSSProperties,
-  teamTab: (active: boolean): React.CSSProperties => ({
-    padding: '10px 20px', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer',
-    border: `1px solid ${active ? theme.accent : theme.cardBorder}`,
-    background: active ? theme.accent : theme.cardBg,
-    color: active ? '#fff' : theme.textSecondary,
-    boxShadow: theme.shadow,
-    transition: 'all 0.2s',
-  }),
-  card: {
-    background: theme.cardBg, border: `1px solid ${theme.cardBorder}`, borderRadius: 12,
-    padding: 24, marginBottom: 20, boxShadow: theme.shadow,
-  } as React.CSSProperties,
-  cardName: { fontSize: 18, fontWeight: 700, color: theme.textPrimary, marginBottom: 4 },
-  cardTeam: { fontSize: 13, color: theme.textSecondary, marginBottom: 20, fontWeight: 500, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
-  metricsGrid: {
-    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 16,
-  } as React.CSSProperties,
-  metricBox: {
-    background: theme.bg, borderRadius: 12, padding: '20px 16px', textAlign: 'center' as const,
-    border: `1px solid ${theme.cardBorder}`, boxShadow: theme.shadow, transition: 'all 0.3s ease'
-  } as React.CSSProperties,
-  metricValue: (color: string) => ({
-    fontSize: 28, fontWeight: 700, color, lineHeight: 1.2, letterSpacing: '-0.03em'
-  }),
-  metricLabel: { fontSize: 12, fontWeight: 600, color: theme.textSecondary, marginTop: 8, letterSpacing: 0.5, textTransform: 'uppercase' as const },
-  summaryCard: {
-    background: theme.cardBg, border: `2px solid ${theme.accent}`, borderRadius: 16,
-    padding: 32, marginTop: 32, boxShadow: theme.shadowHover,
-  } as React.CSSProperties,
-  summaryTitle: { fontSize: 16, fontWeight: 700, color: theme.accent, marginBottom: 24, textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 8 },
-  empty: { color: theme.textSecondary, fontSize: 15, padding: 48, textAlign: 'center' as const, fontWeight: 500, background: theme.cardBg, border: `1px dashed ${theme.cardBorder}`, borderRadius: 12 } as React.CSSProperties,
-})
-
-// Mini sparkline component
 function Sparkline({ data, color }: { data: number[], color: string }) {
-  if (!data || data.length === 0) return <div style={{ width: 60, height: 20 }} />
+  if (!data || data.length === 0) return <div style={{ width: 60, height: 24, margin: '0 auto' }} />
   const max = Math.max(...data, 1)
   const width = 60
   const height = 24
   const dx = width / (data.length - 1 || 1)
-  
+
   const points = data.map((d, i) => {
     const x = i * dx
     const y = height - (d / max) * height
@@ -87,15 +36,8 @@ function Sparkline({ data, color }: { data: number[], color: string }) {
   }).join(' ')
 
   return (
-    <svg width={width} height={height} style={{ overflow: 'visible' }}>
-      <polyline
-        fill="none"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        points={points}
-      />
+    <svg width={width} height={height} style={{ overflow: 'visible', display: 'block', margin: '0 auto' }}>
+      <polyline fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" points={points} />
       {data.map((d, i) => (
         <circle key={i} cx={i * dx} cy={height - (d / max) * height} r="2" fill={color} />
       ))}
@@ -103,20 +45,28 @@ function Sparkline({ data, color }: { data: number[], color: string }) {
   )
 }
 
+function MetricBox({ label, value, color }: { label: string; value: number | string; color: string }) {
+  return (
+    <div className="metric-card">
+      <div className="metric-value" style={{ color }}>{value}</div>
+      <div className="metric-label">{label}</div>
+    </div>
+  )
+}
+
 export default function Performance() {
   const { theme } = useTheme()
-  const S = getStyles(theme)
   const lang = getLang()
   const auth = getAuthState()
 
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0])
   const [team, setTeam] = useState('all')
   const [data, setData] = useState<{ staff: StaffPerf[]; totals: Record<string, number> } | null>(null)
+  const [targets, setTargets] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState<{ msg: string, type: 'success' | 'error' | 'info' } | null>(null)
   const [recalculating, setRecalculating] = useState(false)
 
-  // Summary range
   const [showSummary, setShowSummary] = useState(false)
   const [summaryFrom, setSummaryFrom] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]
@@ -124,6 +74,21 @@ export default function Performance() {
   const [summaryTo, setSummaryTo] = useState(() => new Date().toISOString().split('T')[0])
   const [summaryData, setSummaryData] = useState<any>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
+  const [teamsList, setTeamsList] = useState<{ key: string, label: string }[]>([])
+
+  useEffect(() => {
+    api.orgChart()
+      .then(orgData => {
+        const dynamicTeams = [{ key: 'all', label: lang === 'zh' ? '全线' : 'All Teams' }]
+        if (orgData && orgData.teams) {
+          orgData.teams.forEach((t: any) => {
+            dynamicTeams.push({ key: t.team, label: t.team })
+          })
+        }
+        setTeamsList(dynamicTeams)
+      })
+      .catch(() => setTeamsList([{ key: 'all', label: lang === 'zh' ? '全线' : 'All Teams' }]))
+  }, [lang])
 
   const showToast = (msg: string, type: 'success' | 'error' | 'info') => {
     setToast({ msg, type })
@@ -132,253 +97,212 @@ export default function Performance() {
 
   useEffect(() => {
     setLoading(true)
-    api.performanceDaily(selectedDate, team)
-      .then(res => {
-        // Mock some 7-day trend data if not present in API
+    Promise.all([
+      api.performanceDaily(selectedDate, team),
+      api.trendsBatch(team, 7),
+      api.getTargets(team)
+    ])
+      .then(([res, trendsData, targetsData]) => {
         if (res && res.staff) {
           res.staff = res.staff.map((s: any) => ({
             ...s,
-            trend: s.trend || Array(7).fill(0).map(() => Math.floor(Math.random() * (s.new_leads + 5)))
+            trend: trendsData[s.staff_id] || []
           }))
         }
         setData(res)
+        setTargets(targetsData)
       })
       .catch(() => setData(null))
       .finally(() => setLoading(false))
   }, [selectedDate, team])
 
-  function metric(label: string, value: number | string, color = theme.textPrimary) {
-    return (
-      <div 
-        style={S.metricBox}
-        onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = theme.shadowHover; }}
-        onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = theme.shadow; }}
-      >
-        <div style={S.metricValue(color)}>{value}</div>
-        <div style={S.metricLabel}>{label}</div>
-      </div>
-    )
-  }
-
   return (
-    <div style={S.page}>
-      <h1 style={S.title}>📈 {t('perf.title', lang)}</h1>
-      <p style={S.subtitle}>Track daily staff and team performance metrics.</p>
+    <div className="page-container">
+      <h1 style={{ fontSize: 24, fontWeight: 700, color: theme.textPrimary, margin: '0 0 8px', letterSpacing: '-0.02em' }}>
+        {t('perf.title', lang)}
+      </h1>
+      <p style={{ fontSize: 14, color: theme.textSecondary, marginBottom: 20, fontWeight: 500 }}>
+        {t('perf.subtitle', lang)}
+      </p>
 
       {toast && (
-        <div style={{
-          position: 'fixed', top: 24, left: '50%', transform: 'translateX(-50%)',
-          background: toast.type === 'error' ? '#ef4444' : toast.type === 'success' ? '#22c55e' : '#3b82f6',
-          color: '#fff', padding: '12px 24px', borderRadius: 8, fontWeight: 600,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 1000,
-          animation: 'slideDown 0.3s ease-out'
-        }}>
+        <div className={`toast ${toast.type === 'error' ? 'toast-error' : toast.type === 'success' ? 'toast-success' : 'toast-info'}`}>
           {toast.msg}
         </div>
       )}
-      <style>{`
-        @keyframes slideDown {
-          from { transform: translate(-50%, -20px); opacity: 0; }
-          to { transform: translate(-50%, 0); opacity: 1; }
-        }
-      `}</style>
 
-      <div style={S.controls}>
-        <input
-          type="date"
-          style={S.input}
-          value={selectedDate}
-          onChange={e => setSelectedDate(e.target.value)}
-        />
-        {TEAMS.map(tm => (
-          <button className="glass-btn"
-            key={tm.key}
-            style={S.teamTab(team === tm.key)}
-            onClick={() => setTeam(tm.key)}
-          >
-            {lang === 'zh' ? tm.zh : tm.en}
-          </button>
-        ))}
-        <button className="glass-btn"
-          style={{ ...S.teamTab(false), marginLeft: 'auto', background: theme.accent, color: '#fff', border: 'none', opacity: recalculating ? 0.7 : 1 }}
+      {/* Controls: date picker + team pills */}
+      <div className="toolbar">
+        <input type="date" className="input" style={{ width: 'auto' }} value={selectedDate} onChange={e => setSelectedDate(e.target.value)} />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap' }}>
+          {teamsList.map(tm => (
+            <button
+              key={tm.key}
+              className={team === tm.key ? 'btn-primary btn-pill btn-sm' : 'btn-secondary btn-pill btn-sm'}
+              onClick={() => setTeam(tm.key)}
+            >
+              {tm.label}
+            </button>
+          ))}
+        </div>
+        <button
+          className="btn-primary"
+          style={{ marginLeft: 'auto', height: 32, fontSize: 12, padding: '0 20px', opacity: recalculating ? 0.7 : 1 }}
           disabled={recalculating}
           onClick={() => {
             setRecalculating(true)
             showToast(t('perf.recalculating', lang), 'info')
             api.recalculateStats()
-              .then(r => { 
+              .then(r => {
                 showToast(t('perf.recalculated', lang).replace('{count}', String(r.staff_updated)), 'success')
-                setLoading(true); 
-                api.performanceDaily(selectedDate, team).then(res => {
+                setLoading(true)
+                api.performanceDaily(selectedDate, team).then(async res => {
+                  const trendsData = await api.trendsBatch(team, 7)
                   if (res && res.staff) {
-                    res.staff = res.staff.map((s: any) => ({
-                      ...s,
-                      trend: s.trend || Array(7).fill(0).map(() => Math.floor(Math.random() * (s.new_leads + 5)))
-                    }))
+                    res.staff = res.staff.map((s: any) => ({ ...s, trend: trendsData[s.staff_id] || [] }))
                   }
                   setData(res)
-                }).finally(() => setLoading(false)) 
+                }).finally(() => setLoading(false))
               })
               .catch(e => showToast(e.message, 'error'))
               .finally(() => setRecalculating(false))
           }}
         >
-          🔄 {recalculating ? t('perf.recalculating', lang) : (lang === 'zh' ? '重新计算' : 'Recalculate')}
+          {recalculating ? t('perf.recalculating', lang) : t('perf.recalculate', lang)}
         </button>
       </div>
 
       {loading ? (
-        <div style={S.empty}>
-          <div style={{ fontSize: 24, marginBottom: 12 }}>⏳</div>
-          {t('common.loading', lang)}...
-        </div>
+        <div className="empty-state">{t('common.loading', lang)}...</div>
       ) : !data || data.staff.length === 0 ? (
-        <div className="empty-state" style={S.empty}>
-          <div style={{ fontSize: 32, marginBottom: 16 }}>📊</div>
-          <div style={{ fontSize: 18, fontWeight: 600, color: theme.textPrimary, marginBottom: 8 }}>No Data Available</div>
-          <div style={{ fontSize: 14 }}>{t('perf.no_data', lang)}</div>
+        <div className="empty-state">
+          <div className="empty-text" style={{ fontSize: 16, color: theme.textPrimary, marginBottom: 4 }}>{t('perf.no_data_title', lang)}</div>
+          <div className="empty-text">{t('perf.no_data', lang)}</div>
         </div>
       ) : (
         <>
-          <div style={{ overflowX: 'auto', borderRadius: 12, border: `1px solid ${theme.cardBorder}`, boxShadow: theme.shadow, background: theme.cardBg, marginBottom: 32 }}>
-            <style>{`
-              .data-grid-table {
-                width: 100%;
-                border-collapse: collapse;
-                font-size: 13px;
-              }
-              .data-grid-table th {
-                padding: 10px 12px;
-                text-align: right;
-                color: ${theme.textSecondary};
-                font-weight: 700;
-                font-size: 12px;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                white-space: nowrap;
-                border-bottom: 1px solid ${theme.cardBorder};
-                border-right: 1px solid ${theme.cardBorder};
-                background: ${theme.bg}E6;
-                backdrop-filter: blur(12px);
-                position: sticky;
-                top: 0;
-                z-index: 1;
-              }
-              .data-grid-table th:first-child, .data-grid-table th:nth-child(2) {
-                text-align: left;
-              }
-              .data-grid-table th:last-child {
-                border-right: none;
-              }
-              .data-grid-table td {
-                padding: 8px 12px;
-                border-bottom: 1px solid ${theme.cardBorder};
-                border-right: 1px solid ${theme.cardBorder};
-                color: ${theme.textPrimary};
-                text-align: right;
-                font-family: monospace;
-                font-weight: 500;
-                transition: background 0.15s ease;
-              }
-              .data-grid-table td:first-child, .data-grid-table td:nth-child(2) {
-                text-align: left;
-                font-family: inherit;
-              }
-              .data-grid-table td:last-child {
-                border-right: none;
-              }
-              .data-grid-row {
-                background: ${theme.cardBg};
-                transition: all 0.15s ease;
-              }
-              .data-grid-row:hover {
-                background: ${theme.accentLight};
-              }
-              .data-grid-row:hover td {
-                background: ${theme.accentLight};
-              }
-              .data-grid-row td:hover {
-                background: ${theme.accent}20;
-              }
-            `}</style>
+          {/* Target bars */}
+          {targets && targets.length > 0 && (
+            <div style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: theme.textPrimary }}>
+                {t('targets.title', lang)} ({targets[0].period_type})
+              </h2>
+              {targets.map(tData => {
+                const leadsPct = Math.min(100, ((data.totals.new_leads || 0) / (tData.target_leads || 1)) * 100) || 0
+                const ordersPct = Math.min(100, ((data.totals.new_orders || 0) / (tData.target_orders || 1)) * 100) || 0
+                const depositPct = Math.min(100, ((data.totals.total_deposit || 0) / (tData.target_deposit || 1)) * 100) || 0
+
+                const getBarColor = (pct: number) => pct >= 80 ? theme.success : pct >= 50 ? theme.warning : theme.danger
+
+                const bar = (label: string, actual: number, target: number | null, pct: number, prefix = '') => {
+                  if (!target) return null
+                  return (
+                    <div key={label} className="card" style={{ flex: 1, minWidth: 200, padding: 20 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600, marginBottom: 8, color: theme.textSecondary }}>
+                        <span>{label}</span>
+                        <span style={{ color: theme.textPrimary }}>{prefix}{actual.toLocaleString()} / {prefix}{target.toLocaleString()} ({pct.toFixed(0)}%)</span>
+                      </div>
+                      <div className="progress-bar">
+                        <div className="progress-fill" style={{ width: `${pct}%`, background: getBarColor(pct) }} />
+                      </div>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div key={tData.id} style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    {bar(t('targets.leads', lang), data.totals.new_leads || 0, tData.target_leads, leadsPct)}
+                    {bar(t('targets.orders', lang), data.totals.new_orders || 0, tData.target_orders, ordersPct)}
+                    {bar(t('targets.deposit', lang), data.totals.total_deposit || 0, tData.target_deposit, depositPct, '$')}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Data table */}
+          <div className="card" style={{ overflowX: 'auto', marginBottom: 20, padding: 0 }}>
             <table className="data-grid-table">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Team</th>
-                  <th>Trend</th>
-                  <th>{t('perf.new_powder', lang)}</th>
-                  <th>{t('perf.reply_rate', lang)}</th>
-                  <th>{t('perf.register', lang)}</th>
-                  <th>{t('perf.training', lang)}</th>
-                  <th>{t('perf.withdraw', lang)}</th>
-                  <th>{t('perf.new_order', lang)}</th>
-                  <th>{t('perf.conversion', lang)}</th>
-                  <th>{t('perf.deposit', lang)}</th>
-                  <th>{t('perf.dead', lang)}</th>
+                  <th style={{ textAlign: 'left' }}>{t('perf.name', lang)}</th>
+                  <th style={{ textAlign: 'left' }}>{t('perf.team', lang)}</th>
+                  <th style={{ textAlign: 'center' }}>{t('perf.trend', lang)}</th>
+                  <th style={{ textAlign: 'right' }}>{t('perf.new_powder', lang)}</th>
+                  <th style={{ textAlign: 'right' }}>{t('perf.reply_rate', lang)}</th>
+                  <th style={{ textAlign: 'right' }}>{t('perf.register', lang)}</th>
+                  <th style={{ textAlign: 'right' }}>{t('perf.training', lang)}</th>
+                  <th style={{ textAlign: 'right' }}>{t('perf.withdraw', lang)}</th>
+                  <th style={{ textAlign: 'right' }}>{t('perf.new_order', lang)}</th>
+                  <th style={{ textAlign: 'right' }}>{t('perf.conversion', lang)}</th>
+                  <th style={{ textAlign: 'right' }}>{t('perf.deposit', lang)}</th>
+                  <th style={{ textAlign: 'right' }}>{t('perf.dead', lang)}</th>
                 </tr>
               </thead>
               <tbody>
                 {data.staff.map(s => (
-                  <tr key={s.staff_id} className="data-grid-row">
-                    <td style={{ fontWeight: 600, color: theme.textPrimary }}>{s.display_name}</td>
-                    <td style={{ color: theme.textSecondary, textTransform: 'uppercase', fontSize: 12 }}>{s.team || '—'}</td>
-                    <td style={{ textAlign: 'center' }}>
+                  <tr key={s.staff_id}>
+                    <td style={{ fontWeight: 600, textAlign: 'left' }}>{s.display_name}</td>
+                    <td style={{ textAlign: 'left' }}>
+                      <span className="pill-badge badge-info">{s.team || '-'}</span>
+                    </td>
+                    <td style={{ textAlign: 'center', width: 60 }}>
                       {s.trend && <Sparkline data={s.trend} color={theme.accent} />}
                     </td>
-                    <td style={{ color: theme.accent }}>{s.new_leads}</td>
-                    <td style={{ color: theme.success }}>{s.reply_rate}%</td>
-                    <td style={{ color: theme.accent }}>{s.registered}</td>
-                    <td style={{ color: theme.warning }}>{s.training}</td>
-                    <td style={{ color: theme.success }}>{s.withdrew}</td>
-                    <td style={{ color: theme.success, fontWeight: 700 }}>{s.new_orders}</td>
-                    <td style={{ color: theme.accent }}>{s.conversion_rate}%</td>
-                    <td style={{ color: theme.success, fontWeight: 700 }}>${(s.total_deposit || 0).toLocaleString()}</td>
-                    <td style={{ color: theme.danger }}>{s.dead}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.accent }}>{s.new_leads}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.success }}>{s.reply_rate}%</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.accent }}>{s.registered}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.warning }}>{s.training}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.success }}>{s.withdrew}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: theme.success }}>{s.new_orders}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.accent }}>{s.conversion_rate}%</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: theme.success }}>${(s.total_deposit || 0).toLocaleString()}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: theme.danger }}>{s.dead}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          <div style={S.summaryCard}>
-            <div style={S.summaryTitle}>🏆 {t('perf.team_total', lang)}</div>
-            <div style={{...S.metricsGrid, gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))'}}>
-              {metric(t('perf.new_powder', lang), data.totals.new_leads || 0, theme.accent)}
-              {metric(t('perf.reply_rate', lang), `${data.totals.reply_rate || 0}%`, theme.success)}
-              {metric(t('perf.register', lang), data.totals.registered || 0, theme.accent)}
-              {metric(t('perf.training', lang), data.totals.training || 0, theme.warning)}
-              {metric(t('perf.withdraw', lang), data.totals.withdrew || 0, theme.success)}
-              {metric(t('perf.new_order', lang), data.totals.new_orders || 0, theme.success)}
-              {metric(t('perf.conversion', lang), `${data.totals.conversion_rate || 0}%`, theme.accent)}
-              {metric(t('perf.deposit', lang), `$${(data.totals.total_deposit || 0).toLocaleString()}`, theme.success)}
+          {/* Summary totals card */}
+          <div className="card" style={{ border: `2px solid ${theme.accent}`, marginTop: 20 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: theme.accent, marginBottom: 20, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              {t('perf.team_total', lang)}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+              <MetricBox label={t('perf.new_powder', lang)} value={data.totals.new_leads || 0} color={theme.accent} />
+              <MetricBox label={t('perf.reply_rate', lang)} value={`${data.totals.reply_rate || 0}%`} color={theme.success} />
+              <MetricBox label={t('perf.register', lang)} value={data.totals.registered || 0} color={theme.accent} />
+              <MetricBox label={t('perf.training', lang)} value={data.totals.training || 0} color={theme.warning} />
+              <MetricBox label={t('perf.withdraw', lang)} value={data.totals.withdrew || 0} color={theme.success} />
+              <MetricBox label={t('perf.new_order', lang)} value={data.totals.new_orders || 0} color={theme.success} />
+              <MetricBox label={t('perf.conversion', lang)} value={`${data.totals.conversion_rate || 0}%`} color={theme.accent} />
+              <MetricBox label={t('perf.deposit', lang)} value={`$${(data.totals.total_deposit || 0).toLocaleString()}`} color={theme.success} />
             </div>
           </div>
         </>
       )}
 
       {/* Summary Report Section */}
-      <div style={{ marginTop: 28, borderTop: '1px solid #e2e8f0', paddingTop: 20 }}>
+      <div style={{ marginTop: 20, borderTop: `1px solid ${theme.cardBorder}`, paddingTop: 20 }}>
         <div
-          style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: showSummary ? 16 : 0 }}
+          style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', marginBottom: showSummary ? 20 : 0 }}
           onClick={() => setShowSummary(!showSummary)}
         >
-          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: theme.textPrimary }}>
-            {t('perf.summary', lang)}
-          </h2>
-          <span style={{ fontSize: 12, color: theme.accent }}>{showSummary ? '▲' : '▼'}</span>
+          <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: theme.textPrimary }}>{t('perf.summary', lang)}</h2>
+          <span style={{ fontSize: 12, color: theme.accent, transition: 'transform 0.2s', display: 'inline-block', transform: showSummary ? 'rotate(180deg)' : 'rotate(0deg)' }}>V</span>
         </div>
 
         {showSummary && (
           <div>
-            <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-              <label style={{ fontSize: 12, color: theme.textSecondary }}>{t('perf.date_from', lang)}:</label>
-              <input type="date" style={S.input} value={summaryFrom} onChange={e => setSummaryFrom(e.target.value)} />
-              <label style={{ fontSize: 12, color: theme.textSecondary }}>{t('perf.date_to', lang)}:</label>
-              <input type="date" style={S.input} value={summaryTo} onChange={e => setSummaryTo(e.target.value)} />
+            <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 12, color: theme.textSecondary, fontWeight: 600 }}>{t('perf.date_from', lang)}:</label>
+              <input type="date" className="input" style={{ width: 'auto' }} value={summaryFrom} onChange={e => setSummaryFrom(e.target.value)} />
+              <label style={{ fontSize: 12, color: theme.textSecondary, fontWeight: 600 }}>{t('perf.date_to', lang)}:</label>
+              <input type="date" className="input" style={{ width: 'auto' }} value={summaryTo} onChange={e => setSummaryTo(e.target.value)} />
               <button
-                className="glass-btn"
-                style={{ ...S.teamTab(true), padding: '8px 20px' }}
+                className="btn-primary"
+                style={{ padding: '0 24px' }}
                 onClick={() => {
                   setSummaryLoading(true)
                   api.performanceSummary(summaryFrom, summaryTo, team !== 'all' ? team : undefined)
@@ -391,29 +315,33 @@ export default function Performance() {
               </button>
             </div>
 
-            {summaryLoading && <div style={S.empty}>{t('common.loading', lang)}</div>}
+            {summaryLoading && <div className="empty-state">{t('common.loading', lang)}</div>}
             {summaryData && !summaryLoading && (
-              <div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {(summaryData.staff || []).map((s: any) => (
-                  <div key={s.staff_id || s.display_name} style={S.card}>
-                    <div style={S.cardName}>{s.display_name}</div>
-                    <div style={S.cardTeam}>{s.team || '—'} · {summaryFrom} ~ {summaryTo}</div>
-                    <div style={S.metricsGrid}>
-                      {metric(t('perf.new_powder', lang), s.new_leads || 0, theme.accent)}
-                      {metric(t('perf.reply_rate', lang), `${s.reply_rate || 0}%`, theme.success)}
-                      {metric(t('perf.register', lang), s.registered || 0, theme.accent)}
-                      {metric(t('perf.new_order', lang), s.new_orders || 0, theme.success)}
-                      {metric(t('perf.deposit', lang), `$${(s.total_deposit || 0).toFixed(0)}`, theme.success)}
+                  <div key={s.staff_id || s.display_name} className="card">
+                    <div style={{ fontSize: 18, fontWeight: 700, color: theme.textPrimary, marginBottom: 4 }}>{s.display_name}</div>
+                    <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 20, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      {s.team || '-'} / {summaryFrom} ~ {summaryTo}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 12 }}>
+                      <MetricBox label={t('perf.new_powder', lang)} value={s.new_leads || 0} color={theme.accent} />
+                      <MetricBox label={t('perf.reply_rate', lang)} value={`${s.reply_rate || 0}%`} color={theme.success} />
+                      <MetricBox label={t('perf.register', lang)} value={s.registered || 0} color={theme.accent} />
+                      <MetricBox label={t('perf.new_order', lang)} value={s.new_orders || 0} color={theme.success} />
+                      <MetricBox label={t('perf.deposit', lang)} value={`$${(s.total_deposit || 0).toFixed(0)}`} color={theme.success} />
                     </div>
                   </div>
                 ))}
                 {summaryData.totals && (
-                  <div style={S.summaryCard}>
-                    <div style={S.summaryTitle}>{t('perf.team_total', lang)} ({summaryFrom} ~ {summaryTo})</div>
-                    <div style={S.metricsGrid}>
-                      {metric(t('perf.new_powder', lang), summaryData.totals.new_leads || 0, theme.accent)}
-                      {metric(t('perf.new_order', lang), summaryData.totals.new_orders || 0, theme.success)}
-                      {metric(t('perf.deposit', lang), `$${(summaryData.totals.total_deposit || 0).toFixed(0)}`, theme.success)}
+                  <div className="card" style={{ border: `2px solid ${theme.accent}` }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: theme.accent, marginBottom: 20, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      {t('perf.team_total', lang)} ({summaryFrom} ~ {summaryTo})
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 12 }}>
+                      <MetricBox label={t('perf.new_powder', lang)} value={summaryData.totals.new_leads || 0} color={theme.accent} />
+                      <MetricBox label={t('perf.new_order', lang)} value={summaryData.totals.new_orders || 0} color={theme.success} />
+                      <MetricBox label={t('perf.deposit', lang)} value={`$${(summaryData.totals.total_deposit || 0).toFixed(0)}`} color={theme.success} />
                     </div>
                   </div>
                 )}

@@ -14,6 +14,15 @@ import NumberLookup from './pages/NumberLookup'
 import PermissionManager from './pages/PermissionManager'
 import Performance from './pages/Performance'
 import OrgChart from './pages/OrgChart'
+import Templates from './pages/Templates'
+import Contests from './pages/Contests'
+import FrontdeskEntry from './pages/FrontdeskEntry'
+import GroupOverview from './pages/GroupOverview'
+import MaintainerDash from './pages/MaintainerDash'
+import CustomerService from './pages/CustomerService'
+import PerformanceDetail from './pages/PerformanceDetail'
+import Exams from './pages/Exams'
+import CSFinance from './pages/CSFinance'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated() ? <>{children}</> : <Navigate to="/login" replace />
@@ -47,6 +56,7 @@ export default function App() {
           <Route path="clients/:id" element={<ClientDetail />} />
           <Route path="reports" element={<Reports />} />
           <Route path="performance" element={<Performance />} />
+          <Route path="performance-detail" element={<PerformanceDetail />} />
           <Route
             path="users"
             element={
@@ -77,6 +87,70 @@ export default function App() {
               <AdminRoute>
                 <PermissionManager />
               </AdminRoute>
+            }
+          />
+          <Route
+            path="templates"
+            element={
+              <AdminRoute>
+                <Templates />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="contests"
+            element={
+              <ProtectedRoute>
+                <Contests />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="frontdesk"
+            element={
+              <ProtectedRoute>
+                <FrontdeskEntry />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="groups"
+            element={
+              <AdminRoute>
+                <GroupOverview />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="maintainer"
+            element={
+              <AdminRoute>
+                <MaintainerDash />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="cs"
+            element={
+              <ProtectedRoute>
+                <CustomerService />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="exams"
+            element={
+              <ProtectedRoute>
+                <Exams />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="cs-finance"
+            element={
+              <ProtectedRoute>
+                <CSFinance />
+              </ProtectedRoute>
             }
           />
         </Route>

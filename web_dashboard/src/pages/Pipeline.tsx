@@ -3,11 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import type { Client, FunnelStage } from '../types'
 import { STATUS_COLORS, STATUS_LABELS } from '../types'
-import { Empty, PageHeader, Spinner } from './Dashboard'
+import { Empty, PageHeader, Spinner } from '../components/SharedUI'
+import { DataGrid, formatPhone, Column } from '../components/DataGrid'
 import { useTheme } from '../ThemeContext'
+import { t, getLang } from '../i18n'
 
 export default function Pipeline() {
   const { theme } = useTheme()
+  const [error, setError] = useState('');
+  const lang = getLang()
   const [funnel, setFunnel] = useState<FunnelStage[]>([])
   const [pipeline, setPipeline] = useState<Record<string, Client[]>>({})
   const [selected, setSelected] = useState<string | null>(null)
@@ -21,7 +25,7 @@ export default function Pipeline() {
         setPipeline(p)
         if (f.length > 0) setSelected(f[0].stage)
       })
-      .catch(console.error)
+      .catch(e => { console.error(e); setError(t('common.update_failed', lang as any)); })
       .finally(() => setLoading(false))
   }, [])
 
@@ -30,51 +34,41 @@ export default function Pipeline() {
   const selectedClients = selected ? pipeline[selected] || [] : []
 
   return (
-    <div>
-      <PageHeader title="Funnel Pipeline" sub="Visualize and manage your sales pipeline stages." />
+    <div className="page-container">
+      <PageHeader title={t('pipeline.title', lang)} sub={t('pipeline.description', lang)} />
+
+      {error && <div className="alert alert-error">{error}</div>}
 
       {/* Funnel stages */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(auto-fit, minmax(120px, 1fr))`,
-          gap: 16,
-          marginBottom: 32,
-        }}
-      >
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(120px, 1fr))`, gap: 12, marginBottom: 20 }}>
         {funnel.map(stage => {
           const isSelected = selected === stage.stage;
           const color = STATUS_COLORS[stage.stage] || theme.textSecondary;
           return (
-            <button className="glass-btn"
+            <button
+              className="card"
               key={stage.stage}
               onClick={() => setSelected(stage.stage)}
               style={{
-                background: isSelected ? theme.cardBg : theme.bg,
-                border: `1px solid ${isSelected ? color : theme.cardBorder}`,
-                borderRadius: 16,
-                padding: '24px 16px',
                 cursor: 'pointer',
                 textAlign: 'center',
-                transition: 'all 0.3s ease',
-                boxShadow: isSelected ? `0 4px 12px ${color}30` : theme.shadow,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                transform: isSelected ? 'translateY(-2px)' : 'none',
+                border: `1px solid ${isSelected ? color : 'var(--card-border)'}`,
+                boxShadow: isSelected ? `0 4px 12px ${color}30` : undefined,
+                transform: isSelected ? 'translateY(-2px)' : undefined,
               }}
-              onMouseOver={e => { if (!isSelected) e.currentTarget.style.transform = 'translateY(-2px)'; }}
-              onMouseOut={e => { if (!isSelected) e.currentTarget.style.transform = 'none'; }}
             >
-              <div style={{ fontSize: 36, fontWeight: 700, color: color, letterSpacing: '-0.03em', marginBottom: 12 }}>
+              <div className="metric-value" style={{ color: color, marginBottom: 8 }}>
                 {stage.count}
               </div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: theme.textPrimary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <div className="metric-label" style={{ color: theme.textPrimary }}>
                 {STATUS_LABELS[stage.stage] || stage.stage}
               </div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: theme.textSecondary, marginTop: 8, background: `${color}15`, padding: '4px 12px', borderRadius: 9999 }}>
+              <span className="pill-badge" style={{ marginTop: 8, background: `${color}15`, color: color, fontSize: 12 }}>
                 {stage.pct}%
-              </div>
+              </span>
             </button>
           )
         })}
@@ -82,106 +76,24 @@ export default function Pipeline() {
 
       {/* Filtered client list */}
       {selected && (
-        <div
-          style={{
-            background: theme.cardBg,
-            border: `1px solid ${theme.cardBorder}`,
-            borderRadius: 12,
-            padding: 32,
-            boxShadow: theme.shadow,
-          }}
-        >
-          <div style={{ fontSize: 16, fontWeight: 700, color: theme.textPrimary, marginBottom: 24, textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 12, height: 12, borderRadius: '50%', background: STATUS_COLORS[selected] || theme.textSecondary, boxShadow: `0 0 0 4px ${STATUS_COLORS[selected] || theme.textSecondary}30` }}></div>
-            {STATUS_LABELS[selected] || selected} <span style={{ color: theme.textMuted, fontWeight: 500 }}>({selectedClients.length} clients)</span>
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 12, height: 12, borderRadius: 12, background: STATUS_COLORS[selected] || theme.textSecondary, boxShadow: `0 0 0 4px ${STATUS_COLORS[selected] || theme.textSecondary}30` }} />
+            {STATUS_LABELS[selected] || selected} <span style={{ color: theme.textMuted, fontWeight: 500 }}>({selectedClients.length} {t('org.members', lang)})</span>
           </div>
           {selectedClients.length === 0 ? (
             <Empty />
-          ) : (
-            <div style={{ overflowX: 'auto', borderRadius: 12, border: `1px solid ${theme.cardBorder}`, boxShadow: theme.shadow }}>
-              <style>{`
-                .data-grid-table {
-                  width: 100%;
-                  border-collapse: collapse;
-                  font-size: 13px;
-                }
-                .data-grid-table th {
-                  padding: 10px 12px;
-                  text-align: left;
-                  color: ${theme.textSecondary};
-                  font-weight: 700;
-                  font-size: 12px;
-                  text-transform: uppercase;
-                  letter-spacing: 0.5px;
-                  white-space: nowrap;
-                  border-bottom: 1px solid ${theme.cardBorder};
-                  border-right: 1px solid ${theme.cardBorder};
-                  background: ${theme.bg}E6;
-                  backdrop-filter: blur(12px);
-                  position: sticky;
-                  top: 0;
-                  z-index: 1;
-                }
-                .data-grid-table th:last-child {
-                  border-right: none;
-                }
-                .data-grid-table td {
-                  padding: 8px 12px;
-                  border-bottom: 1px solid ${theme.cardBorder};
-                  border-right: 1px solid ${theme.cardBorder};
-                  color: ${theme.textPrimary};
-                  transition: background 0.15s ease;
-                }
-                .data-grid-table td:last-child {
-                  border-right: none;
-                }
-                .data-grid-row {
-                  background: ${theme.cardBg};
-                  cursor: pointer;
-                  transition: all 0.15s ease;
-                }
-                .data-grid-row:hover {
-                  background: ${theme.accentLight};
-                }
-                .data-grid-row:hover td {
-                  background: ${theme.accentLight};
-                }
-                .data-grid-row td:hover {
-                  background: ${theme.accent}20; /* Cell specific highlight */
-                }
-              `}</style>
-              <table className="data-grid-table">
-                <thead>
-                  <tr>
-                    {['Phone', 'Source', 'Owner', 'Team', 'Deposit', 'Created At'].map(h => (
-                      <th key={h}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedClients.map((c, i) => (
-                    <tr className="data-grid-row"
-                      key={c.id}
-                      onClick={() => nav(`/clients/${c.id}`)}
-                    >
-                      <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                        {c.phone}
-                      </td>
-                      <td style={{ color: theme.textSecondary, fontWeight: 500 }}>{c.source || '—'}</td>
-                      <td style={{ fontWeight: 500 }}>{c.frontdesk_name || '—'}</td>
-                      <td style={{ color: theme.textSecondary, fontWeight: 500 }}>{c.team || '—'}</td>
-                      <td style={{ fontFamily: 'monospace', color: c.total_deposited > 0 ? theme.success : theme.textSecondary, fontWeight: c.total_deposited > 0 ? 700 : 500 }}>
-                        {c.total_deposited > 0 ? `$${c.total_deposited.toLocaleString()}` : '—'}
-                      </td>
-                      <td style={{ fontFamily: 'monospace', color: theme.textSecondary, fontSize: 12, fontWeight: 500 }}>
-                        {c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          ) : (() => {
+            const columns: Column<Client>[] = [
+                { key: 'phone', label: t('clients.phone', lang), monospace: true, render: c => formatPhone(c.phone) },
+                { key: 'source', label: t('clients.source', lang), render: c => <span style={{color: theme.textSecondary}}>{c.source || '—'}</span> },
+                { key: 'frontdesk', label: t('clients.owner', lang), render: c => c.frontdesk_name || '—' },
+                { key: 'team', label: t('detail.team', lang), render: c => <span style={{color: theme.textSecondary}}>{c.team || '—'}</span> },
+                { key: 'deposit', label: t('clients.deposit', lang), monospace: true, render: c => c.total_deposited > 0 ? <span style={{color: theme.success}}>${c.total_deposited.toLocaleString()}</span> : <span style={{color: theme.textSecondary}}>—</span> },
+                { key: 'created_at', label: t('clients.created_at', lang), monospace: true, render: c => <span style={{color: theme.textSecondary, fontSize: 12}}>{c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}</span> }
+            ]
+            return <DataGrid columns={columns} data={selectedClients} onRowClick={c => nav(`/clients/${c.id}`)} />
+          })()}
         </div>
       )}
     </div>
