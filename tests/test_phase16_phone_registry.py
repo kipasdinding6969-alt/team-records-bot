@@ -94,13 +94,12 @@ class TestPhoneRegistry:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_duplicate_insert_fails(self, db, staff_b):
-        """Inserting the same normalized number should fail."""
-        import aiosqlite
-        with pytest.raises(aiosqlite.IntegrityError):
-            await db.phone_registry_insert(
-                '1-555-0001', staff_b.display_name, '2026-01-02T00:00:00',
-                source='bot', submitter_staff_id=staff_b.id)
+    async def test_duplicate_insert_returns_none(self, db, staff_b):
+        """Inserting the same normalized number returns None (duplicate handled gracefully)."""
+        result = await db.phone_registry_insert(
+            '1-555-0001', staff_b.display_name, '2026-01-02T00:00:00',
+            source='bot', submitter_staff_id=staff_b.id)
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_log_action(self, db, staff_a):
