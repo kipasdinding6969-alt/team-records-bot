@@ -144,8 +144,7 @@ export default function PerformanceDetail() {
         <div className="empty-state">{t('common.loading', lang)}...</div>
       ) : rows.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-text subtitle mb-4">--</div>
-          <div className="empty-text">{t('perf.no_data', lang)}</div>
+          <div className="empty-text mb-4">{t('perf.no_data', lang)}</div>
         </div>
       ) : (
         <div className="card overflow-x-auto p-0">

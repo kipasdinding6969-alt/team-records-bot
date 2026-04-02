@@ -5,6 +5,7 @@ import type { ClientDetail as TClientDetail, ClientComment } from '../types'
 import { STATUS_COLORS, STATUS_LABELS } from '../types'
 import { getLang, t } from '../i18n'
 import { useTheme } from '../ThemeContext'
+import { Spinner } from '../components/SharedUI'
 
 const MILESTONES = [
   { key: 'contacted_at', label: 'detail.contacted_at' },
@@ -380,7 +381,7 @@ export default function ClientDetail() {
 
   if (loading) return <div className="text-secondary p-20 fs-14 fw-600">{t('common.loading', lang)}...</div>
   if (error) return <div className="alert alert-error">{error}</div>
-  if (!client) return null
+  if (!client) return <div className="d-flex align-center justify-center min-h-200"><Spinner label="Loading..." /></div>
 
   const statusColor = STATUS_COLORS[client.status] || theme.textSecondary
   const totalDeposits = client.deposits.reduce((s, d) => s + d.amount, 0)
@@ -736,7 +737,7 @@ export default function ClientDetail() {
             {knivesLoading ? (
               <div className="text-secondary fs-14">{t('common.loading', lang)}...</div>
             ) : knives.length === 0 ? (
-              <div className="text-secondary fs-14">{t('common.no_data', lang)}</div>
+              <div className="text-secondary fs-14">{t('knife.no_knives', lang) !== 'knife.no_knives' ? t('knife.no_knives', lang) : 'No knives recorded'}</div>
             ) : (
               <div className="rounded-8 border-card overflow-hidden">
                 <table className="data-grid-table w-full">
@@ -874,7 +875,7 @@ export default function ClientDetail() {
             {roleNotesLoading ? (
               <div className="text-secondary fs-14">{t('common.loading', lang)}...</div>
             ) : roleNotes.length === 0 ? (
-              <div className="text-secondary fs-14 mb-12">{t('common.no_data', lang)}</div>
+              <div className="text-secondary fs-14 mb-12">{t('role_notes.empty', lang) !== 'role_notes.empty' ? t('role_notes.empty', lang) : 'No role notes'}</div>
             ) : (
               <div className="flex-col gap-8 mb-12">
                 {roleNotes.map((note: any, idx: number) => (
@@ -938,7 +939,7 @@ export default function ClientDetail() {
             {clientRolesLoading ? (
               <div className="text-secondary fs-14">{t('common.loading', lang)}...</div>
             ) : clientRoles.length === 0 ? (
-              <div className="text-secondary fs-14">{t('common.no_data', lang)}</div>
+              <div className="text-secondary fs-14">{t('maintainer.no_roles', lang) !== 'maintainer.no_roles' ? t('maintainer.no_roles', lang) : 'No roles assigned'}</div>
             ) : (
               <div className="flex-col gap-8">
                 {clientRoles.map((role: any, idx: number) => {

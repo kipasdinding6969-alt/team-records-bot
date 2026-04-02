@@ -194,7 +194,7 @@ export default function Performance() {
                 const getBarColor = (pct: number) => pct >= 80 ? theme.success : pct >= 50 ? theme.warning : theme.danger
 
                 const bar = (label: string, actual: number, target: number | null, pct: number, prefix = '') => {
-                  if (!target) return null
+                  if (!target) return <span className="subtitle">{'\u2014'}</span>
                   return (
                     <div key={label} className="card p-20 target-bar-card">
                       <div className="d-flex justify-between fs-12 fw-600 mb-8 text-secondary">

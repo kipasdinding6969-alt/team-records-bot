@@ -141,14 +141,14 @@ export default function GroupInteractions() {
 
       {/* Controls: date pickers + new entry button */}
       <div className="toolbar">
-        <label className="field-label" style={{ marginBottom: 0 }}>{t('gi.date_from', lang)}</label>
+        <label className="field-label mb-0">{t('gi.date_from', lang)}</label>
         <input
           type="date"
           className="input w-auto"
           value={fromDate}
           onChange={e => setFromDate(e.target.value)}
         />
-        <label className="field-label" style={{ marginBottom: 0 }}>{t('gi.date_to', lang)}</label>
+        <label className="field-label mb-0">{t('gi.date_to', lang)}</label>
         <input
           type="date"
           className="input w-auto"

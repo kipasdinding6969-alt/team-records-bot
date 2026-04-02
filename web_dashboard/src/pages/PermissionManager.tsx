@@ -188,7 +188,7 @@ export default function PermissionManager() {
             const roleStaff = staffList.filter(s =>
               s.role === roleLevel || (roleLevel === 'frontdesk' && s.role === 'member')
             )
-            if (roleStaff.length === 0) return null
+            if (roleStaff.length === 0) return <div key={roleLevel} className="empty-text subtitle mb-12">No staff in this role</div>
             return (
               <div key={roleLevel} className="mb-12">
                 <div className="field-label mb-8">

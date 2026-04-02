@@ -99,7 +99,8 @@ async def _lifespan(app):
         await db.execute(_CREATE_DASHBOARD_USERS_SQL)
         await db.commit()
         async with db.execute('SELECT COUNT(*) AS cnt FROM dashboard_users') as cur:
-            count = (await cur.fetchone())['cnt']
+            row = await cur.fetchone()
+            count = row['cnt'] if row else 0
         if count == 0 and DASHBOARD_USER and DASHBOARD_PASS:
             hashed = _hash_password(DASHBOARD_PASS)
             await db.execute(
@@ -334,7 +335,8 @@ async def setup_first_owner(body: SetupRequest):
     """Create first owner account. Only works when dashboard_users is empty."""
     async with _connect_db() as db:
         async with db.execute('SELECT COUNT(*) AS cnt FROM dashboard_users') as cur:
-            count = (await cur.fetchone())['cnt']
+            row = await cur.fetchone()
+            count = row['cnt'] if row else 0
         if count > 0:
             raise HTTPException(status_code=400, detail='Setup already complete')
         if len(body.password) < 6:
@@ -476,7 +478,8 @@ async def create_user(body: CreateUserRequest, user: dict = Depends(_require_own
             async with db.execute(
                 'SELECT id FROM dashboard_users WHERE username = ?', (body.username,)
             ) as cur:
-                new_id = (await cur.fetchone())['id']
+                row = await cur.fetchone()
+                new_id = row['id'] if row else None
         except aiosqlite.IntegrityError:
             raise HTTPException(status_code=409, detail='Username already exists')
 
@@ -664,13 +667,15 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
             "SELECT COALESCE(SUM(amount), 0) AS total FROM deposits WHERE DATE(deposit_date) = ?",
             (*dep_params, today) if dep_filter else (today,)
         ) as cur:
-            today_deposits = float((await cur.fetchone())['total'])
+            row = await cur.fetchone()
+            today_deposits = float(row['total']) if row else 0.0
 
         async with db.execute(
             f"SELECT COALESCE(SUM(amount), 0) AS total FROM deposits {dep_filter}",
             dep_params
         ) as cur:
-            total_deposits = float((await cur.fetchone())['total'])
+            row = await cur.fetchone()
+            total_deposits = float(row['total']) if row else 0.0
 
         if user['role'] == 'owner':
             staff_sql = 'SELECT COUNT(*) AS cnt FROM staff WHERE is_active = 1'
@@ -688,7 +693,8 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
                 staff_params = []
 
         async with db.execute(staff_sql, staff_params) as cur:
-            total_staff = (await cur.fetchone())['cnt']
+            row = await cur.fetchone()
+            total_staff = row['cnt'] if row else 0
 
     total_clients = agg['total_clients'] or 0
     ordered_count = agg['ordered_count'] or 0
@@ -826,7 +832,8 @@ async def get_staff(user: dict = Depends(get_current_user)):
             staff_where = 'WHERE s.is_active = 1 AND s.id = ?'
             staff_params = [sid]
         else:
-            return []
+            # Member with no linked staff_id — return empty list with correct type
+            return []  # type: list[dict] — consistent with normal return shape
 
     async with _connect_db() as db:
         async with db.execute(
@@ -1060,7 +1067,8 @@ async def list_clients(
                 LEFT JOIN staff s ON c.frontdesk_id = s.id {where}""",
             params
         ) as cur:
-            total = (await cur.fetchone())['cnt']
+            row = await cur.fetchone()
+            total = row['cnt'] if row else 0
 
         async with db.execute(
             f"""SELECT c.id, c.phone, c.status, c.source, c.total_deposited,
@@ -1324,8 +1332,8 @@ async def phone_registry_lookup(
                         'linked_clients': [],
                         'log': [],
                     }
-            except Exception:
-                pass
+            except (aiosqlite.OperationalError, sqlite3.OperationalError):
+                logger.debug('chat_export_phones table not available for phone lookup')
             return {'found': False, 'phone': phone}
 
         entry = row_to_dict(row)
@@ -1371,7 +1379,8 @@ async def phone_registry_search(
                WHERE phone_normalized LIKE ? OR submitter_name LIKE ?""",
             (f'%{normalized}%', f'%{q}%')
         ) as cur:
-            total = (await cur.fetchone())['cnt']
+            row = await cur.fetchone()
+            total = row['cnt'] if row else 0
 
         async with db.execute(
             """SELECT id, phone, phone_normalized, submitter_name,
@@ -1392,11 +1401,13 @@ async def phone_registry_stats(user: dict = Depends(get_current_user)):
     """Get phone registry statistics."""
     async with _connect_db() as db:
         async with db.execute('SELECT COUNT(*) AS cnt FROM phone_registry') as cur:
-            total = (await cur.fetchone())['cnt']
+            row = await cur.fetchone()
+            total = row['cnt'] if row else 0
         async with db.execute(
             "SELECT COUNT(*) AS cnt FROM phone_registry_log WHERE action = 'duplicate_blocked'"
         ) as cur:
-            duplicates = (await cur.fetchone())['cnt']
+            row = await cur.fetchone()
+            duplicates = row['cnt'] if row else 0
         async with db.execute(
             'SELECT source, COUNT(*) AS cnt FROM phone_registry GROUP BY source'
         ) as cur:
@@ -1406,11 +1417,13 @@ async def phone_registry_stats(user: dict = Depends(get_current_user)):
         chat_export_flagged = 0
         try:
             async with db.execute('SELECT COUNT(DISTINCT phone_normalized) AS cnt FROM chat_export_phones') as cur:
-                chat_export_total = (await cur.fetchone())['cnt']
+                row = await cur.fetchone()
+                chat_export_total = row['cnt'] if row else 0
             async with db.execute('SELECT COUNT(*) AS cnt FROM chat_export_phones WHERE is_duplicate_flagged = 1') as cur:
-                chat_export_flagged = (await cur.fetchone())['cnt']
-        except Exception:
-            pass
+                row = await cur.fetchone()
+                chat_export_flagged = row['cnt'] if row else 0
+        except (aiosqlite.OperationalError, sqlite3.OperationalError):
+            logger.debug('chat_export_phones table not available for stats')
     return {
         'total': total, 'total_registered': total + chat_export_total,
         'duplicates_blocked': duplicates + chat_export_flagged,
@@ -1483,7 +1496,7 @@ async def create_client_link_global(body: GlobalClientLinkRequest, user: dict = 
                 (a, b, body.link_type, body.note, user.get('user_id'))
             )
             await db.commit()
-        except Exception:
+        except (aiosqlite.IntegrityError, sqlite3.IntegrityError):
             raise HTTPException(status_code=409, detail='Link already exists')
     return {'ok': True}
 
@@ -1979,7 +1992,8 @@ async def _recalculate_all_daily_stats(target_date: str) -> int:
                            AND DATE(cn.created_at) = ?""",
                         (sid, status_name, target_date)
                     ) as c:
-                        counts[status_name] = (await c.fetchone())[0]
+                        row = await c.fetchone()
+                        counts[status_name] = row[0] if row else 0
                 else:
                     _ALLOWED_DATE_COLS = {'created_at', 'contacted_at', 'replied_at',
                                           'registered_at', 'training_at', 'withdrew_at', 'first_order_at'}
@@ -1990,13 +2004,15 @@ async def _recalculate_all_daily_stats(target_date: str) -> int:
                         f"SELECT COUNT(*) FROM clients WHERE frontdesk_id = ? AND DATE({date_col}) = ?",
                         (sid, target_date)
                     ) as c:
-                        counts[status_name] = (await c.fetchone())[0]
+                        row = await c.fetchone()
+                        counts[status_name] = row[0] if row else 0
 
             async with db.execute(
                 "SELECT COALESCE(SUM(amount), 0) FROM deposits WHERE frontdesk_id = ? AND DATE(deposit_date) = ?",
                 (sid, target_date)
             ) as c:
-                total_dep = (await c.fetchone())[0]
+                row = await c.fetchone()
+                total_dep = row[0] if row else 0
 
             nl = counts.get('new', 0)
             rp = counts.get('replied', 0)
@@ -2564,8 +2580,8 @@ async def check_phone_duplicate(
                     result['source'] = 'chat_export'
                     result['editable'] = export_is_own
                     result['duplicate_flagged'] = bool(export_record['is_duplicate_flagged'])
-            except Exception:
-                pass  # chat_export_phones table may not exist yet
+            except (aiosqlite.OperationalError, sqlite3.OperationalError):
+                logger.debug('chat_export_phones table not available for phone check')
 
     return result
 
@@ -2921,7 +2937,8 @@ async def get_staff_gamification(staff_id: int, user: dict = Depends(get_current
             "SELECT COALESCE(SUM(xp_amount), 0) AS total_xp FROM xp_events WHERE staff_id = ?",
             (staff_id,)
         ) as cur:
-            xp = (await cur.fetchone())['total_xp']
+            row = await cur.fetchone()
+            xp = row['total_xp'] if row else 0
 
         # Streak
         async with db.execute(
@@ -2974,12 +2991,14 @@ async def frontdesk_my_stats(user: dict = Depends(get_current_user)):
                 "SELECT COUNT(*) AS cnt FROM clients WHERE frontdesk_id = ? AND DATE(created_at) = ?",
                 (staff_id, today)
             ) as cur:
-                result['today_entries'] = (await cur.fetchone())['cnt']
+                row = await cur.fetchone()
+                result['today_entries'] = row['cnt'] if row else 0
             async with db.execute(
                 "SELECT COUNT(*) AS cnt FROM clients WHERE frontdesk_id = ?",
                 (staff_id,)
             ) as cur:
-                result['total_entries'] = (await cur.fetchone())['cnt']
+                row = await cur.fetchone()
+                result['total_entries'] = row['cnt'] if row else 0
             async with db.execute(
                 """SELECT id, phone, status, source, created_at
                    FROM clients WHERE frontdesk_id = ?
@@ -3231,7 +3250,8 @@ async def frontdesk_history(
         count_row = await db.execute(
             'SELECT COUNT(id) as cnt FROM clients WHERE frontdesk_id = ?', (sid,),
         )
-        total = (await count_row.fetchone())[0]
+        row = await count_row.fetchone()
+        total = row[0] if row else 0
         cursor = await db.execute(
             'SELECT id, phone, source as category, first_day_status, second_day_status, '
             'client_condition, recruiter, status, created_at '
@@ -3862,20 +3882,23 @@ async def _recalculate_staff_daily_stats(staff_id: int, stat_date: str):
                        AND DATE(cn.created_at) = ?""",
                     (staff_id, status_name, stat_date)
                 ) as c:
-                    counts[status_name] = (await c.fetchone())[0]
+                    row = await c.fetchone()
+                    counts[status_name] = row[0] if row else 0
             else:
                 date_col = col_map.get(status_name, 'created_at')
                 async with db.execute(
                     f"SELECT COUNT(*) FROM clients WHERE frontdesk_id = ? AND DATE({date_col}) = ?",
                     (staff_id, stat_date)
                 ) as c:
-                    counts[status_name] = (await c.fetchone())[0]
+                    row = await c.fetchone()
+                    counts[status_name] = row[0] if row else 0
 
         async with db.execute(
             "SELECT COALESCE(SUM(amount), 0) FROM deposits WHERE frontdesk_id = ? AND DATE(deposit_date) = ?",
             (staff_id, stat_date)
         ) as c:
-            total_dep = (await c.fetchone())[0]
+            row = await c.fetchone()
+            total_dep = row[0] if row else 0
 
         nl = counts.get('new', 0)
         rp = counts.get('replied', 0)
@@ -4110,7 +4133,8 @@ async def get_audit_log(
         async with db.execute(
             f'SELECT COUNT(*) AS cnt FROM audit_log {where}', params
         ) as cur:
-            total = (await cur.fetchone())['cnt']
+            row = await cur.fetchone()
+            total = row['cnt'] if row else 0
 
         async with db.execute(
             f"""SELECT id, user_id, username, action, entity_type, entity_id,
@@ -4146,8 +4170,10 @@ async def phone_registry_duplicates(
         """
         try:
             async with db.execute(count_sql) as cur:
-                total = (await cur.fetchone())['cnt']
-        except Exception:
+                row = await cur.fetchone()
+                total = row['cnt'] if row else 0
+        except (aiosqlite.OperationalError, sqlite3.OperationalError):
+            # chat_export_phones table may not exist yet
             return {'total': 0, 'page': page, 'per_page': per_page, 'results': []}
 
         offset = (page - 1) * per_page
@@ -4200,8 +4226,8 @@ async def phone_registry_history(
                 (normalized,)
             ) as cur:
                 entries.extend([row_to_dict(r) for r in await cur.fetchall()])
-        except Exception:
-            pass
+        except (aiosqlite.OperationalError, sqlite3.OperationalError):
+            logger.debug('chat_export_phones table not available for history')
 
         # phone_registry_log entries
         async with db.execute(
@@ -4271,8 +4297,8 @@ async def phone_registry_bulk_check(
                     d['source_table'] = 'chat_export'
                     results.append(d)
                     continue
-            except Exception:
-                pass
+            except (aiosqlite.OperationalError, sqlite3.OperationalError):
+                logger.debug('chat_export_phones table not available for bulk lookup')
 
             results.append({'phone': phone, 'phone_input': phone, 'normalized': normalized, 'found': False})
 
@@ -4292,7 +4318,8 @@ async def phone_registry_by_staff(
             'SELECT COUNT(*) AS cnt FROM phone_registry WHERE submitter_staff_id = ?',
             (staff_id,)
         ) as cur:
-            total = (await cur.fetchone())['cnt']
+            row = await cur.fetchone()
+            total = row['cnt'] if row else 0
 
         offset = (page - 1) * per_page
         async with db.execute(

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, isAuthenticated, setAuthState } from '../api'
 import { t, getLang } from '../i18n'
+import { Spinner } from '../components/SharedUI'
 
 export default function Login() {
   const nav = useNavigate()
@@ -19,7 +20,7 @@ export default function Login() {
   }, [alreadyAuthed, nav])
 
   if (alreadyAuthed) {
-    return null
+    return <div className="d-flex align-center justify-center min-h-200"><Spinner label="Redirecting..." /></div>
   }
 
   async function submit(e: React.FormEvent) {
@@ -103,7 +104,7 @@ export default function Login() {
         </form>
       </div>
       <div className="login-version">
-        v2.9 — Phase 29
+        v2.10 — Phase 33
       </div>
     </div>
   )
