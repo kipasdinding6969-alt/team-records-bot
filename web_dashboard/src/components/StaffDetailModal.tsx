@@ -75,7 +75,7 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
       const all = await api.allStaff();
       setStaff(all.find((s: any) => s.id === staffId));
     } catch (e) {
-      setError(t('common.update_failed', lang as any));
+      setError(t('common.update_failed', lang));
       setTimeout(() => setError(''), 3000);
     } finally {
       setSaving(false);
@@ -88,7 +88,7 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal-content staff-modal-content">
         {loading ? (
-          <div className="p-24 text-center text-muted">{t('common.loading', lang as any)}...</div>
+          <div className="p-24 text-center text-muted">{t('common.loading', lang)}...</div>
         ) : (
           <>
             {error && (
@@ -109,7 +109,7 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
                   </div>
                 </div>
               </div>
-              <button className="modal-close-btn" onClick={onClose}>×</button>
+              <button className="modal-close-btn" onClick={onClose} aria-label="Close modal">×</button>
             </div>
 
             {!isEditing ? (
@@ -202,16 +202,16 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
                     value={editData.role}
                     onChange={e => setEditData({ ...editData, role: e.target.value })}
                   >
-                    <option value="viewer">{t('role.viewer', lang as any)}</option>
-                    <option value="newbie">{t('role.newbie', lang as any)}</option>
-                    <option value="frontdesk">{t('role.frontdesk', lang as any)}</option>
-                    <option value="customer_service">{t('role.customer_service', lang as any)}</option>
+                    <option value="viewer">{t('role.viewer', lang)}</option>
+                    <option value="newbie">{t('role.newbie', lang)}</option>
+                    <option value="frontdesk">{t('role.frontdesk', lang)}</option>
+                    <option value="customer_service">{t('role.customer_service', lang)}</option>
                     {currentUserRole === 'owner' && (
                       <>
-                        <option value="maintenance">{t('role.maintenance', lang as any)}</option>
-                        <option value="leader">{t('role.leader', lang as any)}</option>
-                        <option value="manager">{t('role.manager', lang as any)}</option>
-                        <option value="admin">{t('role.admin', lang as any)}</option>
+                        <option value="maintenance">{t('role.maintenance', lang)}</option>
+                        <option value="leader">{t('role.leader', lang)}</option>
+                        <option value="manager">{t('role.manager', lang)}</option>
+                        <option value="admin">{t('role.admin', lang)}</option>
                       </>
                     )}
                   </select>
@@ -238,7 +238,7 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
                     {t('common.cancel', lang)}
                   </button>
                   <button className={`btn-primary flex-1${saving ? ' opacity-70' : ''}`} onClick={handleSave} disabled={saving}>
-                    {saving ? t('common.saving', lang as any) : t('org.save_changes', lang as any)}
+                    {saving ? t('common.saving', lang) : t('org.save_changes', lang)}
                   </button>
                 </div>
               </div>

@@ -63,7 +63,7 @@ export default function Clients() {
     setAddError('')
     if (phone.replace(/[^\d]/g, '').length < 5) return
     const timer = setTimeout(() => {
-      api.phoneCheck(phone).then(setPhoneStatus).catch(() => {})
+      api.phoneCheck(phone).then(setPhoneStatus).catch((e) => { if (import.meta.env?.DEV) console.warn('phone check failed:', e) })
     }, 400)
     setCheckTimer(timer)
   }
@@ -87,8 +87,8 @@ export default function Clients() {
       setLoading(true)
       api.clients({ status: status || undefined, search: search || undefined, page, per_page: PER_PAGE })
         .then(setData).finally(() => setLoading(false))
-    } catch (e: any) {
-      const msg = typeof e.message === 'string' ? e.message : 'Failed to create client'
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to create client'
       setAddError(msg)
     } finally {
       setAddSubmitting(false)

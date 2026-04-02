@@ -96,8 +96,9 @@ export default function GroupInteractions() {
       setShowModal(false)
       setForm({ ...INITIAL_FORM })
       loadData(1)
-    } catch (err: any) {
-      showMsg('error', err.message)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showMsg('error', msg)
     } finally {
       setSubmitting(false)
     }

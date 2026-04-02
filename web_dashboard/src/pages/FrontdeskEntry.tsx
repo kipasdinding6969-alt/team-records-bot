@@ -81,7 +81,7 @@ export default function FrontdeskEntry() {
     const timer = setTimeout(() => {
       api.phoneCheck(val).then(res => {
         setPhoneStatus(res)
-      }).catch(() => {})
+      }).catch((e) => { if (import.meta.env?.DEV) console.warn('phone check failed:', e) })
     }, 400)
     setCheckTimer(timer)
   }
@@ -124,8 +124,9 @@ export default function FrontdeskEntry() {
       loadData()
       loadHistory()
       showMessage('success', t('frontdesk.submit', lang) + ' OK')
-    } catch (err: any) {
-      showMessage('error', err.message || 'Error')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showMessage('error', msg || 'Error')
     } finally {
       setSubmitting(false)
     }
@@ -385,7 +386,7 @@ export default function FrontdeskEntry() {
                       setSearchMessage({ type: 'error', text: t('common.no_data', lang) })
                       setTimeout(() => setSearchMessage(null), 3000)
                     }
-                  }).catch(() => {})
+                  }).catch((e) => { if (import.meta.env?.DEV) console.warn('phone check failed:', e) })
                 } else {
                   setSearchMessage(null)
                 }

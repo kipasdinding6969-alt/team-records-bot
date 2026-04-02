@@ -19,8 +19,9 @@ export default function GroupOverview() {
     try {
       const res = await api.groupCompare(selectedDate)
       setGroups(res.groups || [])
-    } catch (e: any) {
-      setMessage({ type: 'error', text: e.message || t('common.error', lang) })
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setMessage({ type: 'error', text: msg || t('common.error', lang) })
       setTimeout(() => setMessage(null), 3000)
     } finally {
       setLoading(false)

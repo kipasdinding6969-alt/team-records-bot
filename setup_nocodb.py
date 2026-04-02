@@ -16,7 +16,7 @@ def api(method, path, data=None):
         print(f"ERROR {method.upper()} {path}: {r.status_code} {r.text[:200]}")
         return None
     try: return r.json()
-    except: return r.text
+    except (ValueError, json.JSONDecodeError): return r.text
 
 def create_table(title, columns):
     result = api("post", f"/api/v2/meta/bases/{BASE_ID}/tables", {

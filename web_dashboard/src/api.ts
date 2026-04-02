@@ -1,4 +1,4 @@
-export const debug = (import.meta as any).env?.DEV ? console.error.bind(console) : () => {};
+export const debug = import.meta.env?.DEV ? console.error.bind(console) : () => {};
 
 import type {
   Activity,
@@ -87,8 +87,8 @@ async function req<T>(path: string, options: RequestInit = {}): Promise<T> {
     const detail = err.detail
     // Preserve structured error objects (e.g. 409 duplicate response with type/owner/message)
     if (typeof detail === 'object' && detail !== null) {
-      const e = new Error(detail.message || JSON.stringify(detail))
-      ;(e as any).detail = detail
+      const e = new Error(detail.message || JSON.stringify(detail)) as Error & { detail: unknown }
+      e.detail = detail
       throw e
     }
     throw new Error(detail || 'Request failed')

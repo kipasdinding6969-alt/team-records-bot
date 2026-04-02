@@ -30,7 +30,7 @@ interface PhoneStats {
   duplicates_blocked: number
 }
 
-function NoteForm({ clientId, lang }: { clientId: number; lang: any }) {
+function NoteForm({ clientId, lang }: { clientId: number; lang: 'en' | 'zh' }) {
   const { theme } = useTheme()
   const [content, setContent] = useState('')
   const [saving, setSaving] = useState(false)
@@ -108,8 +108,9 @@ export default function NumberLookup() {
     try {
       const data = await api.phoneRegistryLookup(phone.trim())
       setResult(data)
-    } catch (e: any) {
-      setError(e.message || t('common.error', lang))
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setError(msg || t('common.error', lang))
     } finally {
       setLoading(false)
     }
@@ -129,8 +130,9 @@ export default function NumberLookup() {
       setOverrideMode(false)
       const refreshed = await api.phoneRegistryLookup(result.phone)
       setResult(refreshed)
-    } catch (e: any) {
-      setOverrideMsg(e.message || t('phone.override_failed', lang))
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setOverrideMsg(msg || t('phone.override_failed', lang))
     } finally {
       setOverrideLoading(false)
     }

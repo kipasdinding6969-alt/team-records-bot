@@ -50,6 +50,9 @@
         --radius-btn: 8px;
         --radius-input: 8px;
         --radius-badge: 6px;
+        --role-owner: #00b894;
+        --role-admin: #fdcb6e;
+        --role-member: #7f848e;
       }
 
       /* === Z-INDEX SCALE ===
@@ -697,6 +700,7 @@
         gap: 6px;
         transition: all 0.15s ease;
       }
+      .filter-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       .filter-chip:hover { background: rgba(255, 255, 255, 0.04); border-color: var(--text-muted); }
       .filter-chip.active { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
       .filter-chip .count {
@@ -1225,7 +1229,7 @@
       .fs-13 { font-size: 13px; }
       .fs-14 { font-size: 14px; }
       .fs-16 { font-size: 16px; }
-      .fs-18 { font-size: 18px !important; }
+      .fs-18 { font-size: 18px; }
       .fs-20 { font-size: 20px; }
       .fs-24 { font-size: 24px; }
 
@@ -1467,6 +1471,8 @@
         flex-wrap: wrap;
       }
 
+      .link-card:hover { background: var(--bg-elevated); cursor: pointer; }
+
       /* === Linked client chip === */
       .linked-chip {
         font-size: 11px;
@@ -1574,7 +1580,9 @@
         font-size: 14px;
         font-weight: 600;
         width: 100%;
+        transition: all 0.15s ease;
       }
+      .category-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
       /* === Day status grid === */
       .day-status-grid {
@@ -1592,7 +1600,9 @@
         font-size: 12px;
         font-weight: 700;
         padding: 0 8px;
+        transition: all 0.15s ease;
       }
+      .day-status-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
       /* === Staff target row === */
       .target-row {
@@ -1603,6 +1613,7 @@
         background: var(--bg-elevated);
         border-radius: 8px;
         border: 1px solid var(--card-border);
+        transition: all 0.15s ease;
       }
 
       /* === Permission toggle === */
@@ -1615,6 +1626,7 @@
         cursor: pointer;
         transition: all 0.2s;
       }
+      .perm-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       .perm-toggle.allowed {
         border: 1px solid rgba(52, 211, 153, 0.3);
         background: rgba(52, 211, 153, 0.06);
@@ -1820,7 +1832,7 @@
       .hoverable:hover { background: var(--accent-subtle); }
       .max-w-1600 { max-width: 1600px; }
       .max-w-200 { max-width: 200px; }
-      .mb-0 { margin-bottom: 0 !important; }
+      .mb-0 { margin-bottom: 0; }
       .mb-4 { margin-bottom: 4px; }
       .min-h-50vh { min-height: 50vh; }
       .grid-full-width { grid-column: 1 / -1; }
@@ -1843,7 +1855,7 @@
       .overflow-x-auto { overflow-x: auto; }
       .p-12-0 { padding: 12px 0; }
       .pb-4 { padding-bottom: 4px; }
-      .pd-parent-row { background: var(--bg-elevated); font-weight: 600; }
+      .pd-parent-row { background: var(--bg-elevated); font-weight: 600; cursor: pointer; }
       .pd-child-row { background: transparent; }
       .pd-total-row { background: var(--accent-subtle); font-weight: 700; border-top: 2px solid var(--card-border); }
       .perm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
@@ -1866,7 +1878,7 @@
       .w-260 { width: 260px; }
       .width-auto { width: auto; }
       .z-1 { z-index: 1; }
-      .z-3 { z-index: 3; }
+      .z-2 { z-index: 2; }
 
       /* Drawer (side panel) */
       .drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50; backdrop-filter: blur(2px); }
@@ -1892,9 +1904,9 @@
       .expand-arrow.open { transform: rotate(90deg); }
 
       /* Role pills for OrgChart */
-      .role-owner { background: rgba(0, 184, 148, 0.12); color: #00b894; }
-      .role-admin { background: rgba(253, 203, 110, 0.12); color: #fdcb6e; }
-      .role-member { background: rgba(127, 132, 142, 0.12); color: #7f848e; }
+      .role-owner { background: rgba(0, 184, 148, 0.12); color: var(--role-owner); }
+      .role-admin { background: rgba(253, 203, 110, 0.12); color: var(--role-admin); }
+      .role-member { background: rgba(127, 132, 142, 0.12); color: var(--role-member); }
       .role-leader { background: rgba(45, 212, 191, 0.12); color: #2dd4bf; }
 
       @media (max-width: 768px) {
@@ -1969,7 +1981,6 @@
       .bg-fill { background: var(--bg); }
 
       /* === Performance Detail rows === */
-      .pd-parent-row { cursor: pointer; }
       .pd-parent-row:hover { background: var(--accent-subtle); }
       .pd-child-row td { color: var(--text-secondary); font-size: 11px; }
       .pd-child-row td:first-child { border-left: 3px solid rgba(45, 212, 191, 0.19); padding-left: 24px; }
@@ -2225,7 +2236,7 @@
         border-radius: 8px;
         font-size: 12px;
         font-weight: 600;
-        font-family: monospace;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
       }
       .ptl-knife-tag.accent {
         background: var(--accent-light);
@@ -2255,7 +2266,7 @@
         font-size: 14px;
         font-weight: 700;
         color: var(--success);
-        font-family: monospace;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
       }
       .ptl-unkill-tag {
         padding: 4px 10px;
@@ -2351,7 +2362,23 @@
       .status-badge-dynamic { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--radius-badge); font-size: 11px; font-weight: 700; white-space: nowrap; background: var(--status-bg, rgba(171,178,191,0.1)); color: var(--status-color, #abb2bf); border: 1px solid var(--status-border, transparent); }
       .pill-nav-active { background: var(--accent-light); color: var(--accent); }
       .category-grid-error { border: 2px solid var(--danger); border-radius: 8px; padding: 4px; }
-      .border-danger { border: 2px solid var(--danger) !important; }
+      .border-danger { border: 2px solid var(--danger); }
+
+      /* === Small device breakpoint (320-375px) === */
+      @media (max-width: 375px) {
+        body { font-size: 13px; }
+        .layout-main { padding: 8px; }
+        .card { padding: 12px; }
+        .grid-2col, .grid-3col, .grid-2fr-1fr { grid-template-columns: 1fr; }
+        .day-status-grid { grid-template-columns: 1fr; }
+      }
+
+      /* === Print stylesheet === */
+      @media print {
+        .sidebar, .layout-header, .btn, button, .drawer-right, .modal-overlay { display: none !important; }
+        .layout-main { margin-left: 0 !important; padding: 8px !important; }
+        .card { box-shadow: none; border: 1px solid #ddd; }
+      }
 
     </style>
   </head>

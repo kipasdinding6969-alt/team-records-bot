@@ -190,8 +190,9 @@ export default function ClientDetail() {
       setClient(c)
       setLinks(l)
       setTimeline(tl)
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setError(msg)
     } finally {
       setLoading(false)
     }

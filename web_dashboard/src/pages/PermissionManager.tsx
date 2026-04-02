@@ -83,7 +83,7 @@ export default function PermissionManager() {
       setStaffList(data)
     }).catch(e => {
       debug(e)
-      setError(t('common.update_failed', lang as any))
+      setError(t('common.update_failed', lang))
     }).finally(() => setLoading(false))
   }
 

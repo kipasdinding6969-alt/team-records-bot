@@ -82,8 +82,9 @@ export default function MaintainerDash() {
       loadData()
       setReassignFrom('')
       setReassignTo('')
-    } catch (err: any) {
-      showMessage('error', err.message || 'Error')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showMessage('error', msg || 'Error')
     }
   }
 
@@ -105,8 +106,9 @@ export default function MaintainerDash() {
       setDepositForm({ client_id: '', group_number: '', knife_number: '1', amount: '', pressure_amount: '', platform: 'MT5', role_type: 'frontdesk', note: '' })
       loadDeposits(depositGroupFilter)
       showMessage('success', t('maintainer.add_deposit', lang) + ' OK')
-    } catch (err: any) {
-      showMessage('error', err.message || 'Error')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showMessage('error', msg || 'Error')
     } finally {
       setDepositSubmitting(false)
     }

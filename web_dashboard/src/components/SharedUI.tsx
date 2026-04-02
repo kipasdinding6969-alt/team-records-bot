@@ -42,7 +42,7 @@ export function MessageBanner({ message, onDismiss }: { message: { type: 'succes
   return (
     <div className={`alert ${message.type === 'error' ? 'alert-error' : 'alert-success'} justify-between`}>
       <span>{message.text}</span>
-      {onDismiss && <button className="comment-action-btn" onClick={onDismiss}>&times;</button>}
+      {onDismiss && <button className="comment-action-btn" onClick={onDismiss} aria-label="Dismiss">&times;</button>}
     </div>
   )
 }

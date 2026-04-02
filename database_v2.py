@@ -8,9 +8,14 @@ from contextlib import asynccontextmanager
 from datetime import datetime, date, timedelta, timezone
 
 
+def _utcnow() -> datetime:
+    """Return current UTC time as naive datetime — matches SQLite CURRENT_TIMESTAMP."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def _utc_today() -> date:
     """Return today's date in UTC — matches SQLite CURRENT_TIMESTAMP."""
-    return datetime.now(timezone.utc).date()
+    return _utcnow().date()
 
 
 def _safe_json_loads(raw, default=None):
@@ -933,7 +938,7 @@ class DatabaseV2:
                     await db.execute(sql)
                     await db.commit()
                     logger.info(f'Migration applied: {sql[:60]}')
-                except Exception:
+                except aiosqlite.OperationalError:
                     pass  # column already exists
 
         await self.seed_team_structure()
@@ -1143,7 +1148,7 @@ class DatabaseV2:
                         logger.warning(f'status_change_hook error: {_he}')
                 await db.commit()
                 return True
-            except Exception:
+            except aiosqlite.Error:
                 await db.rollback()
                 raise
 
@@ -1280,7 +1285,8 @@ class DatabaseV2:
             cur = await db.execute(
                 'SELECT COUNT(*) FROM clients WHERE frontdesk_id=? AND DATE(created_at)=?',
                 (staff_id, date_str))
-            new_leads = (await cur.fetchone())[0]
+            row = await cur.fetchone()
+            new_leads = row[0] if row else 0
 
             # Count status changes today from client_notes
             async def count_status(new_st: str) -> int:
@@ -1289,7 +1295,8 @@ class DatabaseV2:
                        WHERE staff_id=? AND note_type='status_change' AND new_status=?
                        AND DATE(created_at)=?""",
                     (staff_id, new_st, date_str))
-                return (await c.fetchone())[0]
+                row = await c.fetchone()
+                return row[0] if row else 0
 
             contacted = await count_status('contacted')
             replied = await count_status('replied')
@@ -1305,7 +1312,8 @@ class DatabaseV2:
             cur = await db.execute(
                 'SELECT COALESCE(SUM(amount),0) FROM deposits WHERE frontdesk_id=? AND deposit_date=?',
                 (staff_id, date_str))
-            total_deposit = (await cur.fetchone())[0]
+            row = await cur.fetchone()
+            total_deposit = row[0] if row else 0
 
         stat = DailyStat(
             staff_id=staff_id,
@@ -1587,7 +1595,8 @@ class DatabaseV2:
                     'SELECT COUNT(*) FROM clients WHERE frontdesk_id=?', (frontdesk_id,))
             else:
                 cur = await db.execute('SELECT COUNT(*) FROM clients')
-            return (await cur.fetchone())[0]
+            row = await cur.fetchone()
+            return row[0] if row else 0
 
     async def get_clients_by_frontdesk(self, frontdesk_id: int, limit: int = 50) -> List[Client]:
         async with self.get_connection() as db:
@@ -1961,8 +1970,9 @@ class DatabaseV2:
             for table in tables:
                 try:
                     cur = await db.execute(f'SELECT COUNT(*) FROM {table}')
-                    stats[table] = (await cur.fetchone())[0]
-                except Exception:
+                    row = await cur.fetchone()
+                    stats[table] = row[0] if row else 0
+                except aiosqlite.OperationalError:
                     stats[table] = 0
         return stats
 
@@ -2259,7 +2269,8 @@ class DatabaseV2:
                     )
                 else:
                     continue
-                score = (await cur.fetchone())[0] or 0
+                row = await cur.fetchone()
+                score = (row[0] if row else 0) or 0
             await self.upsert_contest_score(contest_id, s.id, score)
 
     async def auto_end_expired_contests(self) -> int:
@@ -2545,7 +2556,7 @@ class DatabaseV2:
                         )
                         await db.commit()
                     newly_awarded.append(badge)
-                except Exception:
+                except aiosqlite.OperationalError:
                     pass
         return newly_awarded
 
@@ -2626,7 +2637,7 @@ class DatabaseV2:
 
     async def get_due_followups(self, before: Optional[datetime] = None) -> List[Dict[str, Any]]:
         if before is None:
-            before = datetime.now(timezone.utc).replace(tzinfo=None)
+            before = _utcnow()
         async with self.get_connection() as db:
             cur = await db.execute(
                 """SELECT q.id, q.client_id, q.sequence_id, q.step, q.next_send_at, q.status,
@@ -2981,7 +2992,7 @@ class DatabaseV2:
                            (event_type, target_minutes, warning_minutes, critical_minutes)
                            VALUES (?,?,?,?)""",
                         (ev_type, target, warn, crit))
-                except Exception:
+                except aiosqlite.OperationalError:
                     pass
             await db.commit()
 
@@ -3012,7 +3023,7 @@ class DatabaseV2:
                                event_type: str, target_minutes: int,
                                started_at: Optional[datetime] = None) -> int:
         """Open a new SLA event. Returns inserted id."""
-        ts = started_at or datetime.utcnow()
+        ts = started_at or _utcnow()
         async with self.get_connection() as db:
             cur = await db.execute(
                 """INSERT INTO sla_events
@@ -3025,7 +3036,7 @@ class DatabaseV2:
 
     async def complete_sla_event(self, sla_id: int, completed_at: Optional[datetime] = None) -> bool:
         """Close an open SLA event, compute actual_minutes and met."""
-        now = completed_at or datetime.utcnow()
+        now = completed_at or _utcnow()
         async with self.get_connection() as db:
             cur = await db.execute(
                 'SELECT started_at, target_minutes FROM sla_events WHERE id=? AND completed_at IS NULL',
@@ -3062,7 +3073,7 @@ class DatabaseV2:
                              days: int = 7) -> Dict:
         """Aggregate SLA compliance stats."""
         async with self.get_connection() as db:
-            cutoff = (datetime.utcnow() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+            cutoff = (_utcnow() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
             if staff_id:
                 cur = await db.execute(
                     """SELECT COUNT(*) as total,
@@ -3110,7 +3121,7 @@ class DatabaseV2:
     async def get_staff_sla_summary(self, days: int = 7) -> List[Dict]:
         """Per-staff SLA compliance summary for the dashboard."""
         async with self.get_connection() as db:
-            cutoff = (datetime.utcnow() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+            cutoff = (_utcnow() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
             cur = await db.execute(
                 """SELECT s.id as staff_id, s.display_name,
                           COUNT(*) as total,
@@ -3144,7 +3155,8 @@ class DatabaseV2:
         """Insert default commission rules if none exist."""
         async with self.get_connection() as db:
             cur = await db.execute('SELECT COUNT(*) FROM commission_rules')
-            count = (await cur.fetchone())[0]
+            row = await cur.fetchone()
+            count = row[0] if row else 0
             if count > 0:
                 return
             defaults = [
@@ -3230,12 +3242,12 @@ class DatabaseV2:
 
     def _current_week_period(self) -> str:
         """Return ISO week period string like '2026-W13'."""
-        now = datetime.utcnow()
+        now = _utcnow()
         return f'{now.year}-W{now.isocalendar()[1]:02d}'
 
     def _current_month_period(self) -> str:
         """Return month period string like '2026-03'."""
-        now = datetime.utcnow()
+        now = _utcnow()
         return f'{now.year}-{now.month:02d}'
 
     async def calculate_commission(self, staff_id: int, client_id: Optional[int],
@@ -3255,7 +3267,7 @@ class DatabaseV2:
 
         rule = rules[0]  # Use first matching rule
 
-        if rule.min_amount and amount < rule.min_amount:
+        if rule.min_amount is not None and amount < rule.min_amount:
             return None
 
         if rule.rate_type == 'percentage':
@@ -3263,7 +3275,7 @@ class DatabaseV2:
         else:  # fixed
             commission_amount = rule.rate_value
 
-        if rule.max_commission and commission_amount > rule.max_commission:
+        if rule.max_commission is not None and commission_amount > rule.max_commission:
             commission_amount = rule.max_commission
 
         commission_amount = round(commission_amount, 2)
@@ -3366,7 +3378,8 @@ class DatabaseV2:
         async with self.get_connection() as db:
             cur = await db.execute(
                 'SELECT COUNT(*) FROM deposits WHERE client_id=?', (client_id,))
-            count = (await cur.fetchone())[0]
+            row = await cur.fetchone()
+            count = row[0] if row else 0
             return count == 0
 
     async def is_first_registration(self, client_id: int) -> bool:
@@ -3376,7 +3389,8 @@ class DatabaseV2:
                 """SELECT COUNT(*) FROM client_notes
                    WHERE client_id=? AND note_type='status_change' AND new_status='registered'""",
                 (client_id,))
-            count = (await cur.fetchone())[0]
+            row = await cur.fetchone()
+            count = row[0] if row else 0
             # 0 means this is the first (about to happen), 1 means it already happened once
             return count <= 1
 
@@ -3526,7 +3540,7 @@ class DatabaseV2:
     async def get_stale_clients_analytics(self, days: int = 7,
                                            team: Optional[str] = None) -> List[Dict]:
         """Clients with no activity in N days — for analytics reports."""
-        cutoff = (datetime.utcnow() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+        cutoff = (_utcnow() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
         active = [s.value for s in ClientStatus.active_statuses()]
         placeholders = ','.join('?' * len(active))
         async with self.get_connection() as db:
@@ -3557,7 +3571,8 @@ class DatabaseV2:
                 params.append(team)
             sql += ' WHERE ' + ' AND '.join(conditions)
             cur = await db.execute(sql, params)
-            return round((await cur.fetchone())[0], 2)
+            row = await cur.fetchone()
+            return round(row[0] if row else 0, 2)
 
     # ─── Phase 10C: Shift Handoffs ────────────────────────────────────────
 
@@ -3642,7 +3657,7 @@ class DatabaseV2:
 
                 await db.commit()
                 return True
-            except Exception:
+            except aiosqlite.Error:
                 await db.rollback()
                 raise
 
@@ -4228,7 +4243,7 @@ class DatabaseV2:
             try:
                 cur = await db.execute(count_sql)
                 total = (await cur.fetchone())['cnt']
-            except Exception:
+            except aiosqlite.OperationalError:
                 # chat_export_phones may not exist
                 return {'total': 0, 'page': page, 'per_page': per_page, 'results': []}
 
@@ -4273,7 +4288,7 @@ class DatabaseV2:
                        ORDER BY first_submitted_at ASC""",
                     (normalized,))
                 entries.extend([dict(r) for r in await cur.fetchall()])
-            except Exception:
+            except aiosqlite.OperationalError:
                 pass  # table may not exist
 
             # phone_registry_log entries
@@ -4328,7 +4343,7 @@ class DatabaseV2:
                         d['source_table'] = 'chat_export'
                         results.append(d)
                         continue
-                except Exception:
+                except aiosqlite.OperationalError:
                     pass
 
                 results.append({'phone': phone, 'phone_input': phone, 'normalized': normalized, 'found': False})

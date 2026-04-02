@@ -153,13 +153,13 @@ export default function Layout() {
         {/* Footer — theme / lang / logout */}
         <div className="sidebar-footer">
           <div className="sidebar-footer-btns">
-            <button className="glass-btn flex-1" onClick={toggleTheme}>
+            <button className="glass-btn flex-1" onClick={toggleTheme} aria-label="Toggle theme">
               {themeMode === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19'}
             </button>
-            <button className="glass-btn flex-1" onClick={toggleLang}>
+            <button className="glass-btn flex-1" onClick={toggleLang} aria-label="Toggle language">
               {lang === 'zh' ? 'EN' : '\u4E2D\u6587'}
             </button>
-            <button className="glass-btn flex-1 glass-btn-danger" onClick={logout}>
+            <button className="glass-btn flex-1 glass-btn-danger" onClick={logout} aria-label="Logout">
               {t('nav.logout', lang as 'en' | 'zh')}
             </button>
           </div>
@@ -174,6 +174,7 @@ export default function Layout() {
             <button
               className="burger-btn glass-btn"
               onClick={() => setSidebarOpen(true)}
+              aria-label="Open menu"
             >
               {'\u2630'}
             </button>

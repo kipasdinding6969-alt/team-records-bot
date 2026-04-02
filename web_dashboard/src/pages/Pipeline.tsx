@@ -25,7 +25,7 @@ export default function Pipeline() {
         setPipeline(p)
         if (f.length > 0) setSelected(f[0].stage)
       })
-      .catch(e => { debug(e); setError(t('common.update_failed', lang as any)); })
+      .catch(e => { debug(e); setError(t('common.update_failed', lang)); })
       .finally(() => setLoading(false))
   }, [])
 

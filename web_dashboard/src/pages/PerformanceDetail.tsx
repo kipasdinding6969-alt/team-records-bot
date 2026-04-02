@@ -37,7 +37,7 @@ export default function PerformanceDetail() {
     api.allStaff().then(staff => {
       const uniqueTeams = [...new Set(staff.map((s: any) => s.team).filter(Boolean))]
       setTeams(uniqueTeams.map(t => ({ key: t, label: t })))
-    }).catch(() => {})
+    }).catch((e) => { if (import.meta.env?.DEV) console.warn('api call failed:', e) })
   }, [])
 
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -96,9 +96,9 @@ export default function PerformanceDetail() {
         setBlownForm({ display_name: '', team: '', account_identifier: '', blown_date: selectedDate, reason: '' })
         api.blownAccounts(selectedDate, team === 'all' ? undefined : team)
           .then(setBlownList)
-          .catch(() => {})
+          .catch((e) => { if (import.meta.env?.DEV) console.warn('api call failed:', e) })
       })
-      .catch(() => {})
+      .catch((e) => { if (import.meta.env?.DEV) console.warn('api call failed:', e) })
   }
 
   return (
@@ -151,7 +151,7 @@ export default function PerformanceDetail() {
           <table className="data-grid-table min-w-1400">
             <thead>
               <tr>
-                <th className="text-left sticky-left z-3 min-w-140">{t('perf.name', lang)}</th>
+                <th className="text-left sticky-left z-2 min-w-140">{t('perf.name', lang)}</th>
                 <th className="text-left">{t('perf.team', lang)}</th>
                 <th className="text-left">{t('frontdesk.category', lang)}</th>
                 {COLUMNS.map(c => <th key={c.key} className="text-right">{t(c.i18nKey, lang)}</th>)}
