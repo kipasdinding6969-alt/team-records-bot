@@ -1,30 +1,37 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { getAuthState, isAuthenticated } from './api'
 import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
-import ClientDetail from './pages/ClientDetail'
-import Clients from './pages/Clients'
-import Dashboard from './pages/Dashboard'
-import Login from './pages/Login'
-import Pipeline from './pages/Pipeline'
-import Reports from './pages/Reports'
-import Setup from './pages/Setup'
-import Team from './pages/Team'
-import UserManagement from './pages/UserManagement'
-import NumberLookup from './pages/NumberLookup'
-import PermissionManager from './pages/PermissionManager'
-import Performance from './pages/Performance'
-import OrgChart from './pages/OrgChart'
-import Templates from './pages/Templates'
-import Contests from './pages/Contests'
-import FrontdeskEntry from './pages/FrontdeskEntry'
-import GroupOverview from './pages/GroupOverview'
-import MaintainerDash from './pages/MaintainerDash'
-import CustomerService from './pages/CustomerService'
-import PerformanceDetail from './pages/PerformanceDetail'
-import Exams from './pages/Exams'
-import CSFinance from './pages/CSFinance'
-import GroupInteractions from './pages/GroupInteractions'
+import { Spinner } from './components/SharedUI'
+
+const Login = lazy(() => import('./pages/Login'))
+const Setup = lazy(() => import('./pages/Setup'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Pipeline = lazy(() => import('./pages/Pipeline'))
+const Team = lazy(() => import('./pages/Team'))
+const Clients = lazy(() => import('./pages/Clients'))
+const ClientDetail = lazy(() => import('./pages/ClientDetail'))
+const Reports = lazy(() => import('./pages/Reports'))
+const Performance = lazy(() => import('./pages/Performance'))
+const PerformanceDetail = lazy(() => import('./pages/PerformanceDetail'))
+const UserManagement = lazy(() => import('./pages/UserManagement'))
+const NumberLookup = lazy(() => import('./pages/NumberLookup'))
+const OrgChart = lazy(() => import('./pages/OrgChart'))
+const PermissionManager = lazy(() => import('./pages/PermissionManager'))
+const Templates = lazy(() => import('./pages/Templates'))
+const Contests = lazy(() => import('./pages/Contests'))
+const FrontdeskEntry = lazy(() => import('./pages/FrontdeskEntry'))
+const GroupOverview = lazy(() => import('./pages/GroupOverview'))
+const MaintainerDash = lazy(() => import('./pages/MaintainerDash'))
+const CustomerService = lazy(() => import('./pages/CustomerService'))
+const Exams = lazy(() => import('./pages/Exams'))
+const CSFinance = lazy(() => import('./pages/CSFinance'))
+const GroupInteractions = lazy(() => import('./pages/GroupInteractions'))
+
+function Lazy({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<Spinner />}>{children}</Suspense>
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated() ? <>{children}</> : <Navigate to="/login" replace />
@@ -41,8 +48,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/setup" element={<Setup />} />
+        <Route path="/login" element={<Lazy><Login /></Lazy>} />
+        <Route path="/setup" element={<Lazy><Setup /></Lazy>} />
         <Route
           path="/"
           element={
@@ -53,111 +60,27 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Dashboard />} />
-          <Route path="pipeline" element={<Pipeline />} />
-          <Route path="team" element={<Team />} />
-          <Route path="clients" element={<Clients />} />
-          <Route path="clients/:id" element={<ClientDetail />} />
-          <Route path="reports" element={<Reports />} />
-          <Route path="performance" element={<Performance />} />
-          <Route path="performance-detail" element={<PerformanceDetail />} />
-          <Route
-            path="users"
-            element={
-              <AdminRoute>
-                <UserManagement />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="phone-lookup"
-            element={
-              <ProtectedRoute>
-                <NumberLookup />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="org-chart"
-            element={
-              <AdminRoute>
-                <OrgChart />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="permissions"
-            element={
-              <AdminRoute>
-                <PermissionManager />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="templates"
-            element={
-              <AdminRoute>
-                <Templates />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="contests"
-            element={
-              <ProtectedRoute>
-                <Contests />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="frontdesk"
-            element={
-              <ProtectedRoute>
-                <FrontdeskEntry />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="groups"
-            element={
-              <AdminRoute>
-                <GroupOverview />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="maintainer"
-            element={
-              <AdminRoute>
-                <MaintainerDash />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="cs"
-            element={
-              <ProtectedRoute>
-                <CustomerService />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="exams"
-            element={
-              <ProtectedRoute>
-                <Exams />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="cs-finance"
-            element={
-              <ProtectedRoute>
-                <CSFinance />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="group-interactions" element={<ProtectedRoute><GroupInteractions /></ProtectedRoute>} />
+          <Route index element={<Lazy><Dashboard /></Lazy>} />
+          <Route path="pipeline" element={<Lazy><Pipeline /></Lazy>} />
+          <Route path="team" element={<Lazy><Team /></Lazy>} />
+          <Route path="clients" element={<Lazy><Clients /></Lazy>} />
+          <Route path="clients/:id" element={<Lazy><ClientDetail /></Lazy>} />
+          <Route path="reports" element={<Lazy><Reports /></Lazy>} />
+          <Route path="performance" element={<Lazy><Performance /></Lazy>} />
+          <Route path="performance-detail" element={<Lazy><PerformanceDetail /></Lazy>} />
+          <Route path="users" element={<AdminRoute><Lazy><UserManagement /></Lazy></AdminRoute>} />
+          <Route path="phone-lookup" element={<ProtectedRoute><Lazy><NumberLookup /></Lazy></ProtectedRoute>} />
+          <Route path="org-chart" element={<AdminRoute><Lazy><OrgChart /></Lazy></AdminRoute>} />
+          <Route path="permissions" element={<AdminRoute><Lazy><PermissionManager /></Lazy></AdminRoute>} />
+          <Route path="templates" element={<AdminRoute><Lazy><Templates /></Lazy></AdminRoute>} />
+          <Route path="contests" element={<ProtectedRoute><Lazy><Contests /></Lazy></ProtectedRoute>} />
+          <Route path="frontdesk" element={<ProtectedRoute><Lazy><FrontdeskEntry /></Lazy></ProtectedRoute>} />
+          <Route path="groups" element={<AdminRoute><Lazy><GroupOverview /></Lazy></AdminRoute>} />
+          <Route path="maintainer" element={<AdminRoute><Lazy><MaintainerDash /></Lazy></AdminRoute>} />
+          <Route path="cs" element={<ProtectedRoute><Lazy><CustomerService /></Lazy></ProtectedRoute>} />
+          <Route path="exams" element={<ProtectedRoute><Lazy><Exams /></Lazy></ProtectedRoute>} />
+          <Route path="cs-finance" element={<ProtectedRoute><Lazy><CSFinance /></Lazy></ProtectedRoute>} />
+          <Route path="group-interactions" element={<ProtectedRoute><Lazy><GroupInteractions /></Lazy></ProtectedRoute>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
