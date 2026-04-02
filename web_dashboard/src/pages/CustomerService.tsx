@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { api } from '../api'
 import { useTheme } from '../ThemeContext'
 import { t, getLang } from '../i18n'
@@ -16,6 +16,8 @@ export default function CustomerService() {
   const [noteContent, setNoteContent] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
 
+  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 5000); return () => clearTimeout(id) } }, [error])
+
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
     if (!search.trim()) return
@@ -29,7 +31,7 @@ export default function CustomerService() {
          setSelectedClient(null)
       }
     } catch (e) {
-      console.error(e)
+      setError(t('common.error', lang))
     } finally {
       setLoading(false)
     }
@@ -41,7 +43,7 @@ export default function CustomerService() {
       const detail = await api.clientDetail(id)
       setSelectedClient(detail)
     } catch (e) {
-      console.error(e)
+      setError(t('common.error', lang))
     } finally {
       setLoading(false)
     }
@@ -117,9 +119,6 @@ export default function CustomerService() {
                     <span>{t('cs.status', lang)}: {selectedClient.status}</span>
                   </div>
                 </div>
-                <button className="btn-secondary btn-sm" disabled>
-                  {t('cs.handoff', lang)}
-                </button>
               </div>
 
               <div className="d-flex flex-col gap-12 mb-20">

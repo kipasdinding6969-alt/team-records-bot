@@ -40,7 +40,7 @@ export default function Exams() {
     api.allStaff().then(staff => {
       const uniqueTeams = [...new Set(staff.map((s: any) => s.team).filter(Boolean))]
       setTeams(uniqueTeams.map(t => ({ key: t, label: t })))
-    }).catch(console.error)
+    }).catch(() => { setError(t('common.error', lang)); setTimeout(() => setError(''), 5000) })
   }, [])
 
   const toggleExpand = async (examId: number) => {

@@ -93,8 +93,10 @@ export default function NumberLookup() {
   const [overrideMsg, setOverrideMsg] = useState('')
 
   useEffect(() => {
-    api.phoneRegistryStats().then(setStats).catch(() => null)
+    api.phoneRegistryStats().then(setStats).catch(() => setError(t('common.error', lang)))
   }, [])
+
+  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 5000); return () => clearTimeout(id) } }, [error])
 
   async function handleSearch() {
     if (!phone.trim()) return

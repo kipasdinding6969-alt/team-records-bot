@@ -58,13 +58,15 @@ export default function Team() {
           )
         ).then(setTeams)
       })
-      .catch(console.error)
+      .catch(() => setError(t('common.error', lang)))
       .finally(() => setLoading(false))
   }
 
   useEffect(() => {
     load()
   }, [])
+
+  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 5000); return () => clearTimeout(id) } }, [error])
 
   const handleTargetSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -78,14 +80,13 @@ export default function Team() {
       setShowTargetModal(false)
       load()
     } catch (e) {
-      console.error(e)
       setError(t('common.update_failed', lang)); setTimeout(()=>setError(''), 3000)
     }
   }
 
   const getBarColor = (pct: number) => pct >= 80 ? theme.success : pct >= 50 ? theme.warning : theme.danger
 
-  if (loading) return <Spinner />
+  if (loading) return <Spinner label={t('team.title', lang)} />
 
   const chartData = staff.slice(0, 10).map(s => ({
     name: s.display_name,

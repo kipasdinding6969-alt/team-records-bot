@@ -23,7 +23,7 @@ interface StaffPerf {
 }
 
 function Sparkline({ data, color }: { data: number[], color: string }) {
-  if (!data || data.length === 0) return <div className="sparkline-placeholder" />
+  if (!data || data.length === 0) return null
   const max = Math.max(...data, 1)
   const width = 60
   const height = 24
@@ -112,7 +112,7 @@ export default function Performance() {
         setData(res)
         setTargets(targetsData)
       })
-      .catch(() => setData(null))
+      .catch(() => { setData(null); showToast(t('common.error', lang), 'error') })
       .finally(() => setLoading(false))
   }, [selectedDate, team])
 
@@ -289,7 +289,7 @@ export default function Performance() {
           onClick={() => setShowSummary(!showSummary)}
         >
           <h2 className="heading-md">{t('perf.summary', lang)}</h2>
-          <span className={`accordion-chevron${showSummary ? ' open' : ''}`}>V</span>
+          <span className={`accordion-chevron${showSummary ? ' open' : ''}`}>&#9660;</span>
         </div>
 
         {showSummary && (

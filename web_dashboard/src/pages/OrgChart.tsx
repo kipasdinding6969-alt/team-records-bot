@@ -48,6 +48,7 @@ export default function OrgChart() {
   const nav = useNavigate()
   const [data, setData] = useState<OrgData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [selectedStaffId, setSelectedStaffId] = useState<number | null>(null)
   const [collapsedTeams, setCollapsedTeams] = useState<Set<string>>(new Set())
@@ -65,13 +66,15 @@ export default function OrgChart() {
     setLoading(true)
     api.orgChart()
       .then(setData)
-      .catch(console.error)
+      .catch(() => setError(t('common.error', lang)))
       .finally(() => setLoading(false))
   }
 
   useEffect(() => {
     loadData()
   }, [])
+
+  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 5000); return () => clearTimeout(id) } }, [error])
 
   if (loading && !data) return <div className="empty-state">{t('common.loading', lang)}</div>
   if (!data) return <div className="empty-state">{t('common.error', lang)}</div>
@@ -109,6 +112,8 @@ export default function OrgChart() {
           onChange={e => setSearch(e.target.value)}
         />
       </div>
+
+      {error && <div className="alert alert-error mb-16">{error}</div>}
 
       {/* Summary bar */}
       <div className="grid-3col gap-12 mb-20">
@@ -235,7 +240,7 @@ export default function OrgChart() {
                   onClick={e => e.stopPropagation()}
                   onChange={e => {
                     if (e.target.value) {
-                      api.updateStaff(s.id, { team: e.target.value }).then(loadData).catch(console.error)
+                      api.updateStaff(s.id, { team: e.target.value }).then(loadData).catch(() => setError(t('common.error', lang)))
                     }
                   }}
                 >

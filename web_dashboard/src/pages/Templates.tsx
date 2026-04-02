@@ -34,11 +34,13 @@ export default function Templates() {
     setLoading(true)
     api.getTemplates()
       .then(setTemplates)
-      .catch(console.error)
+      .catch(() => setError(t('common.error', lang)))
       .finally(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [])
+
+  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 5000); return () => clearTimeout(id) } }, [error])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

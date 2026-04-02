@@ -51,7 +51,7 @@ export default function GroupOverview() {
       conversion_pct: 0,
     }), { powder: 0, reply_pct: 0, register: 0, training: 0, withdraw: 0, orders: 0, conversion_pct: 0 })
 
-    const totalPowder = totals.powder || 1
+    const totalPowder = totals.powder
     totals.reply_pct = members.reduce((s: number, m: any) => s + (m.reply_pct || 0), 0) / members.length
     totals.conversion_pct = totalPowder > 0 ? ((totals.orders / totalPowder) * 100) : 0
 
@@ -76,7 +76,7 @@ export default function GroupOverview() {
               <tr key={m.staff_id || idx}>
                 <td className="text-bold">{m.name || m.display_name || '-'}</td>
                 <td className="text-right text-bold">{m.powder || 0}</td>
-                <td className="text-right">{(m.reply_pct || 0).toFixed(0)}%</td>
+                <td className="text-right">{(m.reply_pct || 0).toFixed(1)}%</td>
                 <td className="text-right text-bold text-success">{m.register || 0}</td>
                 <td className="text-right">{m.training || 0}</td>
                 <td className="text-right">{m.withdraw || 0}</td>
@@ -89,7 +89,7 @@ export default function GroupOverview() {
             <tr className="group-total-row">
               <td className="text-bold label-sm text-uppercase">{t('common.total', lang)}</td>
               <td className="text-right text-bold">{totals.powder}</td>
-              <td className="text-right text-bold">{totals.reply_pct.toFixed(0)}%</td>
+              <td className="text-right text-bold">{totals.reply_pct.toFixed(1)}%</td>
               <td className="text-right text-bold text-success">{totals.register}</td>
               <td className="text-right text-bold">{totals.training}</td>
               <td className="text-right text-bold">{totals.withdraw}</td>

@@ -41,12 +41,12 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
           });
         }
       })
-      .catch(console.error)
+      .catch(() => setError(t('common.error', lang)))
       .finally(() => setLoading(false));
 
     api.staffGamification(staffId)
       .then(setGamification)
-      .catch(console.error);
+      .catch(() => setError(t('common.error', lang)));
   }, [staffId]);
 
   if (!staff && !loading) {
@@ -68,7 +68,6 @@ export function StaffDetailModal({ staffId, onClose, onUpdate }: StaffDetailModa
       const all = await api.allStaff();
       setStaff(all.find((s: any) => s.id === staffId));
     } catch (e) {
-      console.error(e);
       setError(t('common.update_failed', lang as any));
       setTimeout(() => setError(''), 3000);
     } finally {

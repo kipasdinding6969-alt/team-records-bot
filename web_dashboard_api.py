@@ -110,6 +110,15 @@ async def _lifespan(app):
             )
             await db.commit()
             logger.info(f'Auto-migrated owner account from env: {DASHBOARD_USER}')
+
+    # Auto-recalculate daily_stats for today on startup
+    try:
+        today = date.today().isoformat()
+        updated = await _recalculate_all_daily_stats(today)
+        logger.info(f'Startup: auto-recalculated daily_stats for {today} — {updated} staff rows updated')
+    except Exception as e:
+        logger.warning(f'Startup: daily_stats auto-recalculate failed: {e}')
+
     yield
 
 
@@ -1930,23 +1939,20 @@ async def get_performance_summary(
 
 # ─── Phase 17: Auto-Recalculate Daily Stats ──────────────────────────────────
 
-@app.post('/api/performance/recalculate')
-async def recalculate_daily_stats(
-    user: dict = Depends(_require_owner_or_admin),
-):
-    """Recalculate daily_stats from client data for all active staff (today)."""
-    from datetime import date as date_type
-    today = date_type.today().isoformat()
+
+async def _recalculate_all_daily_stats(target_date: str) -> int:
+    """Shared helper: recalculate daily_stats for all active staff on a given date.
+
+    Returns the number of staff rows upserted.
+    """
     updated = 0
     async with _connect_db() as db:
         async with db.execute(
-            "SELECT id, display_name, team FROM staff WHERE is_active = 1"
+            "SELECT id FROM staff WHERE is_active = 1"
         ) as cur:
-            staff_list = [row_to_dict(r) for r in await cur.fetchall()]
+            staff_ids = [row_to_dict(r)['id'] for r in await cur.fetchall()]
 
-        for s in staff_list:
-            sid = s['id']
-            # Count clients by status created/updated today
+        for sid in staff_ids:
             counts = {}
             for status_name in ['new', 'contacted', 'replied', 'registered', 'training',
                                 'withdrew', 'ordered', 'ghosted', 'blocked', 'dead']:
@@ -1961,30 +1967,28 @@ async def recalculate_daily_stats(
                            JOIN clients c ON cn.client_id = c.id
                            WHERE c.frontdesk_id = ? AND cn.new_status = ?
                            AND DATE(cn.created_at) = ?""",
-                        (sid, status_name, today)
+                        (sid, status_name, target_date)
                     ) as c:
                         counts[status_name] = (await c.fetchone())[0]
                 else:
                     date_col = col_map.get(status_name, 'created_at')
                     async with db.execute(
                         f"SELECT COUNT(*) FROM clients WHERE frontdesk_id = ? AND DATE({date_col}) = ?",
-                        (sid, today)
+                        (sid, target_date)
                     ) as c:
                         counts[status_name] = (await c.fetchone())[0]
 
-            # Get total deposit for today
             async with db.execute(
                 "SELECT COALESCE(SUM(amount), 0) FROM deposits WHERE frontdesk_id = ? AND DATE(deposit_date) = ?",
-                (sid, today)
+                (sid, target_date)
             ) as c:
                 total_dep = (await c.fetchone())[0]
 
             nl = counts.get('new', 0)
             rp = counts.get('replied', 0)
-            reg = counts.get('registered', 0)
             no = counts.get('ordered', 0)
             reply_rate = round(rp / max(nl, 1) * 100, 2)
-            conv_rate = round(no / max(reg, 1) * 100, 2)
+            conv_rate = round(no / max(nl, 1) * 100, 2)
 
             await db.execute(
                 """INSERT INTO daily_stats
@@ -2000,14 +2004,46 @@ async def recalculate_daily_stats(
                      blocked=excluded.blocked, dead=excluded.dead,
                      reply_rate=excluded.reply_rate, conversion_rate=excluded.conversion_rate,
                      total_deposit=excluded.total_deposit""",
-                (sid, today, nl, counts.get('contacted', 0), rp, reg,
-                 counts.get('training', 0), counts.get('withdrew', 0), no,
-                 counts.get('ghosted', 0), counts.get('blocked', 0), counts.get('dead', 0),
+                (sid, target_date, nl, counts.get('contacted', 0), rp,
+                 counts.get('registered', 0), counts.get('training', 0),
+                 counts.get('withdrew', 0), no, counts.get('ghosted', 0),
+                 counts.get('blocked', 0), counts.get('dead', 0),
                  reply_rate, conv_rate, total_dep)
             )
             updated += 1
         await db.commit()
+    return updated
+
+
+@app.post('/api/performance/recalculate')
+async def recalculate_daily_stats(
+    user: dict = Depends(_require_owner_or_admin),
+):
+    """Recalculate daily_stats from client data for all active staff (today)."""
+    today = date.today().isoformat()
+    updated = await _recalculate_all_daily_stats(today)
     return {'ok': True, 'date': today, 'staff_updated': updated}
+
+
+class RecalculateDailyStatsRequest(BaseModel):
+    date: Optional[str] = None
+
+
+@app.post('/api/daily-stats/recalculate')
+async def recalculate_daily_stats_for_date(
+    body: RecalculateDailyStatsRequest = Body(default=RecalculateDailyStatsRequest()),
+    user: dict = Depends(_require_owner_or_admin),
+):
+    """Recalculate daily_stats for all active staff on a given date (defaults to today).
+
+    For each active staff member, counts client_notes status changes for that date
+    to compute: new_leads, contacted, replied, registered, training, withdrew,
+    new_orders, ghosted, blocked, dead. Calculates reply_rate and conversion_rate.
+    UPSERTs into daily_stats on (staff_id, stat_date) unique constraint.
+    """
+    target_date = body.date or date.today().isoformat()
+    updated = await _recalculate_all_daily_stats(target_date)
+    return {'ok': True, 'date': target_date, 'staff_updated': updated}
 
 
 # ─── Phase 17: Staff Management API ──────────────────────────────────────────
@@ -3183,14 +3219,19 @@ async def frontdesk_history(
         return {'total': total, 'entries': rows}
 
 
+class UpdateDayStatusRequest(BaseModel):
+    day: int  # 1 or 2
+    status: str  # e.g. '注册', '不注册', 'pending'
+
+
 @app.put('/api/clients/{client_id}/day-status')
 async def update_day_status(
-    client_id: int, body: dict = Body(...), user=Depends(get_current_user),
+    client_id: int, body: UpdateDayStatusRequest, user=Depends(get_current_user),
 ):
     """Update first/second day status on a client. Auto-recalculates daily stats."""
     async with _connect_db() as db:
-        day = body.get('day')  # 1 or 2
-        status = body.get('status')  # '注册', '不注册', 'pending'
+        day = body.day
+        status = body.status
         col = 'first_day_status' if day == 1 else 'second_day_status'
 
         # Fetch old value for audit
@@ -3255,9 +3296,32 @@ async def performance_granular(
         return {'date': d, 'rows': rows}
 
 
+class GranularPerformanceRequest(BaseModel):
+    staff_id: int
+    stat_date: str
+    category: str
+    powder_count: int = 0
+    no_reply_start: int = 0
+    reply_rate: float = 0
+    stuck_explanation: int = 0
+    blocked_playing: int = 0
+    been_scammed: int = 0
+    sent_link_no_reply: int = 0
+    completed_registration: int = 0
+    audit_rate: float = 0
+    completed_training: int = 0
+    scheduled_time: int = 0
+    withdrawal: int = 0
+    new_order: int = 0
+    conversion_rate: float = 0
+    new_kill: int = 0
+    dead_client: int = 0
+    note: Optional[str] = None
+
+
 @app.post('/api/performance/granular')
 async def upsert_granular_performance(
-    body: dict = Body(...), user=Depends(_require_owner_or_admin),
+    body: GranularPerformanceRequest, user=Depends(_require_owner_or_admin),
 ):
     """Insert or update a daily performance record."""
     async with _connect_db() as db:
@@ -3268,10 +3332,7 @@ async def upsert_granular_performance(
             'completed_training', 'scheduled_time', 'withdrawal', 'new_order',
             'conversion_rate', 'new_kill', 'dead_client', 'note',
         ]
-        values = [
-            body.get(c, 0 if c not in ('staff_id', 'stat_date', 'category', 'note') else body.get(c))
-            for c in cols
-        ]
+        values = [getattr(body, c) for c in cols]
         placeholders = ', '.join(['?'] * len(cols))
         col_names = ', '.join(cols)
         update_cols = ', '.join([
@@ -3309,22 +3370,32 @@ async def get_blown_accounts(
         return [dict(r) for r in await cursor.fetchall()]
 
 
+class BlownAccountRequest(BaseModel):
+    staff_id: int
+    blown_date: Optional[str] = None
+    account_type: str = 'whatsapp'
+    phone_number: Optional[str] = None
+    account_identifier: Optional[str] = None
+    reason: Optional[str] = None
+    category: Optional[str] = None
+
+
 @app.post('/api/performance/blown-accounts')
 async def add_blown_account(
-    body: dict = Body(...), user=Depends(_require_owner_or_admin),
+    body: BlownAccountRequest, user=Depends(_require_owner_or_admin),
 ):
     async with _connect_db() as db:
         await db.execute(
             'INSERT INTO blown_accounts (staff_id, blown_date, account_type, phone_number, '
             'account_identifier, reason, category) VALUES (?, ?, ?, ?, ?, ?, ?)',
             (
-                body['staff_id'],
-                body.get('blown_date', datetime.now().strftime('%Y-%m-%d')),
-                body.get('account_type', 'whatsapp'),
-                body.get('phone_number'),
-                body.get('account_identifier'),
-                body.get('reason'),
-                body.get('category'),
+                body.staff_id,
+                body.blown_date or datetime.now().strftime('%Y-%m-%d'),
+                body.account_type,
+                body.phone_number,
+                body.account_identifier,
+                body.reason,
+                body.category,
             ),
         )
         await db.commit()
@@ -3406,13 +3477,20 @@ async def get_exams(user=Depends(get_current_user)):
         return [dict(r) for r in await cursor.fetchall()]
 
 
+class CreateExamRequest(BaseModel):
+    exam_name: str
+    start_date: str
+    end_date: str
+    team: Optional[str] = None
+
+
 @app.post('/api/exams')
-async def create_exam(body: dict = Body(...), user=Depends(_require_owner_or_admin)):
+async def create_exam(body: CreateExamRequest, user=Depends(_require_owner_or_admin)):
     async with _connect_db() as db:
         cursor = await db.execute(
             'INSERT INTO exam_periods (exam_name, team, start_date, end_date, created_by) '
             'VALUES (?, ?, ?, ?, ?)',
-            (body['exam_name'], body.get('team'), body['start_date'], body['end_date'], user.get('staff_id')),
+            (body.exam_name, body.team, body.start_date, body.end_date, user.get('staff_id')),
         )
         await db.commit()
         return {'ok': True, 'id': cursor.lastrowid}
@@ -3499,18 +3577,30 @@ async def maintainer_deposits(
         return [dict(r) for r in await cursor.fetchall()]
 
 
+class MaintainerDepositRequest(BaseModel):
+    client_id: int
+    amount: float = 0
+    currency: str = 'USD'
+    platform: Optional[str] = None
+    pressure_amount: float = 0
+    total_in: float = 0
+    deposit_group_id: Optional[int] = None
+    group_number: Optional[str] = None
+    deposit_date: Optional[str] = None
+
+
 @app.post('/api/maintainer/deposits')
 async def create_maintainer_deposit(
-    body: dict = Body(...), user=Depends(get_current_user),
+    body: MaintainerDepositRequest, user=Depends(get_current_user),
 ):
     async with _connect_db() as db:
         # Create or get deposit group
-        group_id = body.get('deposit_group_id')
-        if not group_id and body.get('group_number'):
+        group_id = body.deposit_group_id
+        if not group_id and body.group_number:
             cursor = await db.execute(
                 'INSERT INTO deposit_groups (client_id, group_number, total_pressure) '
                 'VALUES (?, ?, ?)',
-                (body['client_id'], body['group_number'], body.get('pressure_amount', 0)),
+                (body.client_id, body.group_number, body.pressure_amount),
             )
             await db.commit()
             group_id = cursor.lastrowid
@@ -3524,17 +3614,17 @@ async def create_maintainer_deposit(
             'pressure_amount, total_in, deposit_group_id, '
             'deposit_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
             (
-                body['client_id'], staff_id, body.get('amount', 0),
-                body.get('currency', 'USD'), body.get('platform'),
-                body.get('pressure_amount', 0), body.get('total_in', 0),
+                body.client_id, staff_id, body.amount,
+                body.currency, body.platform,
+                body.pressure_amount, body.total_in,
                 group_id,
-                body.get('deposit_date', datetime.now().strftime('%Y-%m-%d')),
+                body.deposit_date or datetime.now().strftime('%Y-%m-%d'),
             ),
         )
         # Update client total_deposited
         await db.execute(
             'UPDATE clients SET total_deposited = total_deposited + ? WHERE id = ?',
-            (body.get('amount', 0), body['client_id']),
+            (body.amount, body.client_id),
         )
         await db.commit()
 
@@ -3580,9 +3670,21 @@ async def crypto_ledger(
         return [dict(r) for r in await cursor.fetchall()]
 
 
+class CryptoTransactionRequest(BaseModel):
+    txn_type: str
+    client_name: str
+    amount_usdt: float
+    client_number: Optional[str] = None
+    maintainer_id: Optional[int] = None
+    country: Optional[str] = None
+    situation: Optional[str] = None
+    group_name: Optional[str] = None
+    txn_date: Optional[str] = None
+
+
 @app.post('/api/cs/crypto-ledger')
 async def add_crypto_transaction(
-    body: dict = Body(...), user=Depends(_require_owner_or_admin),
+    body: CryptoTransactionRequest, user=Depends(_require_owner_or_admin),
 ):
     async with _connect_db() as db:
         cursor = await db.execute(
@@ -3590,10 +3692,10 @@ async def add_crypto_transaction(
             'maintainer_id, country, amount_usdt, situation, group_name, txn_date, created_by) '
             'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             (
-                body['txn_type'], body['client_name'], body.get('client_number'),
-                body.get('maintainer_id'), body.get('country'), body['amount_usdt'],
-                body.get('situation'), body.get('group_name'),
-                body.get('txn_date', datetime.now().strftime('%Y-%m-%d')),
+                body.txn_type, body.client_name, body.client_number,
+                body.maintainer_id, body.country, body.amount_usdt,
+                body.situation, body.group_name,
+                body.txn_date or datetime.now().strftime('%Y-%m-%d'),
                 user.get('staff_id'),
             ),
         )
@@ -3650,9 +3752,22 @@ async def daily_financial(date: str = None, user=Depends(get_current_user)):
         return {'date': d, 'countries': rows}
 
 
+class DailyFinancialRequest(BaseModel):
+    summary_date: str
+    country: str
+    new_orders: int = 0
+    deposit_count: int = 0
+    total_deposits: float = 0
+    avg_per_client: float = 0
+    second_filter_in: float = 0
+    second_filter_out: float = 0
+    rcs_in: float = 0
+    rcs_out: float = 0
+
+
 @app.post('/api/cs/daily-financial')
 async def upsert_daily_financial(
-    body: dict = Body(...), user=Depends(_require_owner_or_admin),
+    body: DailyFinancialRequest, user=Depends(_require_owner_or_admin),
 ):
     async with _connect_db() as db:
         await db.execute(
@@ -3665,11 +3780,11 @@ async def upsert_daily_financial(
             'second_filter_in=excluded.second_filter_in, second_filter_out=excluded.second_filter_out, '
             'rcs_in=excluded.rcs_in, rcs_out=excluded.rcs_out',
             (
-                body['summary_date'], body['country'], body.get('new_orders', 0),
-                body.get('deposit_count', 0), body.get('total_deposits', 0),
-                body.get('avg_per_client', 0), body.get('second_filter_in', 0),
-                body.get('second_filter_out', 0), body.get('rcs_in', 0),
-                body.get('rcs_out', 0), user.get('staff_id'),
+                body.summary_date, body.country, body.new_orders,
+                body.deposit_count, body.total_deposits,
+                body.avg_per_client, body.second_filter_in,
+                body.second_filter_out, body.rcs_in,
+                body.rcs_out, user.get('staff_id'),
             ),
         )
         await db.commit()
@@ -4272,10 +4387,14 @@ async def assign_client_role(client_id: int, body: RoleAssignRequest, user: dict
             raise HTTPException(409, f'Conflict: {e}')
     return {'ok': True}
 
+class HandoffRequest(BaseModel):
+    maintainer_staff_id: int
+
+
 @app.post('/api/clients/{client_id}/handoff')
-async def record_handoff(client_id: int, body: dict = Body(...), user: dict = Depends(get_current_user)):
+async def record_handoff(client_id: int, body: HandoffRequest, user: dict = Depends(get_current_user)):
     """Record frontdesk->maintainer handoff at insufficient funds."""
-    maintainer_id = body.get('maintainer_staff_id')
+    maintainer_id = body.maintainer_staff_id
     if not maintainer_id:
         raise HTTPException(400, 'maintainer_staff_id required')
     async with _connect_db() as db:
@@ -4365,9 +4484,13 @@ async def record_kill(client_id: int, body: KillRequest, user: dict = Depends(_r
             raise HTTPException(409, f'Conflict: {e}')
     return {'ok': True}
 
+class UnkillRequest(BaseModel):
+    reason: str = ''
+
+
 @app.put('/api/clients/{client_id}/unkill')
-async def unkill_client(client_id: int, body: dict = Body(...), user: dict = Depends(_require_owner_or_admin)):
-    reason = body.get('reason', '')
+async def unkill_client(client_id: int, body: UnkillRequest, user: dict = Depends(_require_owner_or_admin)):
+    reason = body.reason
     async with _connect_db() as db:
         await _check_client_access(client_id, user, db)
         # Check current knife - only allow unkill at knife 1 or 2

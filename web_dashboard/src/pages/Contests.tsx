@@ -48,18 +48,20 @@ export default function Contests() {
           if (c.status === 'active') {
             try {
               lbs[c.id] = await api.contestLeaderboard(c.id)
-            } catch (e) {
-              console.error(e)
+            } catch {
+              lbs[c.id] = []
             }
           }
         }
         setLeaderboards(lbs)
       })
-      .catch(console.error)
+      .catch(() => setError(t('common.error', lang)))
       .finally(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [])
+
+  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 5000); return () => clearTimeout(id) } }, [error])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

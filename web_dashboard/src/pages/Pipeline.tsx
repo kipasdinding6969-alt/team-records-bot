@@ -29,7 +29,7 @@ export default function Pipeline() {
       .finally(() => setLoading(false))
   }, [])
 
-  if (loading) return <Spinner />
+  if (loading) return <Spinner label={t('pipeline.title', lang)} />
 
   const selectedClients = selected ? pipeline[selected] || [] : []
 

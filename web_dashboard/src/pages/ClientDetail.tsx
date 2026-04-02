@@ -143,7 +143,7 @@ export default function ClientDetail() {
     try {
       const data = await api.clientKnives(clientId)
       setKnives(Array.isArray(data) ? data : data?.knives || [])
-    } catch { /* no knives yet */ setKnives([]) }
+    } catch { setKnives([]); showMsg(t('common.error', lang)) }
     setKnivesLoading(false)
   }, [clientId])
 
@@ -153,7 +153,7 @@ export default function ClientDetail() {
     try {
       const data = await api.clientPipeline(clientId)
       setPipelineData(data)
-    } catch { setPipelineData(null) }
+    } catch { setPipelineData(null); showMsg(t('common.error', lang)) }
     setPipelineLoading(false)
   }, [clientId])
 
@@ -163,7 +163,7 @@ export default function ClientDetail() {
     try {
       const data = await api.clientRoleNotes(clientId)
       setRoleNotes(Array.isArray(data) ? data : data?.notes || [])
-    } catch { setRoleNotes([]) }
+    } catch { setRoleNotes([]); showMsg(t('common.error', lang)) }
     setRoleNotesLoading(false)
   }, [clientId])
 
@@ -173,7 +173,7 @@ export default function ClientDetail() {
     try {
       const data = await api.clientRoles(clientId)
       setClientRoles(Array.isArray(data) ? data : data?.roles || [])
-    } catch { setClientRoles([]) }
+    } catch { setClientRoles([]); showMsg(t('common.error', lang)) }
     setClientRolesLoading(false)
   }, [clientId])
 
@@ -254,7 +254,7 @@ export default function ClientDetail() {
   }
 
   async function handleRemoveLink(linkId: number) {
-    await api.deleteClientLink(linkId).catch(() => null)
+    await api.deleteClientLink(linkId).catch(() => showMsg(t('common.error', lang)))
     await loadAll()
   }
 
@@ -497,7 +497,7 @@ export default function ClientDetail() {
           {links.length > 0 && (
             <div className="card pointer" onClick={() => {
               if (!linkedTimeline) {
-                api.linkedTimeline(clientId).then(setLinkedTimeline).catch(() => {})
+                api.linkedTimeline(clientId).then(setLinkedTimeline).catch(() => showMsg(t('common.error', lang)))
               }
               setShowLinked(!showLinked)
             }}>

@@ -211,7 +211,7 @@ export default function MaintainerDash() {
                     {staff.map(s => <option key={s.id} value={s.id}>{s.display_name} ({s.client_count} clients)</option>)}
                   </select>
                 </label>
-                <div className="text-center fs-20 text-secondary">&#8595;</div>
+                <div className="text-center fs-20 text-secondary">&#x25BC;</div>
                 <label>
                   <span className="field-label">{t('maintainer.target_staff', lang)}</span>
                   <select className="input" value={reassignTo} onChange={e => setReassignTo(e.target.value)}>
