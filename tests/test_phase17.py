@@ -65,6 +65,10 @@ def setup_db():
             next_followup TIMESTAMP, followup_count INTEGER DEFAULT 0,
             platform TEXT, total_deposited REAL DEFAULT 0,
             sheet_gid INTEGER, sheet_row INTEGER,
+            first_day_status TEXT DEFAULT 'pending',
+            second_day_status TEXT DEFAULT 'pending',
+            client_condition TEXT,
+            category TEXT,
             maintenance_id INTEGER, handoff_at TIMESTAMP, handoff_note TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

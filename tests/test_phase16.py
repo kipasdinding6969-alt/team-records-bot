@@ -36,7 +36,24 @@ CREATE TABLE IF NOT EXISTS clients (
     frontdesk_id INTEGER,
     phone TEXT NOT NULL,
     source TEXT DEFAULT 'telegram',
-    status TEXT DEFAULT 'new'
+    nickname TEXT,
+    recruiter TEXT,
+    status TEXT DEFAULT 'new',
+    total_deposited REAL DEFAULT 0,
+    platform TEXT,
+    sheet_gid INTEGER,
+    first_day_status TEXT DEFAULT 'pending',
+    second_day_status TEXT DEFAULT 'pending',
+    client_condition TEXT,
+    category TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    contacted_at TEXT,
+    replied_at TEXT,
+    registered_at TEXT,
+    training_at TEXT,
+    first_order_at TEXT,
+    next_followup TEXT
 );
 CREATE TABLE IF NOT EXISTS phone_registry (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

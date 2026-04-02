@@ -53,9 +53,17 @@ def setup_schema(temp_db_path):
             status TEXT DEFAULT 'new',
             source TEXT,
             nickname TEXT,
+            recruiter TEXT,
             frontdesk_id INTEGER REFERENCES staff(id),
             total_deposited REAL DEFAULT 0,
+            platform TEXT,
+            sheet_gid INTEGER,
+            first_day_status TEXT DEFAULT 'pending',
+            second_day_status TEXT DEFAULT 'pending',
+            client_condition TEXT,
+            category TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             contacted_at TEXT,
             replied_at TEXT,
             registered_at TEXT,
@@ -113,6 +121,75 @@ def setup_schema(temp_db_path):
             conversion_rate REAL DEFAULT 0,
             total_deposit REAL DEFAULT 0,
             UNIQUE(staff_id, stat_date)
+        );
+        CREATE TABLE IF NOT EXISTS permission_overrides (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            staff_id INTEGER NOT NULL REFERENCES staff(id),
+            command TEXT NOT NULL,
+            allowed BOOLEAN NOT NULL,
+            granted_by INTEGER REFERENCES staff(id),
+            reason TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(staff_id, command)
+        );
+        CREATE TABLE IF NOT EXISTS dashboard_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('owner', 'admin', 'member')),
+            staff_id INTEGER REFERENCES staff(id),
+            team_scope TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_by INTEGER REFERENCES dashboard_users(id),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_login TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS client_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id_a INTEGER NOT NULL,
+            client_id_b INTEGER NOT NULL,
+            link_type TEXT DEFAULT 'related',
+            note TEXT,
+            created_by INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS client_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id INTEGER NOT NULL,
+            staff_id INTEGER,
+            content TEXT NOT NULL,
+            parent_comment_id INTEGER,
+            is_system BOOLEAN DEFAULT 0,
+            is_deleted BOOLEAN DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            username TEXT,
+            action TEXT NOT NULL,
+            entity_type TEXT,
+            entity_id INTEGER,
+            old_values TEXT,
+            new_values TEXT,
+            ip_address TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS phone_registry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone TEXT NOT NULL,
+            phone_normalized TEXT,
+            staff_id INTEGER,
+            staff_name TEXT,
+            team TEXT,
+            submitted_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            source TEXT,
+            first_day_status TEXT,
+            second_day_status TEXT,
+            UNIQUE(phone_normalized, staff_id)
         );
     ''')
 
