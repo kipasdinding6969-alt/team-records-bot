@@ -123,7 +123,7 @@ async def _lifespan(app):
     yield
 
 
-app = FastAPI(title='Team Records Dashboard API', version='2.0.0', lifespan=_lifespan)
+app = FastAPI(title='Team Records Dashboard API', version='2.13.0', lifespan=_lifespan)
 
 _ALLOWED_ORIGINS = [
     'https://dash.sem-rush.com',
