@@ -74,7 +74,7 @@ export default function OrgChart() {
     loadData()
   }, [])
 
-  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 5000); return () => clearTimeout(id) } }, [error])
+  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 3000); return () => clearTimeout(id) } }, [error])
 
   if (loading && !data) return <div className="empty-state">{t('common.loading', lang)}</div>
   if (!data) return <div className="empty-state">{t('common.error', lang)}</div>
@@ -130,7 +130,7 @@ export default function OrgChart() {
       </div>
 
       {/* Team cards with collapsible nodes */}
-      <div className="grid-auto-360 gap-20">
+      <div className="grid-auto-360 gap-12">
         {filteredTeams.map(team => {
           const isCollapsed = collapsedTeams.has(team.team)
           return (

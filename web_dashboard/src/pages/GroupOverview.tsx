@@ -21,7 +21,7 @@ export default function GroupOverview() {
       setGroups(res.groups || [])
     } catch (e: any) {
       setMessage({ type: 'error', text: e.message || t('common.error', lang) })
-      setTimeout(() => setMessage(null), 4000)
+      setTimeout(() => setMessage(null), 3000)
     } finally {
       setLoading(false)
     }
@@ -56,7 +56,7 @@ export default function GroupOverview() {
     totals.conversion_pct = totalPowder > 0 ? ((totals.orders / totalPowder) * 100) : 0
 
     return (
-      <div className="overflow-x-auto">
+      <div className="overflow-x">
         <div className="label-sm text-accent mb-8">{label}</div>
         <table className="data-grid-table">
           <thead>

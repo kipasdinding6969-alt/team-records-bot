@@ -1,6 +1,7 @@
 """V2 database — async SQLite with aiosqlite, 8-table schema."""
 import asyncio
 import hashlib
+import json as _json_mod
 import logging
 import struct
 from contextlib import asynccontextmanager
@@ -10,6 +11,18 @@ from datetime import datetime, date, timedelta, timezone
 def _utc_today() -> date:
     """Return today's date in UTC — matches SQLite CURRENT_TIMESTAMP."""
     return datetime.now(timezone.utc).date()
+
+
+def _safe_json_loads(raw, default=None):
+    if not raw:
+        return default if default is not None else {}
+    try:
+        return _json_mod.loads(raw)
+    except (ValueError, _json_mod.JSONDecodeError):
+        logger.warning('_safe_json_loads: invalid JSON: %.100s', raw)
+        return default if default is not None else {}
+
+
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 import aiosqlite
@@ -45,6 +58,50 @@ DB_PATH = 'team_records_v2.db'
 
 # Hooks called after a client status change: async callable(client_id: int, new_status: str)
 _status_change_hooks: list = []
+
+
+_STAFF_COLS = """id, tg_user_id, tg_chat_id, tg_username, display_name,
+    role, team, phone, language, is_active, daily_target,
+    maintenance_id, created_at, last_active_at"""
+
+_CLIENT_COLS = """id, frontdesk_id, phone, account_id, phone_remark, nickname,
+    source, recruiter, status, status_note, contacted_at, replied_at,
+    registered_at, training_at, withdrew_at, first_order_at,
+    next_followup, followup_count, platform, total_deposited,
+    sheet_gid, first_day_status, second_day_status, client_condition,
+    category, created_at, updated_at, sheet_row, maintenance_id,
+    handoff_at, handoff_note"""
+
+_DAILY_STATS_COLS = """id, staff_id, stat_date, new_leads, contacted, replied,
+    registered, training, withdrew, new_orders, ghosted, blocked, dead,
+    reply_rate, conversion_rate, total_deposit, created_at"""
+
+_DEPOSIT_COLS = """id, client_id, frontdesk_id, amount, currency, platform,
+    knife_number, role_type, note, deposit_date, created_at"""
+
+_REMINDER_COLS = """id, staff_id, client_id, remind_at, message, is_sent,
+    sent_at, source, created_at"""
+
+_TEAM_TARGET_COLS = """id, team, period_type, period_start, period_end,
+    target_leads, target_registers, target_orders, target_deposit,
+    created_by, created_at"""
+
+_BOT_TASK_COLS = """id, task_type, priority, data, status, scheduled_time,
+    attempts, max_attempts, error_message, created_at, updated_at"""
+
+_CONTEST_COLS = """id, title, metric, target, team, start_date, end_date,
+    status, winner_id, created_by, created_at"""
+
+_BROADCAST_LOG_COLS = """id, staff_id, template, segment_filter, total_targets,
+    sent_count, failed_count, started_at, completed_at"""
+
+_SLA_CONFIG_COLS = """id, event_type, target_minutes, warning_minutes, critical_minutes"""
+
+_COMMISSION_RULE_COLS = """id, team, status_trigger, rate_type, rate_value,
+    min_amount, max_commission, is_active, created_at"""
+
+_HANDOFF_COLS = """id, from_staff_id, to_staff_id, team, status, notes,
+    client_ids, created_at, accepted_at, completed_at"""
 
 
 class DatabaseV2:
@@ -920,22 +977,25 @@ class DatabaseV2:
     async def get_staff_by_tg_id(self, tg_user_id: int) -> Optional[Staff]:
         async with self.get_connection() as db:
             cur = await db.execute(
-                'SELECT * FROM staff WHERE tg_user_id = ?', (tg_user_id,))
+                f'SELECT {_STAFF_COLS} FROM staff WHERE tg_user_id = ?', (tg_user_id,))
             row = await cur.fetchone()
             return self._row_to_staff(row) if row else None
 
     async def get_staff_by_id(self, staff_id: int) -> Optional[Staff]:
         async with self.get_connection() as db:
-            cur = await db.execute('SELECT * FROM staff WHERE id = ?', (staff_id,))
+            cur = await db.execute(
+                f'SELECT {_STAFF_COLS} FROM staff WHERE id = ?', (staff_id,))
             row = await cur.fetchone()
             return self._row_to_staff(row) if row else None
 
     async def get_all_staff(self, active_only: bool = True) -> List[Staff]:
         async with self.get_connection() as db:
             if active_only:
-                cur = await db.execute('SELECT * FROM staff WHERE is_active = 1 ORDER BY display_name')
+                cur = await db.execute(
+                    f'SELECT {_STAFF_COLS} FROM staff WHERE is_active = 1 ORDER BY display_name')
             else:
-                cur = await db.execute('SELECT * FROM staff ORDER BY display_name')
+                cur = await db.execute(
+                    f'SELECT {_STAFF_COLS} FROM staff ORDER BY display_name')
             rows = await cur.fetchall()
             return [self._row_to_staff(r) for r in rows]
 
@@ -1011,14 +1071,14 @@ class DatabaseV2:
         async with self.get_connection() as db:
             if frontdesk_id:
                 cur = await db.execute(
-                    """SELECT * FROM clients
+                    f"""SELECT {_CLIENT_COLS} FROM clients
                        WHERE (phone = ? OR REPLACE(REPLACE(REPLACE(phone, '+', ''), '-', ''), ' ', '') = ?)
                          AND frontdesk_id = ?
                        ORDER BY created_at DESC LIMIT 1""",
                     (phone, normalized, frontdesk_id))
             else:
                 cur = await db.execute(
-                    """SELECT * FROM clients
+                    f"""SELECT {_CLIENT_COLS} FROM clients
                        WHERE phone = ? OR REPLACE(REPLACE(REPLACE(phone, '+', ''), '-', ''), ' ', '') = ?
                        ORDER BY created_at DESC LIMIT 1""",
                     (phone, normalized))
@@ -1027,7 +1087,8 @@ class DatabaseV2:
 
     async def get_client_by_id(self, client_id: int) -> Optional[Client]:
         async with self.get_connection() as db:
-            cur = await db.execute('SELECT * FROM clients WHERE id=?', (client_id,))
+            cur = await db.execute(
+                f'SELECT {_CLIENT_COLS} FROM clients WHERE id=?', (client_id,))
             row = await cur.fetchone()
             return self._row_to_client(row) if row else None
 
@@ -1103,7 +1164,9 @@ class DatabaseV2:
     async def get_client_notes(self, client_id: int, limit: int = 10) -> List[ClientNote]:
         async with self.get_connection() as db:
             cur = await db.execute(
-                'SELECT * FROM client_notes WHERE client_id=? ORDER BY created_at DESC LIMIT ?',
+                """SELECT id, client_id, staff_id, note_type, old_status, new_status,
+                          content, created_at
+                   FROM client_notes WHERE client_id=? ORDER BY created_at DESC LIMIT ?""",
                 (client_id, limit))
             rows = await cur.fetchall()
             return [ClientNote(
@@ -1131,7 +1194,7 @@ class DatabaseV2:
         placeholders = ','.join('?' * len(active))
         async with self.get_connection() as db:
             cur = await db.execute(
-                f"""SELECT * FROM clients
+                f"""SELECT {_CLIENT_COLS} FROM clients
                     WHERE frontdesk_id=? AND status IN ({placeholders})
                     AND updated_at < ?
                     ORDER BY updated_at ASC""",
@@ -1147,7 +1210,7 @@ class DatabaseV2:
         placeholders = ','.join('?' * len(active))
         async with self.get_connection() as db:
             cur = await db.execute(
-                f"""SELECT * FROM clients
+                f"""SELECT {_CLIENT_COLS} FROM clients
                     WHERE status IN ({placeholders}) AND updated_at < ?
                     ORDER BY updated_at ASC""",
                 (*active, cutoff.strftime('%Y-%m-%d %H:%M:%S'))
@@ -1161,7 +1224,7 @@ class DatabaseV2:
         placeholders = ','.join('?' * len(active))
         async with self.get_connection() as db:
             cur = await db.execute(
-                f"""SELECT * FROM clients
+                f"""SELECT {_CLIENT_COLS} FROM clients
                    WHERE frontdesk_id=? AND next_followup IS NOT NULL
                    AND next_followup <= CURRENT_TIMESTAMP
                    AND status IN ({placeholders})
@@ -1175,7 +1238,7 @@ class DatabaseV2:
         q = f'%{query}%'
         async with self.get_connection() as db:
             cur = await db.execute(
-                """SELECT * FROM clients
+                f"""SELECT {_CLIENT_COLS} FROM clients
                    WHERE frontdesk_id=?
                    AND (phone LIKE ? OR nickname LIKE ? OR account_id LIKE ? OR status_note LIKE ? OR source LIKE ?)
                    ORDER BY updated_at DESC LIMIT 20""",
@@ -1186,7 +1249,7 @@ class DatabaseV2:
     async def get_clients_by_status(self, frontdesk_id: int, status: ClientStatus) -> List[Client]:
         async with self.get_connection() as db:
             cur = await db.execute(
-                'SELECT * FROM clients WHERE frontdesk_id=? AND status=? ORDER BY updated_at DESC',
+                f'SELECT {_CLIENT_COLS} FROM clients WHERE frontdesk_id=? AND status=? ORDER BY updated_at DESC',
                 (frontdesk_id, status.value))
             rows = await cur.fetchall()
             return [self._row_to_client(r) for r in rows]
@@ -1296,7 +1359,7 @@ class DatabaseV2:
             stat_date = _utc_today()
         async with self.get_connection() as db:
             cur = await db.execute(
-                'SELECT * FROM daily_stats WHERE staff_id=? AND stat_date=?',
+                f'SELECT {_DAILY_STATS_COLS} FROM daily_stats WHERE staff_id=? AND stat_date=?',
                 (staff_id, stat_date.isoformat()))
             row = await cur.fetchone()
             if not row:
@@ -1320,7 +1383,7 @@ class DatabaseV2:
             stat_date = _utc_today()
         async with self.get_connection() as db:
             cur = await db.execute(
-                'SELECT * FROM daily_stats WHERE stat_date=? ORDER BY staff_id',
+                f'SELECT {_DAILY_STATS_COLS} FROM daily_stats WHERE stat_date=? ORDER BY staff_id',
                 (stat_date.isoformat(),))
             rows = await cur.fetchall()
             return [DailyStat(
@@ -1356,7 +1419,7 @@ class DatabaseV2:
     async def get_deposits_by_client(self, client_id: int) -> List[Deposit]:
         async with self.get_connection() as db:
             cur = await db.execute(
-                'SELECT * FROM deposits WHERE client_id=? ORDER BY deposit_date DESC',
+                f'SELECT {_DEPOSIT_COLS} FROM deposits WHERE client_id=? ORDER BY deposit_date DESC',
                 (client_id,))
             rows = await cur.fetchall()
             return [Deposit(
@@ -1384,7 +1447,7 @@ class DatabaseV2:
             before = datetime.now()
         async with self.get_connection() as db:
             cur = await db.execute(
-                """SELECT * FROM reminders WHERE is_sent=0 AND remind_at <= ?
+                f"""SELECT {_REMINDER_COLS} FROM reminders WHERE is_sent=0 AND remind_at <= ?
                    ORDER BY remind_at ASC""",
                 (before.strftime('%Y-%m-%d %H:%M:%S'),))
             rows = await cur.fetchall()
@@ -1427,7 +1490,7 @@ class DatabaseV2:
                                period_start: date) -> Optional[TeamTarget]:
         async with self.get_connection() as db:
             cur = await db.execute(
-                'SELECT * FROM team_targets WHERE team=? AND period_type=? AND period_start=?',
+                f'SELECT {_TEAM_TARGET_COLS} FROM team_targets WHERE team=? AND period_type=? AND period_start=?',
                 (team, period_type.value, period_start.isoformat()))
             row = await cur.fetchone()
             if not row:
@@ -1501,10 +1564,10 @@ class DatabaseV2:
         async with self.get_connection() as db:
             if frontdesk_id:
                 cur = await db.execute(
-                    'SELECT * FROM clients WHERE frontdesk_id=? ORDER BY created_at DESC',
+                    f'SELECT {_CLIENT_COLS} FROM clients WHERE frontdesk_id=? ORDER BY created_at DESC',
                     (frontdesk_id,))
             else:
-                cur = await db.execute('SELECT * FROM clients ORDER BY created_at DESC')
+                cur = await db.execute(f'SELECT {_CLIENT_COLS} FROM clients ORDER BY created_at DESC')
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
 
@@ -1513,7 +1576,7 @@ class DatabaseV2:
     async def get_staff_by_display_name(self, name: str) -> Optional[Staff]:
         async with self.get_connection() as db:
             cur = await db.execute(
-                'SELECT * FROM staff WHERE display_name=? LIMIT 1', (name,))
+                f'SELECT {_STAFF_COLS} FROM staff WHERE display_name=? LIMIT 1', (name,))
             row = await cur.fetchone()
             return self._row_to_staff(row) if row else None
 
@@ -1529,7 +1592,7 @@ class DatabaseV2:
     async def get_clients_by_frontdesk(self, frontdesk_id: int, limit: int = 50) -> List[Client]:
         async with self.get_connection() as db:
             cur = await db.execute(
-                'SELECT * FROM clients WHERE frontdesk_id=? ORDER BY updated_at DESC LIMIT ?',
+                f'SELECT {_CLIENT_COLS} FROM clients WHERE frontdesk_id=? ORDER BY updated_at DESC LIMIT ?',
                 (frontdesk_id, limit))
             rows = await cur.fetchall()
             return [self._row_to_client(r) for r in rows]
@@ -1562,7 +1625,7 @@ class DatabaseV2:
         """Return all frontdesk staff assigned to a maintenance person."""
         async with self.get_connection() as db:
             cur = await db.execute(
-                'SELECT * FROM staff WHERE maintenance_id=? AND is_active=1 ORDER BY display_name',
+                f'SELECT {_STAFF_COLS} FROM staff WHERE maintenance_id=? AND is_active=1 ORDER BY display_name',
                 (maintenance_id,))
             rows = await cur.fetchall()
             return [self._row_to_staff(r) for r in rows]
@@ -1583,7 +1646,7 @@ class DatabaseV2:
         placeholders = ','.join('?' * len(terminal))
         async with self.get_connection() as db:
             cur = await db.execute(
-                f"""SELECT * FROM clients WHERE status NOT IN ({placeholders})
+                f"""SELECT {_CLIENT_COLS} FROM clients WHERE status NOT IN ({placeholders})
                     ORDER BY updated_at ASC LIMIT ?""",
                 (*terminal, limit))
             rows = await cur.fetchall()
@@ -1691,7 +1754,7 @@ class DatabaseV2:
         uname = username.lstrip('@')
         async with self.get_connection() as db:
             cur = await db.execute(
-                'SELECT * FROM staff WHERE tg_username = ? LIMIT 1', (uname,))
+                f'SELECT {_STAFF_COLS} FROM staff WHERE tg_username = ? LIMIT 1', (uname,))
             row = await cur.fetchone()
             return self._row_to_staff(row) if row else None
 
@@ -1705,7 +1768,7 @@ class DatabaseV2:
         """Get all active staff in a given team."""
         async with self.get_connection() as db:
             cur = await db.execute(
-                'SELECT * FROM staff WHERE team=? AND is_active=1 ORDER BY display_name',
+                f'SELECT {_STAFF_COLS} FROM staff WHERE team=? AND is_active=1 ORDER BY display_name',
                 (team,))
             rows = await cur.fetchall()
             return [self._row_to_staff(r) for r in rows]
@@ -1769,10 +1832,9 @@ class DatabaseV2:
             return cur.lastrowid
 
     async def get_next_task(self) -> Optional[Any]:
-        import json
         async with self.get_connection() as db:
             cur = await db.execute(
-                """SELECT * FROM bot_tasks WHERE status='pending'
+                f"""SELECT {_BOT_TASK_COLS} FROM bot_tasks WHERE status='pending'
                    AND (scheduled_time IS NULL OR scheduled_time <= CURRENT_TIMESTAMP)
                    ORDER BY priority ASC, created_at ASC LIMIT 1""")
             row = await cur.fetchone()
@@ -1783,7 +1845,7 @@ class DatabaseV2:
             id=row['id'],
             task_type=row['task_type'],
             priority=row['priority'],
-            data=json.loads(row['data']) if row['data'] else {},
+            data=_safe_json_loads(row['data']),
             status=row['status'],
             scheduled_time=datetime.fromisoformat(row['scheduled_time']) if row['scheduled_time'] else None,
             attempts=row['attempts'],
@@ -1828,14 +1890,13 @@ class DatabaseV2:
             await db.commit()
 
     async def get_conversation_state(self, user_id: int) -> Optional[Dict[str, Any]]:
-        import json
         async with self.get_connection() as db:
             cur = await db.execute(
                 'SELECT state_data FROM conversation_states WHERE user_id=?', (user_id,))
             row = await cur.fetchone()
             if not row:
                 return None
-            return json.loads(row['state_data']) if row['state_data'] else None
+            return _safe_json_loads(row['state_data'], default=None)
 
     async def clear_conversation_state(self, user_id: int):
         async with self.get_connection() as db:
@@ -2102,7 +2163,7 @@ class DatabaseV2:
         async with self.get_connection() as db:
             if team:
                 cur = await db.execute(
-                    """SELECT * FROM contests
+                    f"""SELECT {_CONTEST_COLS} FROM contests
                        WHERE status='active' AND (team=? OR team IS NULL)
                        AND end_date > CURRENT_TIMESTAMP
                        ORDER BY created_at DESC LIMIT 1""",
@@ -2110,7 +2171,7 @@ class DatabaseV2:
                 )
             else:
                 cur = await db.execute(
-                    """SELECT * FROM contests
+                    f"""SELECT {_CONTEST_COLS} FROM contests
                        WHERE status='active' AND end_date > CURRENT_TIMESTAMP
                        ORDER BY created_at DESC LIMIT 1"""
                 )
@@ -2525,7 +2586,6 @@ class DatabaseV2:
             return cur.lastrowid or 0
 
     async def get_sequences(self, enabled_only: bool = False) -> List[Dict[str, Any]]:
-        import json as _json
         async with self.get_connection() as db:
             if enabled_only:
                 cur = await db.execute(
@@ -2540,8 +2600,8 @@ class DatabaseV2:
             for r in rows:
                 result.append({
                     'id': r['id'], 'name': r['name'], 'stage': r['stage'],
-                    'delays': _json.loads(r['delays_json']),
-                    'templates': _json.loads(r['templates_json']),
+                    'delays': _safe_json_loads(r['delays_json'], default=[]),
+                    'templates': _safe_json_loads(r['templates_json'], default=[]),
                     'enabled': bool(r['enabled']),
                     'created_at': r['created_at'],
                 })
@@ -2565,7 +2625,6 @@ class DatabaseV2:
             return cur.lastrowid
 
     async def get_due_followups(self, before: Optional[datetime] = None) -> List[Dict[str, Any]]:
-        import json as _json
         if before is None:
             before = datetime.now(timezone.utc).replace(tzinfo=None)
         async with self.get_connection() as db:
@@ -2586,8 +2645,8 @@ class DatabaseV2:
                     'sequence_id': r['sequence_id'], 'step': r['step'],
                     'next_send_at': r['next_send_at'], 'status': r['status'],
                     'seq_name': r['seq_name'], 'stage': r['stage'],
-                    'delays': _json.loads(r['delays_json']),
-                    'templates': _json.loads(r['templates_json']),
+                    'delays': _safe_json_loads(r['delays_json'], default=[]),
+                    'templates': _safe_json_loads(r['templates_json'], default=[]),
                 })
             return result
 
@@ -2617,7 +2676,6 @@ class DatabaseV2:
             await db.commit()
 
     async def get_client_active_followup(self, client_id: int) -> Optional[Dict[str, Any]]:
-        import json as _json
         async with self.get_connection() as db:
             cur = await db.execute(
                 """SELECT q.id, q.client_id, q.sequence_id, q.step, q.next_send_at, q.status,
@@ -2636,8 +2694,8 @@ class DatabaseV2:
                 'sequence_id': row['sequence_id'], 'step': row['step'],
                 'next_send_at': row['next_send_at'], 'status': row['status'],
                 'seq_name': row['seq_name'], 'stage': row['stage'],
-                'delays': _json.loads(row['delays_json']),
-                'templates': _json.loads(row['templates_json']),
+                'delays': _safe_json_loads(row['delays_json'], default=[]),
+                'templates': _safe_json_loads(row['templates_json'], default=[]),
             }
 
     async def get_xp_leaderboard(self, period: str = 'today', team_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -2753,12 +2811,12 @@ class DatabaseV2:
         async with self.get_connection() as db:
             if staff_id:
                 cur = await db.execute(
-                    """SELECT * FROM broadcast_log WHERE staff_id=?
+                    f"""SELECT {_BROADCAST_LOG_COLS} FROM broadcast_log WHERE staff_id=?
                        ORDER BY started_at DESC LIMIT ?""",
                     (staff_id, limit))
             else:
                 cur = await db.execute(
-                    'SELECT * FROM broadcast_log ORDER BY started_at DESC LIMIT ?',
+                    f'SELECT {_BROADCAST_LOG_COLS} FROM broadcast_log ORDER BY started_at DESC LIMIT ?',
                     (limit,))
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
@@ -2776,8 +2834,12 @@ class DatabaseV2:
                     (client_id, tag.lower().strip(), tagged_by))
                 await db.commit()
                 return True
-            except sqlite3.IntegrityError:
-                return False
+            except sqlite3.IntegrityError as e:
+                if 'UNIQUE constraint failed: client_tags.client_id, client_tags.tag' in str(e):
+                    return False
+                logger.warning('add_tag: unexpected IntegrityError for client=%d tag=%s: %s',
+                               client_id, tag, e)
+                raise
 
     async def remove_tag(self, client_id: int, tag: str) -> bool:
         """Remove a tag from a client. Returns True if deleted."""
@@ -2927,9 +2989,9 @@ class DatabaseV2:
         async with self.get_connection() as db:
             if event_type:
                 cur = await db.execute(
-                    'SELECT * FROM sla_config WHERE event_type=?', (event_type,))
+                    f'SELECT {_SLA_CONFIG_COLS} FROM sla_config WHERE event_type=?', (event_type,))
             else:
-                cur = await db.execute('SELECT * FROM sla_config ORDER BY event_type')
+                cur = await db.execute(f'SELECT {_SLA_CONFIG_COLS} FROM sla_config ORDER BY event_type')
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
 
@@ -3130,7 +3192,7 @@ class DatabaseV2:
                                            trigger: Optional[str] = None) -> List[CommissionRule]:
         """Get active commission rules, optionally filtered by team/trigger."""
         async with self.get_connection() as db:
-            sql = 'SELECT * FROM commission_rules WHERE is_active=1'
+            sql = f'SELECT {_COMMISSION_RULE_COLS} FROM commission_rules WHERE is_active=1'
             params: list = []
             if trigger:
                 sql += ' AND status_trigger=?'
@@ -3528,7 +3590,7 @@ class DatabaseV2:
 
     async def get_handoff_by_id(self, handoff_id: int) -> Optional[ShiftHandoff]:
         async with self.get_connection() as db:
-            cur = await db.execute('SELECT * FROM shift_handoffs WHERE id=?', (handoff_id,))
+            cur = await db.execute(f'SELECT {_HANDOFF_COLS} FROM shift_handoffs WHERE id=?', (handoff_id,))
             row = await cur.fetchone()
             return self._row_to_handoff(row) if row else None
 
@@ -3536,7 +3598,7 @@ class DatabaseV2:
                                     to_staff_id: Optional[int] = None) -> List[ShiftHandoff]:
         """Get pending handoffs for a team or specific staff."""
         async with self.get_connection() as db:
-            sql = "SELECT * FROM shift_handoffs WHERE status='pending'"
+            sql = f"SELECT {_HANDOFF_COLS} FROM shift_handoffs WHERE status='pending'"
             params: list = []
             if team:
                 sql += ' AND team=?'
@@ -3554,7 +3616,7 @@ class DatabaseV2:
         async with self.get_connection() as db:
             try:
                 cur = await db.execute(
-                    'SELECT * FROM shift_handoffs WHERE id=? AND status=?',
+                    f'SELECT {_HANDOFF_COLS} FROM shift_handoffs WHERE id=? AND status=?',
                     (handoff_id, 'pending'))
                 row = await cur.fetchone()
                 if not row:
@@ -3571,9 +3633,8 @@ class DatabaseV2:
                     (accepting_staff_id, handoff_id))
 
                 # Reassign clients
-                import json
                 if handoff.client_ids:
-                    client_ids = json.loads(handoff.client_ids)
+                    client_ids = _safe_json_loads(handoff.client_ids, default=[])
                     for cid in client_ids:
                         await db.execute(
                             'UPDATE clients SET frontdesk_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
@@ -3600,7 +3661,7 @@ class DatabaseV2:
         placeholders = ','.join('?' * len(active))
         async with self.get_connection() as db:
             cur = await db.execute(
-                f"""SELECT * FROM clients
+                f"""SELECT {_CLIENT_COLS} FROM clients
                     WHERE frontdesk_id=? AND status IN ({placeholders})
                     ORDER BY updated_at DESC""",
                 (staff_id, *active))
@@ -3629,17 +3690,25 @@ class DatabaseV2:
 
     async def phone_registry_insert(self, phone: str, submitter_name: str,
                                      submitted_at: str, source: str = 'telegram',
-                                     submitter_staff_id: Optional[int] = None) -> int:
-        """Insert a phone into the registry. Returns row id."""
+                                     submitter_staff_id: Optional[int] = None) -> Optional[int]:
+        """Insert a phone into the registry. Returns row id, or None if duplicate."""
+        import sqlite3
         normalized = self.normalize_phone(phone)
         async with self.get_connection() as db:
-            cur = await db.execute(
-                """INSERT INTO phone_registry
-                   (phone, phone_normalized, submitter_name, submitter_staff_id, source, submitted_at)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (phone, normalized, submitter_name, submitter_staff_id, source, submitted_at))
-            await db.commit()
-            return cur.lastrowid
+            try:
+                cur = await db.execute(
+                    """INSERT INTO phone_registry
+                       (phone, phone_normalized, submitter_name, submitter_staff_id, source, submitted_at)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (phone, normalized, submitter_name, submitter_staff_id, source, submitted_at))
+                await db.commit()
+                return cur.lastrowid
+            except sqlite3.IntegrityError as e:
+                if 'UNIQUE constraint failed: phone_registry.phone_normalized' in str(e):
+                    logger.warning('phone_registry_insert: duplicate phone_normalized=%s submitter=%s',
+                                   normalized, submitter_name)
+                    return None
+                raise
 
     async def phone_registry_log_action(self, phone: str, action: str,
                                          actor_name: str, actor_staff_id: Optional[int] = None,

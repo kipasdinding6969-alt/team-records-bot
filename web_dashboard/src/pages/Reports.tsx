@@ -77,7 +77,7 @@ export default function Reports() {
       </div>
 
       {/* Line charts: new clients + orders */}
-      <div className="grid-2col gap-20 mb-20">
+      <div className="grid-2col gap-12 mb-20">
         <div className="card">
           <SectionTitle>{t('reports.new_client_trend', getLang())}</SectionTitle>
           {!trends?.daily_new.length ? (
@@ -128,7 +128,7 @@ export default function Reports() {
       </div>
 
       {/* Deposit trend + status donut */}
-      <div className="grid-2fr-1fr gap-20 mb-20">
+      <div className="grid-2fr-1fr gap-12 mb-20">
         <div className="card">
           <SectionTitle>{t('reports.deposit_trend_30', getLang())}</SectionTitle>
           {!trends?.daily_deposits.length ? (
@@ -190,7 +190,7 @@ export default function Reports() {
 
       {/* Conversion rate card */}
       {stats && (
-        <div className="card d-flex gap-32">
+        <div className="card d-flex gap-16">
           <div>
             <div className="field-label mb-8">
               {t('reports.overall_conversion', getLang())}

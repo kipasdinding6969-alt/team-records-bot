@@ -16,7 +16,7 @@ export default function CustomerService() {
   const [noteContent, setNoteContent] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
 
-  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 5000); return () => clearTimeout(id) } }, [error])
+  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 3000); return () => clearTimeout(id) } }, [error])
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()

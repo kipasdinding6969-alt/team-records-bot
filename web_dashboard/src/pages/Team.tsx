@@ -66,7 +66,7 @@ export default function Team() {
     load()
   }, [])
 
-  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 5000); return () => clearTimeout(id) } }, [error])
+  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 3000); return () => clearTimeout(id) } }, [error])
 
   const handleTargetSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

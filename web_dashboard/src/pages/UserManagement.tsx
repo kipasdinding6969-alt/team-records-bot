@@ -61,7 +61,7 @@ export default function UserManagement() {
   useEffect(() => { load() }, [])
 
   function openAdd() {
-    setForm({ ...defaultForm, role: isOwner ? 'member' : 'member', team_scope: auth?.team_scope ?? '' })
+    setForm({ ...defaultForm, role: isOwner ? 'owner' : 'member', team_scope: auth?.team_scope ?? '' })
     setFormError('')
     setEditTarget(null)
     setModal('add')

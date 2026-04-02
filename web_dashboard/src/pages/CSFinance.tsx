@@ -155,7 +155,7 @@ export default function CSFinance() {
               </div>
 
               {/* Running totals */}
-              <div className="d-flex gap-20 flex-wrap">
+              <div className="d-flex gap-12 flex-wrap">
                 <div className="stat-card flex-1 min-w-180 text-center">
                   <div className="metric-label mb-8">{t('cs_finance.total_in', lang)}</div>
                   <div className="metric-value cell-mono text-success">+{totalIn.toLocaleString()} USDT</div>
@@ -188,7 +188,7 @@ export default function CSFinance() {
               <div className="empty-text">{t('cs_finance.no_daily', lang)}</div>
             </div>
           ) : (
-            <div className="grid-auto-240 gap-20">
+            <div className="grid-auto-240 gap-12">
               {COUNTRIES.map(c => {
                 const data = dailyData.find(d => d.country === c.value) || { country: c.value, new_orders: 0, deposit_count: 0, total_deposits: 0, avg_per_client: 0 }
                 return (

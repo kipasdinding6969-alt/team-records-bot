@@ -96,7 +96,7 @@ export default function NumberLookup() {
     api.phoneRegistryStats().then(setStats).catch(() => setError(t('common.error', lang)))
   }, [])
 
-  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 5000); return () => clearTimeout(id) } }, [error])
+  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 3000); return () => clearTimeout(id) } }, [error])
 
   async function handleSearch() {
     if (!phone.trim()) return
@@ -193,7 +193,7 @@ export default function NumberLookup() {
               </span>
             </div>
 
-            <div className="grid-auto-200 gap-20 mb-12">
+            <div className="grid-auto-200 gap-12 mb-12">
               <div className="d-flex flex-col gap-4">
                 <span className={`field-label ${isOwnedByMe ? 'text-success' : 'text-danger'}`}>{t('phone.owner', lang)}</span>
                 <span className="heading-sm">{result.submitter_name}</span>
@@ -258,7 +258,7 @@ export default function NumberLookup() {
             <NoteForm clientId={result.linked_clients[0].id} lang={lang} />
           )}
 
-          <div className="grid-auto-400 gap-20">
+          <div className="grid-auto-400 gap-12">
             {result.linked_clients !== undefined && (
               <div className="card">
                 <div className="section-title d-flex align-center gap-8">
@@ -325,7 +325,7 @@ export default function NumberLookup() {
       {stats && !result?.found && (
         <div className="card mt-20">
           <div className="section-title">{t('phone.stats', lang)}</div>
-          <div className="grid-2col gap-20">
+          <div className="grid-2col gap-12">
             <div className="metric-card">
               <div className="metric-label">{t('phone.total_numbers', lang)}</div>
               <div className="metric-value">{stats.total_registered.toLocaleString() ?? 0}</div>

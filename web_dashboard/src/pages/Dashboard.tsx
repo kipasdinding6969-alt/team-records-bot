@@ -98,7 +98,7 @@ export default function Dashboard() {
 
   return (
     <div className="page-container fade-in">
-      <PageHeader title={t('nav.dashboard', lang)} sub={`${t('dash.last_updated', lang)}: ${lastRefresh.toLocaleTimeString()}`} theme={theme} />
+      <PageHeader title={t('nav.dashboard', lang)} sub={`${t('dash.last_updated', lang)}: ${lastRefresh.toLocaleTimeString()}`} />
 
       {/* Stat cards */}
       {stats && (
@@ -117,7 +117,7 @@ export default function Dashboard() {
       {/* Charts */}
       <div className="grid-2 section-gap">
         <div className="card">
-          <SectionTitle theme={theme}>{t('dash.funnel', lang)}</SectionTitle>
+          <SectionTitle>{t('dash.funnel', lang)}</SectionTitle>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={funnel} margin={{ top: 20, right: 20, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.cardBorder} vertical={false} />
@@ -130,7 +130,7 @@ export default function Dashboard() {
         </div>
 
         <div className="card">
-          <SectionTitle theme={theme}>{t('dash.new_clients_trend', lang)}</SectionTitle>
+          <SectionTitle>{t('dash.new_clients_trend', lang)}</SectionTitle>
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={trends?.daily_new || []} margin={{ top: 20, right: 20, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.cardBorder} vertical={false} />
@@ -145,7 +145,7 @@ export default function Dashboard() {
 
       {/* Activity feed */}
       <div className="card">
-        <SectionTitle theme={theme}>{t('dash.recent_activity', lang)}</SectionTitle>
+        <SectionTitle>{t('dash.recent_activity', lang)}</SectionTitle>
         {error && <div className="alert alert-error">{error}</div>}
         {activity.length === 0 ? (
           <Empty color={theme.textSecondary} />

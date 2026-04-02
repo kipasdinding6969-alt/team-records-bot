@@ -268,6 +268,8 @@ def _scope_clients(user: dict) -> tuple[list[str], list]:
     if role == 'owner':
         return [], []
     if role == 'admin':
+        if not user.get('team_scope'):
+            return ['1 = 0'], []  # No team_scope — deny access
         return ['s.team = ?'], [user['team_scope']]
     # member: staff_id required
     sid = user.get('staff_id')
@@ -301,6 +303,8 @@ def _scope_staff(user: dict) -> tuple[list[str], list]:
     if role == 'owner':
         return [], []
     if role == 'admin':
+        if not user.get('team_scope'):
+            return ['1 = 0'], []
         return ['s.team = ?'], [user['team_scope']]
     sid = user.get('staff_id')
     if sid:
@@ -314,6 +318,8 @@ def _scope_daily_stats(user: dict) -> tuple[list[str], list]:
     if role == 'owner':
         return [], []
     if role == 'admin':
+        if not user.get('team_scope'):
+            return ['1 = 0'], []
         return ['s.team = ?'], [user['team_scope']]
     sid = user.get('staff_id')
     if sid:
@@ -519,6 +525,10 @@ async def update_user(
         if not updates:
             return {'ok': True}
 
+        _ALLOWED_DASHBOARD_USER_COLS = {'display_name', 'role', 'team_scope', 'staff_id', 'is_active'}
+        for k in updates:
+            if k not in _ALLOWED_DASHBOARD_USER_COLS:
+                raise HTTPException(status_code=400, detail=f'Invalid field: {k}')
         set_clause = ', '.join(f'{k} = ?' for k in updates)
         params = list(updates.values()) + [user_id]
         await db.execute(f'UPDATE dashboard_users SET {set_clause} WHERE id = ?', params)
@@ -1971,7 +1981,11 @@ async def _recalculate_all_daily_stats(target_date: str) -> int:
                     ) as c:
                         counts[status_name] = (await c.fetchone())[0]
                 else:
+                    _ALLOWED_DATE_COLS = {'created_at', 'contacted_at', 'replied_at',
+                                          'registered_at', 'training_at', 'withdrew_at', 'first_order_at'}
                     date_col = col_map.get(status_name, 'created_at')
+                    if date_col not in _ALLOWED_DATE_COLS:
+                        continue
                     async with db.execute(
                         f"SELECT COUNT(*) FROM clients WHERE frontdesk_id = ? AND DATE({date_col}) = ?",
                         (sid, target_date)
@@ -2042,6 +2056,11 @@ async def recalculate_daily_stats_for_date(
     UPSERTs into daily_stats on (staff_id, stat_date) unique constraint.
     """
     target_date = body.date or date.today().isoformat()
+    # Validate ISO date format (YYYY-MM-DD)
+    try:
+        date.fromisoformat(target_date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail='Invalid date format. Use YYYY-MM-DD.')
     updated = await _recalculate_all_daily_stats(target_date)
     return {'ok': True, 'date': target_date, 'staff_updated': updated}
 
@@ -2104,6 +2123,12 @@ async def update_staff(
 
         if not updates:
             raise HTTPException(status_code=400, detail='No fields to update')
+
+        _ALLOWED_STAFF_UPDATE_COLS = {'team', 'role', 'display_name', 'daily_target', 'is_active'}
+        for clause in updates:
+            col_name = clause.split(' = ?')[0].strip()
+            if col_name not in _ALLOWED_STAFF_UPDATE_COLS:
+                raise HTTPException(status_code=400, detail=f'Invalid field: {col_name}')
 
         old_values = {'team': staff['team'], 'role': staff['role']}
         params.append(staff_id)
@@ -2367,12 +2392,10 @@ async def create_client_via_dashboard(
             )
             await db.commit()
             raise HTTPException(
-                status_code=409,
+                status_code=400,
                 detail={
                     'type': 'duplicate',
-                    'owner': registry['submitter_name'],
-                    'submitted_at': registry['submitted_at'],
-                    'message': f'This number is owned by {registry["submitter_name"]} (submitted {registry["submitted_at"]}). Contact admin to override.'
+                    'message': 'Phone already registered. Contact admin to override.'
                 }
             )
 
@@ -3232,6 +3255,8 @@ async def update_day_status(
     async with _connect_db() as db:
         day = body.day
         status = body.status
+        if day not in (1, 2):
+            raise HTTPException(status_code=400, detail='day must be 1 or 2')
         col = 'first_day_status' if day == 1 else 'second_day_status'
 
         # Fetch old value for audit

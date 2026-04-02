@@ -36,7 +36,7 @@ export default function MaintainerDash() {
 
   const showMessage = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text })
-    setTimeout(() => setMessage(null), 4000)
+    setTimeout(() => setMessage(null), 3000)
   }
 
   const loadData = () => {

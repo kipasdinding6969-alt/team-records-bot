@@ -1,9 +1,7 @@
 import React from 'react'
-import { useTheme } from '../ThemeContext'
 import { getLang, t } from '../i18n'
-import type { Theme } from '../theme'
 
-export function PageHeader({ title, sub, theme: themeProp }: { title: string; sub?: string; theme?: Theme }) {
+export function PageHeader({ title, sub }: { title: string; sub?: string }) {
   return (
     <div className="page-header">
       <h1 className="page-title">{title}</h1>
@@ -12,7 +10,7 @@ export function PageHeader({ title, sub, theme: themeProp }: { title: string; su
   )
 }
 
-export function SectionTitle({ children, theme: themeProp, accent }: { children: React.ReactNode; theme?: Theme; accent?: boolean }) {
+export function SectionTitle({ children, accent }: { children: React.ReactNode; accent?: boolean }) {
   return (
     <h3 className={`section-title${accent ? ' border-left-accent px-12' : ''}`}>
       {children}
@@ -21,7 +19,6 @@ export function SectionTitle({ children, theme: themeProp, accent }: { children:
 }
 
 export function Spinner({ color, label }: { color?: string; label?: string }) {
-  const { theme } = useTheme()
   return (
     <div className="empty-state" style={color ? { color } : undefined}>
       <div className="spinner-ring" />

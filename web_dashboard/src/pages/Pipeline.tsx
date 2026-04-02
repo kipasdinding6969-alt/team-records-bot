@@ -52,10 +52,10 @@ export default function Pipeline() {
               style={{ '--stage-color': color } as React.CSSProperties}
             >
               <div className="metric-value">
-                {stage.count}
+                {stage.count.toLocaleString()}
               </div>
               <div className="metric-label text-primary">
-                {STATUS_LABELS[stage.stage] || stage.stage}
+                {t(`status.${stage.stage}`, lang) !== `status.${stage.stage}` ? t(`status.${stage.stage}`, lang) : (STATUS_LABELS[stage.stage] || stage.stage)}
               </div>
               <span className="pill-badge pipeline-pct">
                 {stage.pct}%
@@ -70,7 +70,7 @@ export default function Pipeline() {
         <div className="card pipeline-card" style={{ '--stage-color': STATUS_COLORS[selected] || theme.textSecondary } as React.CSSProperties}>
           <div className="section-title pipeline-header">
             <div className="pipeline-dot" />
-            {STATUS_LABELS[selected] || selected} <span className="text-muted pipeline-count">({selectedClients.length} {t('org.members', lang)})</span>
+            {t(`status.${selected}`, lang) !== `status.${selected}` ? t(`status.${selected}`, lang) : (STATUS_LABELS[selected] || selected)} <span className="text-muted pipeline-count">({selectedClients.length} {t('org.members', lang)})</span>
           </div>
           {selectedClients.length === 0 ? (
             <Empty />

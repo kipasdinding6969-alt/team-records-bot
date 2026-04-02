@@ -40,7 +40,7 @@ export default function Exams() {
     api.allStaff().then(staff => {
       const uniqueTeams = [...new Set(staff.map((s: any) => s.team).filter(Boolean))]
       setTeams(uniqueTeams.map(t => ({ key: t, label: t })))
-    }).catch(() => { setError(t('common.error', lang)); setTimeout(() => setError(''), 5000) })
+    }).catch(() => { setError(t('common.error', lang)); setTimeout(() => setError(''), 3000) })
   }, [])
 
   const toggleExpand = async (examId: number) => {
@@ -118,7 +118,7 @@ export default function Exams() {
               <div className="empty-text">{t('exams.no_active', lang)}</div>
             </div>
           ) : (
-            <div className="d-flex flex-col gap-20 mb-20">
+            <div className="d-flex flex-col gap-12 mb-20">
               {activeExams.map(exam => (
                 <div className="card card-accent-border" key={exam.id}>
                   <div className="d-flex justify-between align-center mb-12">
@@ -212,7 +212,7 @@ export default function Exams() {
                 <div className="empty-text">{t('exams.no_ended', lang)}</div>
               </div>
             ) : (
-              <div className="grid-auto-280 gap-20 mt-12">
+              <div className="grid-auto-280 gap-12 mt-12">
                 {endedExams.map(exam => (
                   <div className="card opacity-80" key={exam.id}>
                     <div className="heading-sm mb-8">{exam.exam_name}</div>

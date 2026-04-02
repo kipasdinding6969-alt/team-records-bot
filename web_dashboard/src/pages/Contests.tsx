@@ -61,7 +61,7 @@ export default function Contests() {
 
   useEffect(() => { load() }, [])
 
-  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 5000); return () => clearTimeout(id) } }, [error])
+  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 3000); return () => clearTimeout(id) } }, [error])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -109,7 +109,7 @@ export default function Contests() {
           {activeContests.length === 0 ? (
             <div className="empty-state mb-24">{t('contests.no_active', lang)}</div>
           ) : (
-            <div className="grid-auto-360 gap-20 mb-24">
+            <div className="grid-auto-360 gap-12 mb-24">
               {activeContests.map(c => {
                 const lb = leaderboards[c.id] || []
                 const topScore = lb.length > 0 ? lb[0].score : 0
@@ -161,7 +161,7 @@ export default function Contests() {
           {pastContests.length === 0 ? (
              <div className="empty-state">{t('contests.no_past', lang)}</div>
           ) : (
-            <div className="grid-auto-260 gap-20">
+            <div className="grid-auto-260 gap-12">
               {pastContests.map(c => (
                 <div key={c.id} className="card opacity-85">
                   <div className="heading-sm mb-8">{c.title}</div>

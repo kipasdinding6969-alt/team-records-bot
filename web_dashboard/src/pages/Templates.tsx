@@ -40,7 +40,7 @@ export default function Templates() {
 
   useEffect(() => { load() }, [])
 
-  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 5000); return () => clearTimeout(id) } }, [error])
+  useEffect(() => { if (error) { const id = setTimeout(() => setError(''), 3000); return () => clearTimeout(id) } }, [error])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

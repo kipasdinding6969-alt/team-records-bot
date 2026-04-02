@@ -56,7 +56,7 @@ export default function GroupInteractions() {
 
   const showMsg = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text })
-    setTimeout(() => setMessage(null), 4000)
+    setTimeout(() => setMessage(null), 3000)
   }
 
   const loadData = (p = 1) => {

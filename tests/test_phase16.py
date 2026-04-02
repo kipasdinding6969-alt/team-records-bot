@@ -428,16 +428,16 @@ class TestPhoneRegistryDB:
         after = await phone_db.phone_registry_count()
         assert after == before + 1
 
-    async def test_duplicate_insert_raises(self, phone_db):
-        """Inserting the same normalized phone twice raises an IntegrityError."""
-        import aiosqlite
-        await phone_db.phone_registry_insert(
+    async def test_duplicate_insert_returns_none(self, phone_db):
+        """Inserting the same normalized phone twice returns None (no raise)."""
+        first = await phone_db.phone_registry_insert(
             '+60177777777', 'First', '2026-03-31T08:00:00'
         )
-        with pytest.raises(Exception):
-            await phone_db.phone_registry_insert(
-                '60177777777', 'Second', '2026-03-31T09:00:00'
-            )
+        assert first is not None
+        second = await phone_db.phone_registry_insert(
+            '60177777777', 'Second', '2026-03-31T09:00:00'
+        )
+        assert second is None
 
     async def test_normalize_phone_strips_plus_and_spaces(self, phone_db):
         """normalize_phone strips +, spaces and dashes."""
