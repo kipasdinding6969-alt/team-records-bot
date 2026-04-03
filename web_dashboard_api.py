@@ -4870,14 +4870,27 @@ if os.path.isdir(DASHBOARD_DIST):
     if os.path.isdir(_assets_dir):
         app.mount('/assets', StaticFiles(directory=_assets_dir), name='assets')
 
+    # SPA routes — serve index.html for known frontend paths
+    _SPA_PATHS = {
+        '', 'login', 'setup', 'pipeline', 'team', 'clients', 'reports',
+        'performance', 'performance-detail', 'users', 'phone-lookup',
+        'org-chart', 'permissions', 'templates', 'contests', 'frontdesk',
+        'groups', 'maintainer', 'cs', 'exams', 'cs-finance',
+        'group-interactions',
+    }
+
     @app.get('/{path:path}')
     async def serve_dashboard(path: str):
+        # Serve static files from dist
         file_path = os.path.join(DASHBOARD_DIST, path)
         if path and os.path.isfile(file_path):
             return FileResponse(file_path)
-        index = os.path.join(DASHBOARD_DIST, 'index.html')
-        if os.path.exists(index):
-            return FileResponse(index)
+        # SPA client-side routing: serve index.html for known paths or clients/*
+        base_path = path.split('/')[0] if path else ''
+        if base_path in _SPA_PATHS or base_path == 'clients':
+            index = os.path.join(DASHBOARD_DIST, 'index.html')
+            if os.path.exists(index):
+                return FileResponse(index)
         raise HTTPException(status_code=404)
 
 
