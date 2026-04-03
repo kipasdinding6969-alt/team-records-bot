@@ -164,12 +164,12 @@ Agents MUST run `local_rag/search.sh` before modifying code to understand contex
 
 1. All 3 role systems use consistent, joinable strings ✅ (Phase 38)
 2. `maintenance_id` standardized across all tables ✅ (Phase 38)
-3. Every frontend API call gets the response shape it expects
-4. Sheet sync produces verifiable data in all 5 target tables
-5. Every dashboard page shows real data for its intended role
-6. All 21 previously-untested modules have passing tests
-7. `pytest tests/` passes 100% ✅ (231 passed)
+3. Every frontend API call gets the response shape it expects ✅ (Phase 2 — api-contract audit, 2 bugs fixed)
+4. Sheet sync produces verifiable data in all 5 target tables ✅ (Phase 5 — cascading client match: primary → account_id → phone)
+5. Every dashboard page shows real data for its intended role ✅ (Phase 3 — 23 pages audited, 7 fixed)
+6. All 21 previously-untested modules have passing tests ✅ (Phase 4 + 4b — 63 test files, 1882 tests)
+7. `pytest tests/` passes 100% ✅ (1882 passed, batched)
 8. `npx tsc --noEmit` passes ✅
 9. `npx vite build` succeeds ✅
 10. 4-tier backup chain operational ✅
-11. RAG semantic search operational ✅ (34,752 chunks)
+11. RAG semantic search operational ✅ (59,216 chunks)
