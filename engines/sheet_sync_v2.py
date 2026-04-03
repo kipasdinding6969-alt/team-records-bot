@@ -1,7 +1,15 @@
-"""Bidirectional Google Sheets ↔ V2 DB sync engine."""
+"""Bidirectional Google Sheets ↔ V2 DB sync engine.
+
+Phase 37: Enhanced to populate Phase 26 tables from 維護數據 sheet:
+  - knife_deposits (columns K-R: knife 1-8 amounts)
+  - client_pipeline_status (columns H-I: new_order/pressure, + kill detection)
+  - client_role_assignments (columns D+E: frontdesk + maintenance pairing)
+  - cross_role_notes (columns T-Z: 前台/开单/小白/炒群/客服/维护/等等)
+"""
 import asyncio
 import hashlib
 import logging
+import sqlite3
 from datetime import datetime, date
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -15,6 +23,25 @@ sheet_sync_v2: Optional['SheetSyncV2'] = None
 logger = logging.getLogger(__name__)
 
 FRONTDESK_NAMES = list(FRONTDESK_SHEETS.keys())
+
+# Cross-role note column mapping: sheet column index → role name
+_CROSS_ROLE_COLUMNS = {
+    19: 'frontdesk',    # T
+    20: 'opener',       # U (开单 — legacy)
+    21: 'newbie',       # V (小白)
+    22: 'hype',         # W (炒群)
+    23: 'cs',           # X (客服)
+    24: 'maintenance',  # Y (维护)
+    25: 'etc',          # Z (等等)
+}
+
+# Kill type detection patterns in note/condition text
+_KILL_PATTERNS = {
+    '注册杀': 'register_kill',
+    '新单杀': 'new_order_kill',
+    '承压杀': 'pressure_kill',
+    '工资杀': 'salary_kill',
+}
 
 
 def _parse_money(value: str) -> float:
@@ -103,7 +130,11 @@ class SheetSyncV2:
     async def _upsert_client_from_row(
         self, row: Dict[str, Any], frontdesk_id: int, sheet_gid: int
     ) -> bool:
-        """Upsert a single sheet row into V2 clients table."""
+        """Upsert a single sheet row into V2 clients table.
+
+        Also creates: client_pipeline_status (from day statuses),
+        client_role_assignments (frontdesk link).
+        """
         phone = row.get('client_number', '').strip()
         date_val = row.get('date', '').strip()
 
@@ -118,9 +149,9 @@ class SheetSyncV2:
         if frontdesk_raw and set(frontdesk_raw.upper()) <= {'X', '-', ' '}:
             return False
 
-        status = _map_days_to_status(
-            row.get('first_day', ''), row.get('second_day', '')
-        )
+        first_day = row.get('first_day', '')
+        second_day = row.get('second_day', '')
+        status = _map_days_to_status(first_day, second_day)
         account_id = row.get('account_id', '').strip() or None
         phone_remark = row.get('phone_remark', '').strip() or None
         nickname = row.get('frontdesk_username', '').strip() or None
@@ -130,16 +161,21 @@ class SheetSyncV2:
         row_index = row.get('row_index')
 
         existing = await database_v2.get_client_by_phone(phone, frontdesk_id)
+        client_id = None
         if existing:
+            client_id = existing.id
             async with database_v2.get_connection() as db:
                 await db.execute(
                     """UPDATE clients
                        SET status=?, status_note=?, account_id=?, phone_remark=?,
                            nickname=?, source=?, recruiter=?, sheet_gid=?, sheet_row=?,
+                           first_day_status=?, second_day_status=?, client_condition=?,
                            updated_at=CURRENT_TIMESTAMP
                        WHERE id=?""",
                     (status.value, status_note, account_id, phone_remark,
-                     nickname, source, recruiter, sheet_gid, row_index, existing.id)
+                     nickname, source, recruiter, sheet_gid, row_index,
+                     first_day, second_day, status_note,
+                     existing.id)
                 )
                 await db.commit()
         else:
@@ -158,10 +194,38 @@ class SheetSyncV2:
             client_id = await database_v2.create_client(client)
             async with database_v2.get_connection() as db:
                 await db.execute(
-                    'UPDATE clients SET sheet_row=? WHERE id=?',
-                    (row_index, client_id)
+                    'UPDATE clients SET sheet_row=?, first_day_status=?, second_day_status=?, client_condition=? WHERE id=?',
+                    (row_index, first_day, second_day, status_note, client_id)
                 )
                 await db.commit()
+
+        # Phase 37: Auto-create pipeline status + frontdesk role assignment
+        if client_id:
+            async with database_v2.get_connection() as db:
+                # Pipeline: map status to pipeline milestones
+                contacted = status in (
+                    ClientStatus.CONTACTED, ClientStatus.REPLIED,
+                    ClientStatus.REGISTERED, ClientStatus.TRAINING,
+                    ClientStatus.WITHDREW, ClientStatus.ORDERED,
+                )
+                registered = '注册' in first_day or '注册' in second_day
+                try:
+                    await db.execute(
+                        '''INSERT INTO client_pipeline_status (client_id, contacted_at, registered_at)
+                           VALUES (?, CASE WHEN ? THEN CURRENT_TIMESTAMP END, CASE WHEN ? THEN CURRENT_TIMESTAMP END)
+                           ON CONFLICT(client_id) DO UPDATE SET
+                             contacted_at = CASE WHEN excluded.contacted_at IS NOT NULL AND client_pipeline_status.contacted_at IS NULL THEN excluded.contacted_at ELSE client_pipeline_status.contacted_at END,
+                             registered_at = CASE WHEN excluded.registered_at IS NOT NULL AND client_pipeline_status.registered_at IS NULL THEN excluded.registered_at ELSE client_pipeline_status.registered_at END,
+                             updated_at = CURRENT_TIMESTAMP''',
+                        (client_id, contacted, registered)
+                    )
+                except Exception as e:
+                    logger.debug(f'_upsert pipeline for client {client_id}: {e}')
+
+                # Frontdesk role assignment
+                await self._sync_role_assignment(db, client_id, frontdesk_id, 'frontdesk')
+                await db.commit()
+
         return True
 
     # ─── Direction 1: Sheets → V2 DB ─────────────────────────────────────────
@@ -193,8 +257,116 @@ class SheetSyncV2:
         logger.info(f'import_client_sheet: {frontdesk_name} → {count} rows')
         return count
 
+    async def _sync_knives_for_client(self, db, client_id: int, row: list):
+        """Parse knife columns K-R (indices 10-17) → knife_deposits table."""
+        for knife_num in range(1, 9):
+            col_idx = 9 + knife_num  # knife_1=10, knife_2=11, ..., knife_8=17
+            if len(row) <= col_idx:
+                break
+            amount = _parse_money(row[col_idx])
+            if amount == 0.0:
+                continue
+            try:
+                await db.execute(
+                    'INSERT INTO knife_deposits (client_id, knife_number, amount) '
+                    'VALUES (?, ?, ?) '
+                    'ON CONFLICT(client_id, knife_number) DO UPDATE SET amount=excluded.amount',
+                    (client_id, knife_num, amount)
+                )
+            except Exception as e:
+                logger.debug(f'_sync_knives knife {knife_num} client {client_id}: {e}')
+
+    async def _sync_pipeline_for_client(self, db, client_id: int, row: list, note: str):
+        """Parse new_order/pressure + detect kill type → client_pipeline_status."""
+        new_order = _parse_money(row[7]) if len(row) > 7 else 0.0
+        pressure = _parse_money(row[8]) if len(row) > 8 else 0.0
+        total_in = _parse_money(row[18]) if len(row) > 18 else 0.0
+
+        # Detect kill type from note text
+        kill_type = None
+        kill_knife = None
+        for pattern, ktype in _KILL_PATTERNS.items():
+            if pattern in note:
+                kill_type = ktype
+                # Extract knife number: "工资杀6刀" → 6
+                idx = note.find(pattern)
+                after = note[idx + len(pattern):]
+                digits = ''
+                for ch in after:
+                    if ch.isdigit():
+                        digits += ch
+                    else:
+                        break
+                if digits:
+                    kill_knife = int(digits)
+                break
+
+        # Upsert pipeline status
+        try:
+            await db.execute(
+                '''INSERT INTO client_pipeline_status (client_id, new_order_amount, new_order_at, pressure_amount, pressure_at, kill_type, kill_knife, total_deposited)
+                   VALUES (?, ?, CASE WHEN ? > 0 THEN CURRENT_TIMESTAMP END, ?, CASE WHEN ? > 0 THEN CURRENT_TIMESTAMP END, ?, ?, ?)
+                   ON CONFLICT(client_id) DO UPDATE SET
+                     new_order_amount = CASE WHEN excluded.new_order_amount > 0 THEN excluded.new_order_amount ELSE client_pipeline_status.new_order_amount END,
+                     new_order_at = CASE WHEN excluded.new_order_amount > 0 AND client_pipeline_status.new_order_at IS NULL THEN CURRENT_TIMESTAMP ELSE client_pipeline_status.new_order_at END,
+                     pressure_amount = CASE WHEN excluded.pressure_amount > 0 THEN excluded.pressure_amount ELSE client_pipeline_status.pressure_amount END,
+                     pressure_at = CASE WHEN excluded.pressure_amount > 0 AND client_pipeline_status.pressure_at IS NULL THEN CURRENT_TIMESTAMP ELSE client_pipeline_status.pressure_at END,
+                     kill_type = COALESCE(excluded.kill_type, client_pipeline_status.kill_type),
+                     kill_knife = COALESCE(excluded.kill_knife, client_pipeline_status.kill_knife),
+                     total_deposited = CASE WHEN excluded.total_deposited > client_pipeline_status.total_deposited THEN excluded.total_deposited ELSE client_pipeline_status.total_deposited END,
+                     updated_at = CURRENT_TIMESTAMP''',
+                (client_id, new_order, new_order, pressure, pressure, kill_type, kill_knife, total_in)
+            )
+        except Exception as e:
+            logger.debug(f'_sync_pipeline client {client_id}: {e}')
+
+    async def _sync_role_assignment(self, db, client_id: int, staff_id: int, role_type: str):
+        """Create client_role_assignments if not already exists."""
+        try:
+            cur = await db.execute(
+                'SELECT id FROM client_role_assignments WHERE client_id=? AND staff_id=? AND role_type=?',
+                (client_id, staff_id, role_type)
+            )
+            if await cur.fetchone():
+                return  # already assigned
+            await db.execute(
+                'INSERT INTO client_role_assignments (client_id, staff_id, role_type) VALUES (?, ?, ?)',
+                (client_id, staff_id, role_type)
+            )
+        except sqlite3.IntegrityError:
+            pass  # race condition or constraint violation
+        except Exception as e:
+            logger.debug(f'_sync_role_assignment client {client_id} staff {staff_id} {role_type}: {e}')
+
+    async def _sync_cross_role_notes(self, db, client_id: int, row: list):
+        """Parse cross-role note columns T-Z (indices 19-25) → cross_role_notes."""
+        for col_idx, role_name in _CROSS_ROLE_COLUMNS.items():
+            if len(row) <= col_idx:
+                break
+            content = row[col_idx].strip() if row[col_idx] else ''
+            if not content:
+                continue
+            # Only insert if not already exists (avoid duplicates on re-sync)
+            try:
+                cur = await db.execute(
+                    'SELECT id FROM cross_role_notes WHERE client_id=? AND from_role=? AND content=?',
+                    (client_id, role_name, content)
+                )
+                if await cur.fetchone():
+                    continue
+                await db.execute(
+                    'INSERT INTO cross_role_notes (client_id, from_role, content) VALUES (?, ?, ?)',
+                    (client_id, role_name, content)
+                )
+            except Exception as e:
+                logger.debug(f'_sync_cross_role_notes client {client_id} {role_name}: {e}')
+
     async def import_financial_sheet(self) -> int:
-        """Import 维护数据 sheet into V2 deposits table. Returns count imported."""
+        """Import 维护数据 sheet into V2 DB.
+
+        Populates: deposits, knife_deposits, client_pipeline_status,
+        client_role_assignments, cross_role_notes.
+        """
         loop = asyncio.get_event_loop()
         try:
             ws = await loop.run_in_executor(
@@ -206,6 +378,11 @@ class SheetSyncV2:
             return 0
 
         count = 0
+        knives_count = 0
+        pipeline_count = 0
+        roles_count = 0
+        notes_count = 0
+
         for i, row in enumerate(all_rows[1:], start=2):  # skip header row
             if len(row) < 8 or not row[0].strip():
                 continue
@@ -214,13 +391,13 @@ class SheetSyncV2:
             try:
                 frontdesk_name = row[3].strip() if len(row) > 3 else ''
                 account_id = row[1].strip() if len(row) > 1 else ''
+                maintenance_name = row[4].strip() if len(row) > 4 else ''
+                note = row[9].strip() if len(row) > 9 else ''
 
                 if not frontdesk_name:
                     continue
 
-                # Normalize romanized names (e.g. "Ah YIM" → "阿YIM")
                 frontdesk_name = NAME_ALIASES.get(frontdesk_name, frontdesk_name)
-
                 staff = await database_v2.get_staff_by_display_name(frontdesk_name)
                 if not staff:
                     continue
@@ -230,15 +407,18 @@ class SheetSyncV2:
                 if account_id:
                     async with database_v2.get_connection() as db:
                         cur = await db.execute(
-                            'SELECT * FROM clients WHERE frontdesk_id=? AND account_id=? LIMIT 1',
+                            'SELECT id, frontdesk_id, phone, account_id, status FROM clients '
+                            'WHERE frontdesk_id=? AND account_id=? LIMIT 1',
                             (staff.id, account_id)
                         )
                         row_data = await cur.fetchone()
                         if row_data:
-                            client = database_v2._row_to_client(row_data)
+                            client = dict(row_data)
 
                 if not client:
                     continue
+
+                client_id = client['id']
 
                 # Parse date
                 date_str = row[0].strip()
@@ -250,27 +430,151 @@ class SheetSyncV2:
                     except ValueError:
                         deposit_date = date.today()
 
-                # total_in is column S (index 18)
-                total_str = row[18].strip() if len(row) > 18 else ''
-                total = _parse_money(total_str)
-                if total == 0.0:
-                    continue
+                async with database_v2.get_connection() as db:
+                    # 1. Deposit (total_in, column S index 18)
+                    total_str = row[18].strip() if len(row) > 18 else ''
+                    total = _parse_money(total_str)
+                    if total > 0:
+                        try:
+                            deposit = Deposit(
+                                client_id=client_id,
+                                frontdesk_id=staff.id,
+                                amount=total,
+                                deposit_date=deposit_date,
+                                platform=row[6].strip() if len(row) > 6 else 'Iconnect',
+                                note=note or None,
+                            )
+                            await database_v2.create_deposit(deposit)
+                            count += 1
+                        except Exception:
+                            pass  # duplicate deposit
 
-                deposit = Deposit(
-                    client_id=client.id,
-                    frontdesk_id=staff.id,
-                    amount=total,
-                    deposit_date=deposit_date,
-                    platform=row[6].strip() if len(row) > 6 else 'Iconnect',
-                    note=row[9].strip() if len(row) > 9 else None,
-                )
-                await database_v2.create_deposit(deposit)
-                count += 1
+                    # 2. Knife deposits (columns K-R, indices 10-17)
+                    await self._sync_knives_for_client(db, client_id, row)
+                    knives_count += 1
+
+                    # 3. Pipeline status (new_order, pressure, kill detection)
+                    await self._sync_pipeline_for_client(db, client_id, row, note)
+                    pipeline_count += 1
+
+                    # 4. Role assignments — frontdesk
+                    await self._sync_role_assignment(db, client_id, staff.id, 'frontdesk')
+
+                    # 4b. Role assignments — maintenance (if column E has a name)
+                    if maintenance_name:
+                        maintenance_name = NAME_ALIASES.get(maintenance_name, maintenance_name)
+                        mt_staff = await database_v2.get_staff_by_display_name(maintenance_name)
+                        if mt_staff:
+                            await self._sync_role_assignment(db, client_id, mt_staff.id, 'maintainer')
+                            # Also update client.maintenance_id
+                            await db.execute(
+                                'UPDATE clients SET maintenance_id=? WHERE id=? AND maintenance_id IS NULL',
+                                (mt_staff.id, client_id)
+                            )
+                            roles_count += 1
+
+                    # 5. Cross-role notes (columns T-Z, indices 19-25)
+                    await self._sync_cross_role_notes(db, client_id, row)
+                    notes_count += 1
+
+                    await db.commit()
+
             except Exception as e:
                 logger.error(f'import_financial_sheet row {i}: {e}')
             await asyncio.sleep(0)
 
-        logger.info(f'import_financial_sheet: {count} deposits imported')
+        logger.info(
+            f'import_financial_sheet: {count} deposits, {knives_count} knife rows, '
+            f'{pipeline_count} pipeline rows, {roles_count} role assignments, {notes_count} note rows'
+        )
+        return count
+
+    async def import_performance_sheet(self) -> int:
+        """Import 前台数据 sheet into daily_performance table."""
+        loop = asyncio.get_event_loop()
+        try:
+            # Try current month sheet name
+            sheet_name = None
+            for name in SHEET_MAP:
+                if '前台数据' in name or '前台數據' in name:
+                    sheet_name = name
+                    break
+            if not sheet_name:
+                sheet_name = '3月-前台数据'  # fallback
+
+            ws = await loop.run_in_executor(
+                None, lambda: self.writer.spreadsheet.worksheet(sheet_name)
+            )
+            all_rows = await loop.run_in_executor(None, ws.get_all_values)
+        except Exception as e:
+            logger.error(f'import_performance_sheet: failed to read: {e}')
+            return 0
+
+        if len(all_rows) < 3:
+            return 0
+
+        # Header row expected at row 1 or 2 — detect columns dynamically
+        header = all_rows[0] if all_rows[0] and any(c.strip() for c in all_rows[0]) else all_rows[1]
+
+        count = 0
+        for i, row in enumerate(all_rows[2:], start=3):
+            if len(row) < 5 or not row[0].strip():
+                continue
+            if row[0].strip() in ('日期', 'DATE', 'X月X日'):
+                continue
+
+            try:
+                date_str = row[0].strip()
+                staff_name = row[1].strip() if len(row) > 1 else ''
+                category = row[2].strip() if len(row) > 2 else ''
+                if not staff_name:
+                    continue
+
+                staff_name = NAME_ALIASES.get(staff_name, staff_name)
+                staff = await database_v2.get_staff_by_display_name(staff_name)
+                if not staff:
+                    continue
+
+                # Parse date
+                try:
+                    stat_date = datetime.strptime(date_str, '%m/%d/%Y').strftime('%Y-%m-%d')
+                except ValueError:
+                    try:
+                        stat_date = datetime.strptime(date_str, '%Y-%m-%d').strftime('%Y-%m-%d')
+                    except ValueError:
+                        continue
+
+                # Parse numeric columns — positions may vary but typically:
+                # powder_count, reply_rate, completed_registration, completed_training, withdrawal, new_order
+                powder = int(row[3]) if len(row) > 3 and row[3].strip().isdigit() else 0
+                reply_rate = float(row[4].replace('%', '')) if len(row) > 4 and row[4].strip() else 0.0
+                reg = int(row[5]) if len(row) > 5 and row[5].strip().isdigit() else 0
+                training = int(row[6]) if len(row) > 6 and row[6].strip().isdigit() else 0
+                withdrawal = int(row[7]) if len(row) > 7 and row[7].strip().isdigit() else 0
+                new_order = int(row[8]) if len(row) > 8 and row[8].strip().isdigit() else 0
+                conversion = float(row[9].replace('%', '')) if len(row) > 9 and row[9].strip() else 0.0
+
+                async with database_v2.get_connection() as db:
+                    await db.execute(
+                        '''INSERT INTO daily_performance (staff_id, stat_date, category, powder_count, reply_rate,
+                             completed_registration, completed_training, withdrawal, new_order, conversion_rate)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           ON CONFLICT(staff_id, stat_date, category) DO UPDATE SET
+                             powder_count=excluded.powder_count, reply_rate=excluded.reply_rate,
+                             completed_registration=excluded.completed_registration,
+                             completed_training=excluded.completed_training,
+                             withdrawal=excluded.withdrawal, new_order=excluded.new_order,
+                             conversion_rate=excluded.conversion_rate, updated_at=CURRENT_TIMESTAMP''',
+                        (staff.id, stat_date, category or 'default', powder, reply_rate,
+                         reg, training, withdrawal, new_order, conversion)
+                    )
+                    await db.commit()
+                count += 1
+            except Exception as e:
+                logger.debug(f'import_performance_sheet row {i}: {e}')
+            await asyncio.sleep(0)
+
+        logger.info(f'import_performance_sheet: {count} rows')
         return count
 
     async def import_from_sheets(self) -> Dict[str, int]:
@@ -278,6 +582,7 @@ class SheetSyncV2:
         await self._ensure_sheet_row_column()
         results: Dict[str, int] = {}
 
+        # 1. Frontdesk sheets → clients + pipeline + role assignments
         for name in FRONTDESK_NAMES:
             try:
                 results[name] = await self.import_client_sheet(name)
@@ -286,11 +591,19 @@ class SheetSyncV2:
                 results[name] = 0
             await asyncio.sleep(0.5)  # rate limit between sheets
 
+        # 2. 维护数据 → deposits + knives + pipeline + roles + cross-role notes
         try:
             results['维护数据'] = await self.import_financial_sheet()
         except Exception as e:
             logger.error(f'import_from_sheets: 维护数据 failed: {e}')
             results['维护数据'] = 0
+
+        # 3. 前台数据 → daily_performance (for Group Overview)
+        try:
+            results['前台数据'] = await self.import_performance_sheet()
+        except Exception as e:
+            logger.error(f'import_from_sheets: 前台数据 failed: {e}')
+            results['前台数据'] = 0
 
         return results
 

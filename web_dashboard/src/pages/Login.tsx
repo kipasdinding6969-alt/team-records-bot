@@ -37,6 +37,7 @@ export default function Login() {
           role: res.role,
           team_scope: res.team_scope,
           staff_id: res.staff_id,
+          staff_role: (res as any).staff_role || null,
           user_id: res.user_id,
         },
         rememberMe

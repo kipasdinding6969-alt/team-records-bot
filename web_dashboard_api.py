@@ -378,6 +378,17 @@ async def login(body: LoginRequest):
         )
         await db.commit()
 
+    # Look up linked staff role
+    staff_role = None
+    if user['staff_id']:
+        async with _connect_db() as db:
+            async with db.execute(
+                'SELECT role FROM staff WHERE id = ?', (user['staff_id'],)
+            ) as cur:
+                sr = await cur.fetchone()
+                if sr:
+                    staff_role = sr[0]
+
     token = _create_token(user, body.remember_me)
     return {
         'access_token': token,
@@ -387,12 +398,22 @@ async def login(body: LoginRequest):
         'role': user['role'],
         'team_scope': user['team_scope'],
         'staff_id': user['staff_id'],
+        'staff_role': staff_role,
         'user_id': user['id'],
     }
 
 
 @app.get('/api/auth/verify')
 async def verify_auth(user: dict = Depends(get_current_user)):
+    staff_role = None
+    if user.get('staff_id'):
+        async with _connect_db() as db:
+            async with db.execute(
+                'SELECT role FROM staff WHERE id = ?', (user['staff_id'],)
+            ) as cur:
+                sr = await cur.fetchone()
+                if sr:
+                    staff_role = sr[0]
     return {
         'ok': True,
         'username': user['username'],
@@ -400,6 +421,7 @@ async def verify_auth(user: dict = Depends(get_current_user)):
         'team_scope': user['team_scope'],
         'display_name': user['display_name'],
         'staff_id': user['staff_id'],
+        'staff_role': staff_role,
         'user_id': user['user_id'],
     }
 
@@ -3217,6 +3239,37 @@ async def health():
     return {'status': 'ok', 'db': DB_PATH, 'service': 'dashboard', 'port': 8501}
 
 
+@app.post('/api/admin/sync')
+async def trigger_sync(user: dict = Depends(_require_owner_or_admin)):
+    """Trigger Google Sheets → DB sync (owner/admin only)."""
+    try:
+        import engines.sheet_sync_v2 as _sync_mod
+        if _sync_mod.sheet_sync_v2 is None:
+            raise HTTPException(503, 'Sheet sync not initialized — check Google credentials')
+        stats = await _sync_mod.sheet_sync_v2.full_sync()
+        return {'ok': True, 'stats': stats}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f'Sync failed: {e}')
+
+
+@app.get('/api/admin/sync-status')
+async def sync_status(user: dict = Depends(_require_owner_or_admin)):
+    """Check sync engine status and Phase 26 table counts."""
+    async with _connect_db() as db:
+        tables = {}
+        for table in ['client_pipeline_status', 'client_role_assignments', 'cross_role_notes',
+                       'knife_deposits', 'group_interactions', 'daily_performance']:
+            cur = await db.execute(f'SELECT COUNT(*) FROM {table}')
+            tables[table] = (await cur.fetchone())[0]
+    import engines.sheet_sync_v2 as _sync_mod
+    return {
+        'sync_initialized': _sync_mod.sheet_sync_v2 is not None,
+        'tables': tables,
+    }
+
+
 # ─── Feature 1: Frontdesk Entry Enhancement ──────────────────────────────────
 
 
@@ -3450,7 +3503,10 @@ async def add_blown_account(
 
 @app.get('/api/groups/compare')
 async def group_compare(date: str = None, user=Depends(get_current_user)):
-    """Get all groups with daily + cumulative stats for comparison."""
+    """Get all groups with daily + cumulative stats for comparison.
+
+    Phase 37: Falls back to client-level aggregation when daily_performance is empty.
+    """
     async with _connect_db() as db:
         d = date or datetime.now().strftime('%Y-%m-%d')
         cursor = await db.execute(
@@ -3458,37 +3514,66 @@ async def group_compare(date: str = None, user=Depends(get_current_user)):
         )
         teams = [r[0] for r in await cursor.fetchall()]
 
+        # Check if daily_performance has any data
+        cursor = await db.execute('SELECT COUNT(*) FROM daily_performance')
+        dp_count = (await cursor.fetchone())[0]
+
         result = []
         for team_name in teams:
-            # Today stats from daily_performance
-            cursor = await db.execute(
-                'SELECT dp.staff_id, s.display_name, dp.category, dp.powder_count, '
-                'dp.completed_registration, dp.completed_training, dp.withdrawal, '
-                'dp.new_order, dp.conversion_rate, dp.reply_rate '
-                'FROM daily_performance dp '
-                'JOIN staff s ON dp.staff_id = s.id '
-                'WHERE dp.stat_date = ? AND s.team = ? ORDER BY s.display_name',
-                (d, team_name),
-            )
-            today_rows = [dict(r) for r in await cursor.fetchall()]
+            if dp_count > 0:
+                # Use daily_performance if populated
+                cursor = await db.execute(
+                    'SELECT dp.staff_id, s.display_name, dp.category, dp.powder_count, '
+                    'dp.completed_registration, dp.completed_training, dp.withdrawal, '
+                    'dp.new_order, dp.conversion_rate, dp.reply_rate '
+                    'FROM daily_performance dp '
+                    'JOIN staff s ON dp.staff_id = s.id '
+                    'WHERE dp.stat_date = ? AND s.team = ? ORDER BY s.display_name',
+                    (d, team_name),
+                )
+                today_rows = [dict(r) for r in await cursor.fetchall()]
 
-            # Cumulative stats (all time for this team)
-            cursor = await db.execute(
-                'SELECT dp.staff_id, s.display_name, '
-                'SUM(dp.powder_count) as powder_count, '
-                'SUM(dp.completed_registration) as completed_registration, '
-                'SUM(dp.completed_training) as completed_training, '
-                'SUM(dp.withdrawal) as withdrawal, '
-                'SUM(dp.new_order) as new_order, '
-                'CASE WHEN SUM(dp.powder_count) > 0 '
-                'THEN ROUND(CAST(SUM(dp.new_order) AS REAL) / SUM(dp.powder_count) * 100, 1) '
-                'ELSE 0 END as conversion_rate '
-                'FROM daily_performance dp '
-                'JOIN staff s ON dp.staff_id = s.id '
-                'WHERE s.team = ? GROUP BY dp.staff_id ORDER BY s.display_name',
-                (team_name,),
-            )
-            cumulative_rows = [dict(r) for r in await cursor.fetchall()]
+                cursor = await db.execute(
+                    'SELECT dp.staff_id, s.display_name, '
+                    'SUM(dp.powder_count) as powder_count, '
+                    'SUM(dp.completed_registration) as completed_registration, '
+                    'SUM(dp.completed_training) as completed_training, '
+                    'SUM(dp.withdrawal) as withdrawal, '
+                    'SUM(dp.new_order) as new_order, '
+                    'CASE WHEN SUM(dp.powder_count) > 0 '
+                    'THEN ROUND(CAST(SUM(dp.new_order) AS REAL) / SUM(dp.powder_count) * 100, 1) '
+                    'ELSE 0 END as conversion_rate '
+                    'FROM daily_performance dp '
+                    'JOIN staff s ON dp.staff_id = s.id '
+                    'WHERE s.team = ? GROUP BY dp.staff_id ORDER BY s.display_name',
+                    (team_name,),
+                )
+                cumulative_rows = [dict(r) for r in await cursor.fetchall()]
+            else:
+                # Fallback: aggregate from clients table directly
+                cursor = await db.execute(
+                    '''SELECT s.id as staff_id, s.display_name,
+                         COUNT(CASE WHEN c.status = 'new' THEN 1 END) as powder,
+                         CASE WHEN COUNT(*) > 0
+                           THEN ROUND(CAST(COUNT(CASE WHEN c.status != 'new' THEN 1 END) AS REAL) / COUNT(*) * 100, 1)
+                           ELSE 0 END as reply_pct,
+                         COUNT(CASE WHEN c.status IN ('registered', 'training', 'withdrew', 'ordered') THEN 1 END) as register,
+                         COUNT(CASE WHEN c.status IN ('training', 'withdrew', 'ordered') THEN 1 END) as training,
+                         COUNT(CASE WHEN c.status IN ('withdrew', 'ordered') THEN 1 END) as withdraw,
+                         COUNT(CASE WHEN c.status = 'ordered' THEN 1 END) as orders,
+                         CASE WHEN COUNT(*) > 0
+                           THEN ROUND(CAST(COUNT(CASE WHEN c.status = 'ordered' THEN 1 END) AS REAL) / COUNT(*) * 100, 1)
+                           ELSE 0 END as conversion_pct,
+                         COUNT(*) as total_clients
+                       FROM staff s
+                       LEFT JOIN clients c ON c.frontdesk_id = s.id
+                       WHERE s.team = ? AND s.is_active = 1 AND s.role = 'frontdesk'
+                       GROUP BY s.id ORDER BY s.display_name''',
+                    (team_name,),
+                )
+                members = [dict(r) for r in await cursor.fetchall()]
+                today_rows = members
+                cumulative_rows = members
 
             # Get leader
             cursor = await db.execute(
@@ -3497,11 +3582,28 @@ async def group_compare(date: str = None, user=Depends(get_current_user)):
             )
             leader_row = await cursor.fetchone()
 
+            # Team-level aggregates
+            cursor = await db.execute(
+                '''SELECT COUNT(*) as total_clients,
+                     COUNT(CASE WHEN c.status = 'new' THEN 1 END) as new_leads,
+                     COUNT(CASE WHEN c.status IN ('registered', 'training', 'withdrew', 'ordered') THEN 1 END) as registered,
+                     COUNT(CASE WHEN c.status IN ('training', 'withdrew', 'ordered') THEN 1 END) as training,
+                     COUNT(CASE WHEN c.status IN ('withdrew', 'ordered') THEN 1 END) as withdrew,
+                     COUNT(CASE WHEN c.status = 'ordered' THEN 1 END) as orders,
+                     COUNT(CASE WHEN c.status IN ('ghosted', 'blocked', 'dead') THEN 1 END) as killed
+                   FROM clients c
+                   JOIN staff s ON c.frontdesk_id = s.id
+                   WHERE s.team = ? AND s.is_active = 1''',
+                (team_name,),
+            )
+            team_totals = dict(await cursor.fetchone())
+
             result.append({
                 'team': team_name,
                 'leader': leader_row[0] if leader_row else None,
                 'today': today_rows,
                 'cumulative': cumulative_rows,
+                'totals': team_totals,
             })
 
         return {'date': d, 'groups': result}

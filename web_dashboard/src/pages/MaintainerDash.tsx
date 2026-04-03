@@ -181,8 +181,11 @@ export default function MaintainerDash() {
                         <td>
                            <select className="input w-auto" value={s.role} onChange={e => handleUpdateStaff(s.id, { role: e.target.value })}>
                              <option value="frontdesk">frontdesk</option>
-                             <option value="newbie">newbie</option>
+                             <option value="maintenance">maintenance</option>
+                             <option value="leader">leader</option>
                              <option value="customer_service">customer_service</option>
+                             <option value="newbie">newbie</option>
+                             <option value="viewer">viewer</option>
                            </select>
                         </td>
                         <td className="cell-center">

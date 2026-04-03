@@ -34,27 +34,35 @@ export default function GroupOverview() {
 
   const handleDateChange = (newDate: string) => {
     setDate(newDate)
-    loadData(newDate)
   }
-
-  const tealAccent = theme.accent
 
   const renderStaffTable = (members: any[], label: string) => {
     if (!members || members.length === 0) return <Empty label={t('common.no_data', lang)} />
 
-    const totals = members.reduce((acc, m) => ({
-      powder: acc.powder + (m.powder || 0),
-      reply_pct: 0,
-      register: acc.register + (m.register || 0),
-      training: acc.training + (m.training || 0),
-      withdraw: acc.withdraw + (m.withdraw || 0),
-      orders: acc.orders + (m.orders || 0),
-      conversion_pct: 0,
-    }), { powder: 0, reply_pct: 0, register: 0, training: 0, withdraw: 0, orders: 0, conversion_pct: 0 })
+    // Normalize field names — API may return daily_performance fields OR client-aggregate fields
+    const normalized = members.map(m => ({
+      staff_id: m.staff_id,
+      name: m.display_name || m.name || '-',
+      powder: m.powder_count ?? m.powder ?? m.total_clients ?? 0,
+      reply_pct: m.reply_rate ?? m.reply_pct ?? 0,
+      register: m.completed_registration ?? m.register ?? 0,
+      training: m.completed_training ?? m.training ?? 0,
+      withdraw: m.withdrawal ?? m.withdraw ?? 0,
+      orders: m.new_order ?? m.orders ?? 0,
+      conversion_pct: m.conversion_rate ?? m.conversion_pct ?? 0,
+    }))
 
-    const totalPowder = totals.powder
-    totals.reply_pct = members.reduce((s: number, m: any) => s + (m.reply_pct || 0), 0) / members.length
-    totals.conversion_pct = totalPowder > 0 ? ((totals.orders / totalPowder) * 100) : 0
+    const totals = normalized.reduce((acc, m) => ({
+      powder: acc.powder + m.powder,
+      register: acc.register + m.register,
+      training: acc.training + m.training,
+      withdraw: acc.withdraw + m.withdraw,
+      orders: acc.orders + m.orders,
+    }), { powder: 0, register: 0, training: 0, withdraw: 0, orders: 0 })
+
+    const avgReply = normalized.length > 0
+      ? normalized.reduce((s, m) => s + m.reply_pct, 0) / normalized.length : 0
+    const convPct = totals.powder > 0 ? (totals.orders / totals.powder) * 100 : 0
 
     return (
       <div className="overflow-x">
@@ -73,16 +81,16 @@ export default function GroupOverview() {
             </tr>
           </thead>
           <tbody>
-            {members.map((m: any, idx: number) => (
+            {normalized.map((m, idx) => (
               <tr key={m.staff_id || idx}>
-                <td className="text-bold">{m.name || m.display_name || '-'}</td>
-                <td className="text-right text-bold">{m.powder || 0}</td>
-                <td className="text-right">{(m.reply_pct || 0).toFixed(1)}%</td>
-                <td className="text-right text-bold text-success">{m.register || 0}</td>
-                <td className="text-right">{m.training || 0}</td>
-                <td className="text-right">{m.withdraw || 0}</td>
-                <td className="text-right text-bold text-accent">{m.orders || 0}</td>
-                <td className="text-right">{(m.conversion_pct || 0).toFixed(1)}%</td>
+                <td className="text-bold">{m.name}</td>
+                <td className="text-right text-bold">{m.powder}</td>
+                <td className="text-right">{m.reply_pct.toFixed(1)}%</td>
+                <td className="text-right text-bold text-success">{m.register}</td>
+                <td className="text-right">{m.training}</td>
+                <td className="text-right">{m.withdraw}</td>
+                <td className="text-right text-bold text-accent">{m.orders}</td>
+                <td className="text-right">{m.conversion_pct.toFixed(1)}%</td>
               </tr>
             ))}
           </tbody>
@@ -90,12 +98,12 @@ export default function GroupOverview() {
             <tr className="group-total-row">
               <td className="text-bold label-sm text-uppercase">{t('common.total', lang)}</td>
               <td className="text-right text-bold">{totals.powder}</td>
-              <td className="text-right text-bold">{totals.reply_pct.toFixed(1)}%</td>
+              <td className="text-right text-bold">{avgReply.toFixed(1)}%</td>
               <td className="text-right text-bold text-success">{totals.register}</td>
               <td className="text-right text-bold">{totals.training}</td>
               <td className="text-right text-bold">{totals.withdraw}</td>
               <td className="text-right text-bold text-accent">{totals.orders}</td>
-              <td className="text-right text-bold">{totals.conversion_pct.toFixed(1)}%</td>
+              <td className="text-right text-bold">{convPct.toFixed(1)}%</td>
             </tr>
           </tfoot>
         </table>
@@ -103,17 +111,18 @@ export default function GroupOverview() {
     )
   }
 
+  // Grand totals from API response (team-level totals)
   const grandTotals = groups.reduce((acc, g) => {
-    const todayMembers = g.today_members || g.members || []
-    todayMembers.forEach((m: any) => {
-      acc.powder += m.powder || 0
-      acc.register += m.register || 0
-      acc.training += m.training || 0
-      acc.withdraw += m.withdraw || 0
-      acc.orders += m.orders || 0
-    })
+    const t = g.totals || {}
+    acc.new_leads += t.new_leads || 0
+    acc.registered += t.registered || 0
+    acc.training += t.training || 0
+    acc.withdrew += t.withdrew || 0
+    acc.orders += t.orders || 0
+    acc.killed += t.killed || 0
+    acc.total += t.total_clients || 0
     return acc
-  }, { powder: 0, register: 0, training: 0, withdraw: 0, orders: 0 })
+  }, { new_leads: 0, registered: 0, training: 0, withdrew: 0, orders: 0, killed: 0, total: 0 })
 
   return (
     <div className="page-container">
@@ -134,24 +143,24 @@ export default function GroupOverview() {
         <>
           <div className="grid-auto-440 mb-20">
             {groups.map((g: any, idx: number) => (
-              <div className="card overflow-hidden" key={g.group_name || idx}>
+              <div className="card overflow-hidden" key={g.team || idx}>
                 <div className="group-card-header">
                   <div>
-                    <div className="heading-sm">{g.group_name || g.team || `Group ${idx + 1}`}</div>
+                    <div className="heading-sm">{g.team || `Group ${idx + 1}`}</div>
                     <div className="caption mt-4">
-                      {t('groups.leader', lang)}: <span className="text-bold text-accent">{g.leader_name || '-'}</span>
+                      {t('groups.leader', lang)}: <span className="text-bold text-accent">{g.leader || '-'}</span>
                     </div>
                   </div>
                   <div className="group-member-count">
-                    {(g.today_members || g.members || []).length}
+                    {g.totals?.total_clients ?? (g.today || []).length}
                   </div>
                 </div>
 
-                {renderStaffTable(g.today_members || g.members || [], t('groups.today_stats', lang))}
+                {renderStaffTable(g.today || [], t('groups.today_stats', lang))}
 
-                {g.cumulative_members && g.cumulative_members.length > 0 && (
+                {g.cumulative && g.cumulative.length > 0 && (
                   <div className="mt-20 pt-20 border-top">
-                    {renderStaffTable(g.cumulative_members, t('groups.cumulative_stats', lang))}
+                    {renderStaffTable(g.cumulative, t('groups.cumulative_stats', lang))}
                   </div>
                 )}
               </div>
@@ -162,12 +171,12 @@ export default function GroupOverview() {
             <h3 className="heading-sm text-accent mb-20">{t('groups.grand_total', lang)} - {t('groups.all_teams', lang)}</h3>
             <div className="grand-total-grid">
               {[
-                { value: grandTotals.powder, label: t('perf.new_powder', lang), cls: '' },
-                { value: grandTotals.register, label: t('perf.register', lang), cls: 'text-success' },
+                { value: grandTotals.new_leads, label: t('perf.new_powder', lang), cls: '' },
+                { value: grandTotals.registered, label: t('perf.register', lang), cls: 'text-success' },
                 { value: grandTotals.training, label: t('perf.training', lang), cls: '' },
-                { value: grandTotals.withdraw, label: t('perf.withdraw', lang), cls: '' },
+                { value: grandTotals.withdrew, label: t('perf.withdraw', lang), cls: '' },
                 { value: grandTotals.orders, label: t('perf.new_order', lang), cls: 'text-accent' },
-                { value: grandTotals.powder > 0 ? ((grandTotals.orders / grandTotals.powder) * 100).toFixed(1) + '%' : '0.0%', label: t('perf.conversion', lang), cls: 'text-accent' },
+                { value: grandTotals.total > 0 ? ((grandTotals.orders / grandTotals.total) * 100).toFixed(1) + '%' : '0.0%', label: t('perf.conversion', lang), cls: 'text-accent' },
               ].map((item) => (
                 <div key={item.label} className="grand-total-item">
                   <div className={`grand-total-value ${item.cls}`}>{item.value}</div>

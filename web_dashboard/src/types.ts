@@ -120,6 +120,7 @@ export interface AuthState {
   team_scope: string | null
   display_name: string
   staff_id: number | null
+  staff_role: string | null
   user_id: number | null
 }
 

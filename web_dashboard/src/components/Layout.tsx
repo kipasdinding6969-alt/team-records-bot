@@ -40,10 +40,20 @@ const NAV_ALL: NavItem[] = [
 
 function buildNav(auth: AuthState | null) {
   if (!auth) return NAV_ALL.filter(n => !n.adminOnly)
-  if (auth.role === 'member') {
-    return NAV_ALL.filter(n => n.path === '/' || n.path === '/clients' || n.path === '/phone-lookup' || n.path === '/performance' || n.path === '/contests')
+  if (auth.role === 'owner' || auth.role === 'admin') return NAV_ALL
+  // Member role — show role-appropriate items
+  const base = ['/', '/clients', '/phone-lookup', '/performance', '/contests']
+  // Staff-role awareness: if we know the staff role, show relevant pages
+  const staffRole = (auth as any).staff_role
+  if (staffRole === 'maintenance' || staffRole === 'leader') {
+    base.push('/pipeline', '/team', '/groups', '/maintainer', '/group-interactions', '/reports')
+  } else if (staffRole === 'customer_service') {
+    base.push('/cs', '/cs-finance', '/group-interactions')
+  } else {
+    // frontdesk / default member
+    base.push('/frontdesk', '/pipeline')
   }
-  return NAV_ALL
+  return NAV_ALL.filter(n => base.includes(n.path))
 }
 
 function useIsMobile(breakpoint = 768) {
