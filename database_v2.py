@@ -934,6 +934,10 @@ class DatabaseV2:
             # Phase 38: Standardize maintainer_id → maintenance_id for consistency
             ('knife_deposits', 'ALTER TABLE knife_deposits RENAME COLUMN maintainer_id TO maintenance_id'),
             ('crypto_transactions', 'ALTER TABLE crypto_transactions RENAME COLUMN maintainer_id TO maintenance_id'),
+            # Phase 38b: group_interactions schema alignment (old schema had client_responded/effectiveness_score)
+            ('group_interactions', 'ALTER TABLE group_interactions ADD COLUMN client_replied INTEGER DEFAULT 0'),
+            ('group_interactions', 'ALTER TABLE group_interactions ADD COLUMN client_pm_character INTEGER DEFAULT 0'),
+            ('group_interactions', 'ALTER TABLE group_interactions ADD COLUMN client_left_group INTEGER DEFAULT 0'),
         ]
         async with self.get_connection() as db:
             for _tbl, sql in migrations:

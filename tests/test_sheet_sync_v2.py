@@ -1346,6 +1346,30 @@ class TestParseMoneyEdgeCases:
         assert _parse_money("0.50") == 0.50
 
 
+class TestParseMoneySpecFromSpec:
+    """Edge cases explicitly required by Phase 2 verification spec."""
+
+    def test_parse_dollar_zero(self):
+        """$0 should parse to 0.0."""
+        assert _parse_money("$0") == 0.0
+
+    def test_parse_just_yen_symbol(self):
+        """Bare ¥ with no number should return 0.0."""
+        assert _parse_money("¥") == 0.0
+
+    def test_parse_negative_with_commas_and_decimals(self):
+        """-$1,234.56 should parse correctly."""
+        assert _parse_money("-$1,234.56") == -1234.56
+
+    def test_parse_negative_large(self):
+        """-$70,000 should parse correctly (real sheet edge case)."""
+        assert _parse_money("-$70,000") == -70000.0
+
+    def test_parse_negative_yen_with_commas(self):
+        """-¥3,000 should parse correctly."""
+        assert _parse_money("-¥3,000") == -3000.0
+
+
 class TestKillExtractionEdgeCases:
     """Test kill type + knife number extraction edge cases."""
 
@@ -1605,6 +1629,95 @@ class TestPipelineUpsertIdempotency:
         assert result[0] == 5000.0  # max is preserved
 
 
+class TestPipelinePressureTimestampPreservation:
+    """Test that pressure_at timestamp is preserved on re-sync."""
+
+    @pytest.mark.asyncio
+    async def test_pipeline_preserves_existing_pressure_at(self, populated_v2_db):
+        """Test re-sync doesn't overwrite pressure_at if already set."""
+        sync = SheetSyncV2(Mock())
+        client_id = populated_v2_db._test_client1_id
+
+        # First sync: pressure=800
+        row1 = (
+            ["date", "acc1", "group", "阿YIM", "", "123", "Iconnect", "0", "800", ""]
+            + [""] * 8
+            + ["800"]
+        )
+        async with populated_v2_db.get_connection() as db:
+            await sync._sync_pipeline_for_client(
+                db, client_id=client_id, row=row1, note=""
+            )
+            await db.commit()
+
+        # Read first timestamp
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT pressure_at FROM client_pipeline_status"
+            f" WHERE client_id={client_id}"
+        )
+        first_ts = c.fetchone()[0]
+        conn.close()
+
+        assert first_ts is not None
+
+        # Second sync: pressure=1500 — timestamp should NOT change
+        row2 = (
+            ["date", "acc1", "group", "阿YIM", "", "123", "Iconnect", "0", "1500", ""]
+            + [""] * 8
+            + ["1500"]
+        )
+        async with populated_v2_db.get_connection() as db:
+            await sync._sync_pipeline_for_client(
+                db, client_id=client_id, row=row2, note=""
+            )
+            await db.commit()
+
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT pressure_at, pressure_amount FROM client_pipeline_status"
+            f" WHERE client_id={client_id}"
+        )
+        result = c.fetchone()
+        conn.close()
+
+        # Timestamp should be preserved from first insert
+        assert result[0] == first_ts
+        # Amount should be updated to the higher value
+        assert result[1] == 1500.0
+
+
+class TestKnifeNegativeAmounts:
+    """Test knife deposits with negative amounts (losses)."""
+
+    @pytest.mark.asyncio
+    async def test_sync_knives_stores_negative_amounts(self, populated_v2_db):
+        """Test negative amounts like -$70,000 are stored correctly."""
+        sync = SheetSyncV2(Mock())
+        client_id = populated_v2_db._test_client1_id
+
+        row = [""] * 10 + ["-$70,000", "$1,000", "", "", "", "", "", ""] + [""]
+
+        async with populated_v2_db.get_connection() as db:
+            await sync._sync_knives_for_client(db, client_id=client_id, row=row)
+            await db.commit()
+
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT knife_number, amount FROM knife_deposits"
+            f" WHERE client_id={client_id} ORDER BY knife_number"
+        )
+        results = c.fetchall()
+        conn.close()
+
+        assert len(results) == 2
+        assert results[0] == (1, -70000.0)
+        assert results[1] == (2, 1000.0)
+
+
 class TestKnivesWithCurrencyFormatting:
     """Test knife sync when sheet cells contain currency-formatted values."""
 
@@ -1661,6 +1774,189 @@ class TestCrossRoleNotesEdgeCases:
         assert count == 1  # only the valid note
 
 
+class TestPerformanceSheetDateFormats:
+    """Test import_performance_sheet handles different date formats."""
+
+    @pytest.fixture
+    def mock_writer(self):
+        writer = Mock()
+        writer.spreadsheet = Mock()
+        return writer
+
+    @pytest.mark.asyncio
+    async def test_performance_sheet_iso_date_format(
+        self, populated_v2_db, mock_writer
+    ):
+        """Test YYYY-MM-DD date format is parsed correctly."""
+        mock_ws = Mock()
+        mock_ws.get_all_values.return_value = [
+            ["日期", "姓名", "类别", "", "", "", "", "", "", ""],
+            ["", "", "", "", "", "", "", "", "", ""],
+            [
+                "2026-04-01",
+                "阿YIM",
+                "飞机筛选",
+                "100",
+                "80%",
+                "50",
+                "40",
+                "30",
+                "25",
+                "75%",
+            ],
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+
+        with (
+            patch("engines.sheet_sync_v2.database_v2", populated_v2_db),
+            patch("engines.sheet_sync_v2.SHEET_MAP", {"3月-前台数据": "test"}),
+        ):
+            count = await sync.import_performance_sheet()
+
+        assert count == 1
+
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        staff1_id = populated_v2_db._test_staff1_id
+        c.execute(f"SELECT stat_date FROM daily_performance WHERE staff_id={staff1_id}")
+        result = c.fetchone()
+        conn.close()
+
+        assert result is not None
+        assert result[0] == "2026-04-01"
+
+    @pytest.mark.asyncio
+    async def test_performance_sheet_invalid_date_skipped(
+        self, populated_v2_db, mock_writer
+    ):
+        """Test rows with unparseable dates are skipped."""
+        mock_ws = Mock()
+        mock_ws.get_all_values.return_value = [
+            ["日期", "姓名", "类别", "", "", "", "", "", "", ""],
+            ["", "", "", "", "", "", "", "", "", ""],
+            [
+                "not-a-date",
+                "阿YIM",
+                "飞机筛选",
+                "100",
+                "80%",
+                "50",
+                "40",
+                "30",
+                "25",
+                "75%",
+            ],
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+
+        with (
+            patch("engines.sheet_sync_v2.database_v2", populated_v2_db),
+            patch("engines.sheet_sync_v2.SHEET_MAP", {"3月-前台数据": "test"}),
+        ):
+            count = await sync.import_performance_sheet()
+
+        assert count == 0
+
+
+class TestPerformanceSheetEdgeCases:
+    """Additional edge cases for performance sheet import."""
+
+    @pytest.fixture
+    def mock_writer(self):
+        writer = Mock()
+        writer.spreadsheet = Mock()
+        return writer
+
+    @pytest.mark.asyncio
+    async def test_performance_sheet_empty_numeric_columns(
+        self, populated_v2_db, mock_writer
+    ):
+        """Test rows with empty numeric columns get 0 defaults."""
+        mock_ws = Mock()
+        mock_ws.get_all_values.return_value = [
+            ["日期", "姓名", "类别", "", "", "", "", "", "", ""],
+            ["", "", "", "", "", "", "", "", "", ""],
+            [
+                "04/01/2026",
+                "阿YIM",
+                "飞机筛选",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+            ],
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+
+        with (
+            patch("engines.sheet_sync_v2.database_v2", populated_v2_db),
+            patch("engines.sheet_sync_v2.SHEET_MAP", {"3月-前台数据": "test"}),
+        ):
+            count = await sync.import_performance_sheet()
+
+        assert count == 1
+
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        staff1_id = populated_v2_db._test_staff1_id
+        c.execute(
+            "SELECT powder_count, reply_rate, completed_registration, new_order"
+            f" FROM daily_performance WHERE staff_id={staff1_id}"
+        )
+        result = c.fetchone()
+        conn.close()
+
+        assert result is not None
+        assert result[0] == 0  # powder_count
+        assert result[1] == 0.0  # reply_rate
+        assert result[2] == 0  # completed_registration
+        assert result[3] == 0  # new_order
+
+    @pytest.mark.asyncio
+    async def test_performance_sheet_name_alias_resolution(
+        self, populated_v2_db, mock_writer
+    ):
+        """Test NAME_ALIASES resolves English names to Chinese equivalents."""
+        mock_ws = Mock()
+        mock_ws.get_all_values.return_value = [
+            ["日期", "姓名", "类别", "", "", "", "", "", "", ""],
+            ["", "", "", "", "", "", "", "", "", ""],
+            [
+                "04/01/2026",
+                "Ah YIM",
+                "飞机筛选",
+                "100",
+                "80%",
+                "50",
+                "40",
+                "30",
+                "25",
+                "75%",
+            ],
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+
+        with (
+            patch("engines.sheet_sync_v2.database_v2", populated_v2_db),
+            patch("engines.sheet_sync_v2.SHEET_MAP", {"3月-前台数据": "test"}),
+        ):
+            count = await sync.import_performance_sheet()
+
+        # Should resolve "Ah YIM" → "阿YIM" via NAME_ALIASES
+        assert count == 1
+
+
 class TestGroupInteractionsGap:
     """Document that group_interactions (Phase 26) is NOT populated by sheet_sync_v2.
 
@@ -1686,6 +1982,77 @@ class TestGroupInteractionsGap:
         assert c.fetchone()[0] == 0
 
         conn.close()
+
+
+class TestPipelineKillPreservation:
+    """Test that kill_type/kill_knife are preserved on re-sync with empty note."""
+
+    @pytest.mark.asyncio
+    async def test_pipeline_preserves_kill_on_resync_with_no_kill(
+        self, populated_v2_db
+    ):
+        """Test re-sync with empty note doesn't wipe existing kill_type."""
+        sync = SheetSyncV2(Mock())
+        client_id = populated_v2_db._test_client1_id
+
+        # First sync: salary_kill with knife 6
+        row1 = (
+            [
+                "date",
+                "acc1",
+                "group",
+                "阿YIM",
+                "",
+                "123",
+                "Iconnect",
+                "1000",
+                "0",
+                "工资杀6刀",
+            ]
+            + [""] * 8
+            + ["1000"]
+        )
+        async with populated_v2_db.get_connection() as db:
+            await sync._sync_pipeline_for_client(
+                db, client_id=client_id, row=row1, note="工资杀6刀"
+            )
+            await db.commit()
+
+        # Second sync: no kill in note — should preserve existing kill
+        row2 = (
+            [
+                "date",
+                "acc1",
+                "group",
+                "阿YIM",
+                "",
+                "123",
+                "Iconnect",
+                "2000",
+                "0",
+                "all good",
+            ]
+            + [""] * 8
+            + ["2000"]
+        )
+        async with populated_v2_db.get_connection() as db:
+            await sync._sync_pipeline_for_client(
+                db, client_id=client_id, row=row2, note="all good"
+            )
+            await db.commit()
+
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT kill_type, kill_knife FROM client_pipeline_status"
+            f" WHERE client_id={client_id}"
+        )
+        result = c.fetchone()
+        conn.close()
+
+        # kill_type and kill_knife should be preserved via COALESCE
+        assert result[0] == "salary_kill"
+        assert result[1] == 6
 
 
 class TestFinancialSheetRealisticRow:

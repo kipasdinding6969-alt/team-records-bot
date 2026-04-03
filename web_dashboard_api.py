@@ -5405,9 +5405,14 @@ async def get_group_interactions(
             """SELECT gi.id, gi.client_id, gi.group_id, gi.actor_staff_id, gi.actor_role, gi.day_number,
                       gi.script_completed, gi.client_read_messages, gi.client_replied,
                       gi.client_pm_character, gi.client_left_group, gi.notes, gi.created_at,
-                      s.display_name AS actor_name
+                      c.phone AS client_phone, c.account_id AS client_account_id,
+                      c.platform AS client_platform, c.first_day_status, c.second_day_status,
+                      s.display_name AS actor_name,
+                      fd.display_name AS frontdesk_name
                FROM group_interactions gi
+               LEFT JOIN clients c ON gi.client_id = c.id
                LEFT JOIN staff s ON gi.actor_staff_id = s.id
+               LEFT JOIN staff fd ON c.frontdesk_id = fd.id
                WHERE gi.client_id = ?
                ORDER BY gi.day_number, gi.created_at""",
             (client_id,),
