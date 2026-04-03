@@ -2184,3 +2184,361 @@ class TestFinancialSheetRealisticRow:
         assert len(notes) == 4
 
         conn.close()
+
+
+# ─── Phase 5: Cascading client match tests ────────────────────────────────────
+
+
+class TestCascadingClientMatch:
+    """Test cascading client match strategy in import_financial_sheet.
+
+    Verifies:
+    1. Primary match: frontdesk_id + account_id (existing behavior)
+    2. Fallback 1: account_id alone (different frontdesk_id)
+    3. Fallback 2: frontdesk_id + phone (no account_id match)
+    4. Auto-link: fallback matches update client.account_id for future syncs
+    """
+
+    @pytest.fixture
+    def mock_writer(self):
+        writer = Mock()
+        writer.spreadsheet = Mock()
+        return writer
+
+    def _make_financial_row(
+        self,
+        date_str="04/01/2026",
+        account_id="ACC001",
+        frontdesk_name="阿YIM",
+        maintenance_name="小王",
+        phone="123",
+        total="1000",
+    ):
+        """Build a minimal 維護數據 row for testing."""
+        return [
+            date_str,
+            account_id,
+            "group",
+            frontdesk_name,
+            maintenance_name,
+            phone,
+            "Iconnect",
+            "1000",
+            "0",
+            "no kill",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            total,
+        ]
+
+    @pytest.mark.asyncio
+    async def test_primary_match_frontdesk_plus_account_id(
+        self, populated_v2_db, mock_writer
+    ):
+        """Primary match: frontdesk_id + account_id works (existing behavior)."""
+        client_id = populated_v2_db._test_client1_id
+
+        mock_ws = Mock()
+        mock_ws.get_all_values.return_value = [
+            ["日期"] + [""] * 18,  # header
+            self._make_financial_row(account_id="ACC001", frontdesk_name="阿YIM"),
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+        with patch("engines.sheet_sync_v2.database_v2", populated_v2_db):
+            count = await sync.import_financial_sheet()
+
+        assert count >= 1
+
+        # Verify data was linked to correct client
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT COUNT(*) FROM client_pipeline_status WHERE client_id=?",
+            (client_id,),
+        )
+        assert c.fetchone()[0] >= 1
+        conn.close()
+
+    @pytest.mark.asyncio
+    async def test_fallback_account_id_only_different_frontdesk(
+        self, populated_v2_db, mock_writer
+    ):
+        """Fallback 1: account_id alone matches when frontdesk_id differs.
+
+        Client ACC001 belongs to staff1 (阿YIM), but the sheet row says
+        frontdesk is ODDY. The account_id-only fallback should still find
+        the client.
+        """
+        client_id = populated_v2_db._test_client1_id
+        staff3_id = populated_v2_db._test_staff3_id
+
+        mock_ws = Mock()
+        # Row says frontdesk=ODDY but ACC001 belongs to 阿YIM
+        mock_ws.get_all_values.return_value = [
+            ["日期"] + [""] * 18,
+            self._make_financial_row(account_id="ACC001", frontdesk_name="ODDY"),
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+        with patch("engines.sheet_sync_v2.database_v2", populated_v2_db):
+            count = await sync.import_financial_sheet()
+
+        assert count >= 1
+
+        # Verify client was matched via fallback
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT COUNT(*) FROM client_pipeline_status WHERE client_id=?",
+            (client_id,),
+        )
+        assert c.fetchone()[0] >= 1
+        conn.close()
+
+    @pytest.mark.asyncio
+    async def test_fallback_phone_match_no_account_id(
+        self, populated_v2_db, mock_writer
+    ):
+        """Fallback 2: phone match when account_id is empty.
+
+        Insert a client with no account_id, then sync a row with no
+        account_id but matching phone — should match via phone fallback.
+        """
+        staff1_id = populated_v2_db._test_staff1_id
+
+        # Insert client with NULL account_id but known phone
+        async with populated_v2_db.get_connection() as db:
+            cur = await db.execute(
+                "INSERT INTO clients (frontdesk_id, phone, source, status)"
+                " VALUES (?, ?, ?, ?)",
+                (staff1_id, "+8619999999999", "飞机筛选", "registered"),
+            )
+            new_client_id = cur.lastrowid
+            await db.commit()
+
+        mock_ws = Mock()
+        # Row has no account_id but phone column (index 5) matches
+        mock_ws.get_all_values.return_value = [
+            ["日期"] + [""] * 18,
+            self._make_financial_row(
+                account_id="", frontdesk_name="阿YIM", phone="+8619999999999"
+            ),
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+        with patch("engines.sheet_sync_v2.database_v2", populated_v2_db):
+            count = await sync.import_financial_sheet()
+
+        assert count >= 1
+
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT COUNT(*) FROM client_pipeline_status WHERE client_id=?",
+            (new_client_id,),
+        )
+        assert c.fetchone()[0] >= 1
+        conn.close()
+
+    @pytest.mark.asyncio
+    async def test_fallback_phone_match_with_account_id_autolink(
+        self, populated_v2_db, mock_writer
+    ):
+        """Fallback 2 + auto-link: phone match updates client.account_id.
+
+        After phone fallback succeeds, the client record should be updated
+        with the account_id from the sheet for future primary matches.
+        """
+        staff1_id = populated_v2_db._test_staff1_id
+
+        # Insert client with NULL account_id but known phone
+        async with populated_v2_db.get_connection() as db:
+            cur = await db.execute(
+                "INSERT INTO clients (frontdesk_id, phone, source, status)"
+                " VALUES (?, ?, ?, ?)",
+                (staff1_id, "+8618888888888", "飞机筛选", "registered"),
+            )
+            new_client_id = cur.lastrowid
+            await db.commit()
+
+        mock_ws = Mock()
+        # Row has account_id=NEW_ACC and phone matches the new client
+        mock_ws.get_all_values.return_value = [
+            ["日期"] + [""] * 18,
+            self._make_financial_row(
+                account_id="NEW_ACC",
+                frontdesk_name="阿YIM",
+                phone="+8618888888888",
+            ),
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+        with patch("engines.sheet_sync_v2.database_v2", populated_v2_db):
+            count = await sync.import_financial_sheet()
+
+        assert count >= 1
+
+        # Verify auto-link: client's account_id was updated
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT account_id FROM clients WHERE id=?", (new_client_id,)
+        )
+        result = c.fetchone()
+        conn.close()
+
+        assert result is not None
+        assert result[0] == "NEW_ACC"
+
+    @pytest.mark.asyncio
+    async def test_autolink_on_account_id_only_fallback(
+        self, populated_v2_db, mock_writer
+    ):
+        """Auto-link: account_id-only fallback also triggers auto-link.
+
+        When a client is found via account_id alone (different frontdesk),
+        the account_id is already set, but the auto-link path is still
+        exercised (idempotent update).
+        """
+        client_id = populated_v2_db._test_client1_id
+
+        mock_ws = Mock()
+        # ODDY is a different frontdesk than 阿YIM who owns ACC001
+        mock_ws.get_all_values.return_value = [
+            ["日期"] + [""] * 18,
+            self._make_financial_row(account_id="ACC001", frontdesk_name="ODDY"),
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+        with patch("engines.sheet_sync_v2.database_v2", populated_v2_db):
+            count = await sync.import_financial_sheet()
+
+        assert count >= 1
+
+        # Client account_id should still be ACC001 (idempotent)
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT account_id FROM clients WHERE id=?", (client_id,)
+        )
+        result = c.fetchone()
+        conn.close()
+
+        assert result[0] == "ACC001"
+
+    @pytest.mark.asyncio
+    async def test_no_match_skips_row(self, populated_v2_db, mock_writer):
+        """When no cascading match succeeds, the row is skipped entirely."""
+        mock_ws = Mock()
+        mock_ws.get_all_values.return_value = [
+            ["日期"] + [""] * 18,
+            self._make_financial_row(
+                account_id="NONEXISTENT",
+                frontdesk_name="阿YIM",
+                phone="0000000000",
+            ),
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+        with patch("engines.sheet_sync_v2.database_v2", populated_v2_db):
+            count = await sync.import_financial_sheet()
+
+        # No deposits should be created — row was skipped
+        assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_fallback_phone_normalized_match(
+        self, populated_v2_db, mock_writer
+    ):
+        """Phone fallback matches even with different formatting (+86 vs raw)."""
+        staff1_id = populated_v2_db._test_staff1_id
+
+        # Insert client with formatted phone
+        async with populated_v2_db.get_connection() as db:
+            cur = await db.execute(
+                "INSERT INTO clients (frontdesk_id, phone, source, status)"
+                " VALUES (?, ?, ?, ?)",
+                (staff1_id, "+86-177-0000-1111", "飞机筛选", "registered"),
+            )
+            new_client_id = cur.lastrowid
+            await db.commit()
+
+        mock_ws = Mock()
+        # Sheet has raw digits without formatting
+        mock_ws.get_all_values.return_value = [
+            ["日期"] + [""] * 18,
+            self._make_financial_row(
+                account_id="",
+                frontdesk_name="阿YIM",
+                phone="8617700001111",
+            ),
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+        with patch("engines.sheet_sync_v2.database_v2", populated_v2_db):
+            count = await sync.import_financial_sheet()
+
+        assert count >= 1
+
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT COUNT(*) FROM client_pipeline_status WHERE client_id=?",
+            (new_client_id,),
+        )
+        assert c.fetchone()[0] >= 1
+        conn.close()
+
+    @pytest.mark.asyncio
+    async def test_primary_match_preferred_over_fallback(
+        self, populated_v2_db, mock_writer
+    ):
+        """Primary match is used when both primary and fallback could match.
+
+        Ensures the cascading doesn't accidentally use a fallback when
+        primary match is available.
+        """
+        client_id = populated_v2_db._test_client1_id
+
+        mock_ws = Mock()
+        # ACC001 + 阿YIM → primary match should succeed
+        mock_ws.get_all_values.return_value = [
+            ["日期"] + [""] * 18,
+            self._make_financial_row(
+                account_id="ACC001",
+                frontdesk_name="阿YIM",
+                phone="+8613800138000",
+            ),
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+        with patch("engines.sheet_sync_v2.database_v2", populated_v2_db):
+            count = await sync.import_financial_sheet()
+
+        assert count >= 1
+
+        # account_id should NOT have been re-written (primary match doesn't auto-link)
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT account_id FROM clients WHERE id=?", (client_id,)
+        )
+        result = c.fetchone()
+        conn.close()
+
+        assert result[0] == "ACC001"  # unchanged

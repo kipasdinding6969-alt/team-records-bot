@@ -405,10 +405,15 @@ class SheetSyncV2:
                 if not staff:
                     continue
 
-                # Match client by frontdesk + account_id
+                # Cascading client match strategy:
+                # 1. Primary: frontdesk_id + account_id
+                # 2. Fallback 1: account_id alone (globally unique)
+                # 3. Fallback 2: frontdesk_id + phone (column F, index 5)
                 client = None
+                match_method = None
                 if account_id:
                     async with database_v2.get_connection() as db:
+                        # Primary: frontdesk_id + account_id
                         cur = await db.execute(
                             'SELECT id, frontdesk_id, phone, account_id, status FROM clients '
                             'WHERE frontdesk_id=? AND account_id=? LIMIT 1',
@@ -417,9 +422,54 @@ class SheetSyncV2:
                         row_data = await cur.fetchone()
                         if row_data:
                             client = dict(row_data)
+                            match_method = 'primary'
+
+                        # Fallback 1: account_id alone across all clients
+                        if not client:
+                            cur = await db.execute(
+                                'SELECT id, frontdesk_id, phone, account_id, status FROM clients '
+                                'WHERE account_id=? LIMIT 1',
+                                (account_id,)
+                            )
+                            row_data = await cur.fetchone()
+                            if row_data:
+                                client = dict(row_data)
+                                match_method = 'account_id_only'
+
+                # Fallback 2: frontdesk_id + phone (column F, index 5)
+                if not client:
+                    phone_val = row[5].strip() if len(row) > 5 else ''
+                    if phone_val:
+                        async with database_v2.get_connection() as db:
+                            normalized = phone_val.replace('+', '').replace('-', '').replace(' ', '')
+                            cur = await db.execute(
+                                'SELECT id, frontdesk_id, phone, account_id, status FROM clients '
+                                'WHERE frontdesk_id=? AND ('
+                                "phone=? OR REPLACE(REPLACE(REPLACE(phone, '+', ''), '-', ''), ' ', '')=?"
+                                ') LIMIT 1',
+                                (staff.id, phone_val, normalized)
+                            )
+                            row_data = await cur.fetchone()
+                            if row_data:
+                                client = dict(row_data)
+                                match_method = 'phone'
 
                 if not client:
                     continue
+
+                # Auto-link: when fallback matched, update client record with
+                # account_id from 維護數據 so future syncs use primary match
+                if match_method in ('account_id_only', 'phone') and account_id:
+                    async with database_v2.get_connection() as db:
+                        await db.execute(
+                            'UPDATE clients SET account_id=? WHERE id=?',
+                            (account_id, client['id'])
+                        )
+                        await db.commit()
+                    logger.info(
+                        'import_financial_sheet: auto-linked client %d with account_id=%s (match=%s)',
+                        client['id'], account_id, match_method
+                    )
 
                 client_id = client['id']
 
