@@ -3,6 +3,7 @@ import { api, getAuthState, debug } from '../api'
 import { useTheme } from '../ThemeContext'
 import { t, getLang } from '../i18n'
 import { PageHeader, Spinner, Empty } from '../components/SharedUI'
+import type { PhoneRegistryStatsResult, FrontdeskHistoryEntry, PhoneCheckResult, Client } from '../types'
 
 const CATEGORIES = [
   { value: 'UK表单粉', key: 'category.uk_form' },
@@ -36,18 +37,18 @@ export default function FrontdeskEntry() {
   const [day1Status, setDay1Status] = useState('pending')
   const [day2Status, setDay2Status] = useState('pending')
 
-  const [phoneStatus, setPhoneStatus] = useState<any>(null)
-  const [checkTimer, setCheckTimer] = useState<any>(null)
+  const [phoneStatus, setPhoneStatus] = useState<PhoneCheckResult | null>(null)
+  const [checkTimer, setCheckTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [stats, setStats] = useState<any>(null)
-  const [recent, setRecent] = useState<any[]>([])
+  const [stats, setStats] = useState<PhoneRegistryStatsResult | null>(null)
+  const [recent, setRecent] = useState<Client[]>([])
   const [searchVal, setSearchVal] = useState('')
   const [formErrors, setFormErrors] = useState<Record<string, boolean>>({})
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [searchMessage, setSearchMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-  const [history, setHistory] = useState<any[]>([])
+  const [history, setHistory] = useState<FrontdeskHistoryEntry[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
 
   const showMessage = (type: 'success' | 'error', text: string) => {
@@ -174,7 +175,7 @@ export default function FrontdeskEntry() {
                     {phoneStatus?.status === 'taken' ? 'X' : phoneStatus?.status === 'own' ? '!' : phoneStatus?.status === 'available' ? '/' : null}
                   </span>
                   <span>
-                    {phoneStatus.status === 'taken' && `${t('frontdesk.duplicate_other', lang).replace('{owner}', phoneStatus.owner).replace('{team}', phoneStatus.team || '').replace('{date}', phoneStatus.submitted_at?.slice(0, 10) || '')}`}
+                    {phoneStatus.status === 'taken' && `${t('frontdesk.duplicate_other', lang).replace('{owner}', phoneStatus.owner || '').replace('{team}', phoneStatus.team_name || '').replace('{date}', phoneStatus.submitted_at?.slice(0, 10) || '')}`}
                     {phoneStatus.status === 'own' && `${t('frontdesk.duplicate_self', lang)}`}
                     {phoneStatus.status === 'available' && `${t('frontdesk.available', lang)}`}
                   </span>
@@ -421,22 +422,22 @@ export default function FrontdeskEntry() {
                 </tr>
               </thead>
               <tbody>
-                {history.map((entry: any, idx: number) => (
+                {history.map((entry: FrontdeskHistoryEntry, idx: number) => (
                   <tr key={entry.id || idx}>
                     <td className="fw-600 cell-mono">{entry.phone}</td>
                     <td>{entry.category || '-'}</td>
                     <td>
-                      <span className={`pill-badge ${entry.day1_status === 'register' ? 'badge-success' : entry.day1_status === 'no_register' ? 'badge-danger' : 'badge-warning'}`}>
-                        {entry.day1_status || t('day_status.pending', lang)}
+                      <span className={`pill-badge ${entry.first_day_status === 'register' ? 'badge-success' : entry.first_day_status === 'no_register' ? 'badge-danger' : 'badge-warning'}`}>
+                        {entry.first_day_status || t('day_status.pending', lang)}
                       </span>
                     </td>
                     <td>
-                      <span className={`pill-badge ${entry.day2_status === 'register' ? 'badge-success' : entry.day2_status === 'no_register' ? 'badge-danger' : 'badge-warning'}`}>
-                        {entry.day2_status || t('day_status.pending', lang)}
+                      <span className={`pill-badge ${entry.second_day_status === 'register' ? 'badge-success' : entry.second_day_status === 'no_register' ? 'badge-danger' : 'badge-warning'}`}>
+                        {entry.second_day_status || t('day_status.pending', lang)}
                       </span>
                     </td>
                     <td className="truncate max-w-200">
-                      {entry.condition || entry.phone_remark || '-'}
+                      {entry.client_condition || '-'}
                     </td>
                     <td>
                       <span className={`pill-badge ${entry.status === 'registered' ? 'badge-success' : 'badge-warning'}`}>

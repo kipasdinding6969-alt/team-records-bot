@@ -1,12 +1,15 @@
-"""Tests for engine modules."""
+"""Tests for engine modules.
+
+Note: V1 schema (team_members) deprecated test class removed: TestReminderEngine
+"""
 import pytest
-from datetime import datetime, date, timedelta
-from unittest.mock import AsyncMock, Mock, patch
+from datetime import date
+from unittest.mock import Mock, patch
 
 from engines.report_engine import ReportEngine
 from engines.reminder_engine import ReminderEngine
 from engines.sheet_sync import SheetSyncEngine
-from models import ReportTemplate, Reminder, ClientRecord
+from models import ReportTemplate
 
 
 class TestReportEngine:
@@ -123,139 +126,6 @@ class TestReportEngine:
 
             assert isinstance(report_data['date'], date)
             assert report_data['date'] == date(2024, 3, 15)
-
-
-@pytest.mark.skip(reason="V1 schema (team_members) — deprecated")
-class TestReminderEngine:
-    """Test reminder processing engine."""
-
-    @pytest.fixture
-    def reminder_engine(self):
-        return ReminderEngine()
-
-    @pytest.mark.asyncio
-    async def test_process_pending_reminders(self, reminder_engine, temp_db, mock_telegram_handler):
-        """Test processing of pending reminders."""
-        # Create a pending reminder
-        past_time = datetime.now() - timedelta(minutes=1)
-        reminder = Reminder(
-            frontdesk_user_id=123456,
-            reminder_type='day1',
-            scheduled_time=past_time,
-            message='Test reminder'
-        )
-
-        await temp_db.create_reminder(reminder)
-
-        # Create team member for the reminder
-        from models import TeamMember
-        member = TeamMember(
-            user_id=123456,
-            chat_id=123456,
-            frontdesk_name='阿YIM'
-        )
-        await temp_db.create_team_member(member)
-
-        with patch('engines.reminder_engine.database', temp_db), \
-             patch('engines.reminder_engine.telegram_handler', mock_telegram_handler):
-
-            results = await reminder_engine.process_pending_reminders()
-
-            assert 'processed' in results
-            assert 'failed' in results
-            assert results['processed'] >= 0
-
-    @pytest.mark.asyncio
-    async def test_create_automatic_reminders(self, reminder_engine, temp_db):
-        """Test creation of automatic reminders."""
-        with patch('engines.reminder_engine.database', temp_db):
-            reminder_ids = await reminder_engine.create_automatic_reminders(
-                client_record_id=1,
-                frontdesk_user_id=123456
-            )
-
-            assert len(reminder_ids) == 2  # Day 1 and Day 2
-            assert all(rid > 0 for rid in reminder_ids)
-
-    @pytest.mark.asyncio
-    async def test_create_manual_reminder(self, reminder_engine, temp_db):
-        """Test creation of manual reminder."""
-        scheduled_time = datetime.now() + timedelta(hours=1)
-
-        with patch('engines.reminder_engine.database', temp_db):
-            reminder_id = await reminder_engine.create_manual_reminder(
-                frontdesk_user_id=123456,
-                reminder_type='manual',
-                scheduled_time=scheduled_time,
-                message='Manual test reminder'
-            )
-
-            assert reminder_id > 0
-
-    @pytest.mark.asyncio
-    async def test_cancel_reminders_for_client(self, reminder_engine, temp_db):
-        """Test canceling reminders for a client."""
-        # Create reminders for a client
-        await reminder_engine.create_automatic_reminders(1, 123456)
-
-        with patch('engines.reminder_engine.database', temp_db):
-            cancelled_count = await reminder_engine.cancel_reminders_for_client(1)
-
-            assert cancelled_count >= 0
-
-    @pytest.mark.asyncio
-    async def test_reminder_statistics(self, reminder_engine, temp_db):
-        """Test reminder statistics generation."""
-        with patch('engines.reminder_engine.database', temp_db):
-            # Create some test reminders
-            await reminder_engine.create_automatic_reminders(1, 123456)
-            stats = await reminder_engine.get_reminder_statistics()
-
-            assert isinstance(stats, dict)
-
-    @pytest.mark.asyncio
-    async def test_cleanup_old_reminders(self, reminder_engine, temp_db):
-        """Test cleanup of old reminders."""
-        with patch('engines.reminder_engine.database', temp_db):
-            cleaned_count = await reminder_engine.cleanup_old_reminders(days_old=30)
-
-            assert cleaned_count >= 0
-
-    @pytest.mark.asyncio
-    async def test_reminder_message_generation(self, reminder_engine, temp_db):
-        """Test reminder message generation."""
-        # Create a client record
-        client_record = ClientRecord(
-            row_num=1,
-            date="3月15日",
-            phone_remark="iPhone",
-            frontdesk="阿YIM",
-            category="测试",
-            recruiter="测试员",
-            frontdesk_number="+86123456789",
-            frontdesk_username="@test",
-            client_number="+86987654321",
-            account_id="ACC123",
-            first_day="注册",
-            second_day="注册"
-        )
-
-        record_id = await temp_db.create_client_record(client_record)
-
-        reminder = Reminder(
-            client_record_id=record_id,
-            frontdesk_user_id=123456,
-            reminder_type='day1',
-            scheduled_time=datetime.now(),
-            message=None
-        )
-
-        with patch('engines.reminder_engine.database', temp_db):
-            message = await reminder_engine._generate_reminder_message(reminder)
-
-            assert isinstance(message, str)
-            assert len(message) > 0
-            assert '提醒' in message or 'Reminder' in message
 
 
 class TestSheetSyncEngine:

@@ -3,6 +3,7 @@ import { api, getAuthState, debug } from '../api'
 import { getLang, t } from '../i18n'
 import { useTheme } from '../ThemeContext'
 import { PageHeader, Spinner, Empty } from '../components/SharedUI'
+import type { AllPermissionsStaffEntry, StaffPermissionOverride } from '../types'
 
 const PERM_SECTIONS = [
   {
@@ -70,9 +71,9 @@ export default function PermissionManager() {
   const lang = getLang()
   const auth = getAuthState()
 
-  const [staffList, setStaffList] = useState<any[]>([])
+  const [staffList, setStaffList] = useState<AllPermissionsStaffEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedStaff, setSelectedStaff] = useState<any>(null)
+  const [selectedStaff, setSelectedStaff] = useState<AllPermissionsStaffEntry | null>(null)
   const [saving, setSaving] = useState(false)
 
   const [localPerms, setLocalPerms] = useState<Record<string, boolean>>({})
@@ -97,8 +98,8 @@ export default function PermissionManager() {
     const perms: Record<string, boolean> = {}
     for (const section of PERM_SECTIONS) {
       for (const p of section.permissions) {
-        const ov = selectedStaff.overrides?.find((o: any) => o.command === p.cmd)
-        perms[p.cmd] = ov ? ov.allowed : true
+        const ov = selectedStaff.overrides?.find((o: StaffPermissionOverride) => o.command === p.cmd)
+        perms[p.cmd] = ov ? !!ov.allowed : true
       }
     }
     setLocalPerms(perms)
@@ -148,7 +149,7 @@ export default function PermissionManager() {
         'users.manage': false,
         'comments.create': true, 'comments.moderate': true,
       },
-      cs: {
+      customer_service: {
         'clients.view': true, 'clients.create': false, 'clients.edit': false, 'clients.delete': false,
         'phone.lookup': true, 'phone.override': false,
         'performance.view': false, 'performance.recalculate': false,
@@ -229,7 +230,7 @@ export default function PermissionManager() {
                   </div>
                 </div>
                 <div className="d-flex gap-8 flex-wrap">
-                  {['frontdesk', 'leader', 'cs'].map(tmpl => (
+                  {['frontdesk', 'leader', 'customer_service'].map(tmpl => (
                     <button key={tmpl} className="btn-secondary btn-sm btn-pill" onClick={() => applyTemplate(tmpl)}>
                       {t(`perm.template.${tmpl}`, lang)}
                     </button>

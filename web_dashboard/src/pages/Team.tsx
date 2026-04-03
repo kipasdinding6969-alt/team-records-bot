@@ -11,7 +11,7 @@ import {
   YAxis,
 } from 'recharts'
 import { api, getAuthState } from '../api'
-import type { Staff } from '../types'
+import type { Staff, OrgChartTeam, TeamTarget, TeamPerformanceResult } from '../types'
 import { Empty, PageHeader, SectionTitle, Spinner } from '../components/SharedUI'
 import { useTheme } from '../ThemeContext'
 import { t, getLang } from '../i18n'
@@ -26,10 +26,10 @@ export default function Team() {
   const lang = getLang()
   const [staff, setStaff] = useState<Staff[]>([])
   const [loading, setLoading] = useState(true)
-  const [teams, setTeams] = useState<any[]>([])
+  const [teams, setTeams] = useState<(OrgChartTeam & { performance?: TeamPerformanceResult | null })[]>([])
   const [selectedStaffId, setSelectedStaffId] = useState<number | null>(null)
 
-  const [targets, setTargets] = useState<any[]>([])
+  const [targets, setTargets] = useState<TeamTarget[]>([])
   const [showTargetModal, setShowTargetModal] = useState(false)
   const [targetForm, setTargetForm] = useState({ team: '', period_type: 'monthly', period_start: '', period_end: '', target_leads: '', target_orders: '', target_deposit: '' })
   const auth = getAuthState()
@@ -50,7 +50,7 @@ export default function Team() {
         setStaff(staffData)
         setTargets(targetsData)
         Promise.all(
-          orgData.teams.map((teamNode: any) =>
+          orgData.teams.map((teamNode: OrgChartTeam) =>
             api.teamPerformance(teamNode.team).then(perf => ({
               ...teamNode,
               performance: perf
@@ -114,11 +114,11 @@ export default function Team() {
       {targets.length > 0 ? (
         <div className="grid-auto-320 mb-20">
           {targets.map(targetItem => {
-            const teamPerf = teams.find(tm => tm.team === targetItem.team)?.performance || {}
+            const teamPerf = teams.find(tm => tm.team === targetItem.team)?.performance?.totals
 
-            const leadsActual = teamPerf.new_leads || 0
-            const ordersActual = teamPerf.new_orders || 0
-            const depActual = teamPerf.total_deposit || 0
+            const leadsActual = teamPerf?.today_leads || 0
+            const ordersActual = teamPerf?.today_orders || 0
+            const depActual = teamPerf?.today_deposit || 0
 
             const leadsPct = Math.min(100, (leadsActual / (targetItem.target_leads || 1)) * 100) || 0
             const ordersPct = Math.min(100, (ordersActual / (targetItem.target_orders || 1)) * 100) || 0
@@ -185,7 +185,7 @@ export default function Team() {
               </div>
               <div className="text-right">
                 <div className="fs-20 fw-700 text-success">
-                  ${(teamInfo.performance?.total_deposit || 0).toLocaleString()}
+                  ${(teamInfo.performance?.totals?.today_deposit || 0).toLocaleString()}
                 </div>
                 <div className="fs-12 text-secondary text-uppercase">{t('team.todays_deposit', lang)}</div>
               </div>
@@ -193,15 +193,15 @@ export default function Team() {
 
             <div className="grid-3-equal">
               <div className="metric-card">
-                <div className="metric-value fs-16 text-primary">{teamInfo.performance?.new_leads || 0}</div>
+                <div className="metric-value fs-16 text-primary">{teamInfo.performance?.totals?.today_leads || 0}</div>
                 <div className="metric-label">{t('team.new_leads', lang)}</div>
               </div>
               <div className="metric-card">
-                <div className="metric-value fs-16 text-primary">{teamInfo.performance?.new_orders || 0}</div>
+                <div className="metric-value fs-16 text-primary">{teamInfo.performance?.totals?.today_orders || 0}</div>
                 <div className="metric-label">{t('team.orders', lang)}</div>
               </div>
               <div className="metric-card">
-                <div className="metric-value fs-16 text-primary">{teamInfo.performance?.registered || 0}</div>
+                <div className="metric-value fs-16 text-primary">—</div>
                 <div className="metric-label">{t('team.registered', lang)}</div>
               </div>
             </div>

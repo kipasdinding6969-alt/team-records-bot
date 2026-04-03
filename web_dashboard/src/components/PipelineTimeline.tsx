@@ -37,7 +37,7 @@ export default function PipelineTimeline({ pipeline, roles, knives }: PipelineTi
     return val ? 'done' : 'pending'
   }
 
-  const activeRole = roles.find(r => r.is_active && (r.role_type === 'maintainer' || r.role_type === 'full_line'))
+  const activeRole = roles.find(r => r.is_active && (r.role_type === 'maintenance' || r.role_type === 'full_line'))
   const frontdeskRole = roles.find(r => r.role_type === 'frontdesk')
   const isHandedOff = !!pipeline.insufficient_funds_at
 

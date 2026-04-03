@@ -3,6 +3,7 @@ import { api, getAuthState } from '../api'
 import { useTheme } from '../ThemeContext'
 import { t, getLang } from '../i18n'
 import { PageHeader, Spinner, Empty } from '../components/SharedUI'
+import type { GroupCompareData, GroupCompareRow } from '../types'
 
 export default function GroupOverview() {
   const { theme } = useTheme()
@@ -11,7 +12,7 @@ export default function GroupOverview() {
 
   const [loading, setLoading] = useState(true)
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
-  const [groups, setGroups] = useState<any[]>([])
+  const [groups, setGroups] = useState<GroupCompareData[]>([])
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const loadData = async (selectedDate: string) => {
@@ -36,20 +37,20 @@ export default function GroupOverview() {
     setDate(newDate)
   }
 
-  const renderStaffTable = (members: any[], label: string) => {
+  const renderStaffTable = (members: GroupCompareRow[], label: string) => {
     if (!members || members.length === 0) return <Empty label={t('common.no_data', lang)} />
 
-    // Normalize field names — API may return daily_performance fields OR client-aggregate fields
+    // Normalize field names
     const normalized = members.map(m => ({
       staff_id: m.staff_id,
-      name: m.display_name || m.name || '-',
-      powder: m.powder_count ?? m.powder ?? m.total_clients ?? 0,
-      reply_pct: m.reply_rate ?? m.reply_pct ?? 0,
-      register: m.completed_registration ?? m.register ?? 0,
-      training: m.completed_training ?? m.training ?? 0,
-      withdraw: m.withdrawal ?? m.withdraw ?? 0,
-      orders: m.new_order ?? m.orders ?? 0,
-      conversion_pct: m.conversion_rate ?? m.conversion_pct ?? 0,
+      name: m.display_name || '-',
+      powder: m.powder_count || 0,
+      reply_pct: m.reply_rate || 0,
+      register: m.completed_registration || 0,
+      training: m.completed_training || 0,
+      withdraw: m.withdrawal || 0,
+      orders: m.new_order || 0,
+      conversion_pct: m.conversion_rate || 0,
     }))
 
     const totals = normalized.reduce((acc, m) => ({
@@ -142,7 +143,7 @@ export default function GroupOverview() {
       {loading ? <Spinner /> : groups.length === 0 ? <Empty label={t('common.no_data', lang)} /> : (
         <>
           <div className="grid-auto-440 mb-20">
-            {groups.map((g: any, idx: number) => (
+            {groups.map((g: GroupCompareData, idx: number) => (
               <div className="card overflow-hidden" key={g.team || idx}>
                 <div className="group-card-header">
                   <div>

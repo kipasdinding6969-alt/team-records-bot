@@ -27,10 +27,10 @@ FRONTDESK_NAMES = list(FRONTDESK_SHEETS.keys())
 # Cross-role note column mapping: sheet column index → role name
 _CROSS_ROLE_COLUMNS = {
     19: 'frontdesk',    # T
-    20: 'opener',       # U (开单 — legacy)
+    20: 'opener_legacy',# U (开单 — legacy)
     21: 'newbie',       # V (小白)
-    22: 'hype',         # W (炒群)
-    23: 'cs',           # X (客服)
+    22: 'group_hype',   # W (炒群)
+    23: 'customer_service',# X (客服)
     24: 'maintenance',  # Y (维护)
     25: 'etc',          # Z (等等)
 }
@@ -45,7 +45,7 @@ _KILL_PATTERNS = {
 
 
 def _parse_money(value: str) -> float:
-    """Parse sheet money string like '$1,234' or '-$1,234' to float."""
+    """Parse sheet money string like '$1,234', '¥1,234', '1234元', or '-$1,234' to float."""
     if not value or not value.strip():
         return 0.0
     v = value.strip().replace(',', '')
@@ -53,7 +53,10 @@ def _parse_money(value: str) -> float:
     if v.startswith('-'):
         negative = True
         v = v[1:]
-    v = v.lstrip('$')
+    # Strip currency symbols: $, ¥ (full-width and half-width), trailing 元
+    v = v.lstrip('$¥￥')
+    if v.endswith('元'):
+        v = v[:-1]
     try:
         result = float(v)
         return -result if negative else result
@@ -465,7 +468,7 @@ class SheetSyncV2:
                         maintenance_name = NAME_ALIASES.get(maintenance_name, maintenance_name)
                         mt_staff = await database_v2.get_staff_by_display_name(maintenance_name)
                         if mt_staff:
-                            await self._sync_role_assignment(db, client_id, mt_staff.id, 'maintainer')
+                            await self._sync_role_assignment(db, client_id, mt_staff.id, 'maintenance')
                             # Also update client.maintenance_id
                             await db.execute(
                                 'UPDATE clients SET maintenance_id=? WHERE id=? AND maintenance_id IS NULL',

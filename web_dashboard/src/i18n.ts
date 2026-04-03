@@ -61,7 +61,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'perm.group.system': { zh: '系统设置', en: 'System' },
   'perm.template.frontdesk': { zh: '前台默认权限', en: 'Frontdesk Default' },
   'perm.template.leader': { zh: '组长默认权限', en: 'Leader Default' },
-  'perm.template.cs': { zh: '客服默认权限', en: 'CS Default' },
+  'perm.template.customer_service': { zh: '客服默认权限', en: 'CS Default' },
 
   // Nav
   'nav.dashboard': { zh: '仪表盘', en: 'Dashboard' },
@@ -661,11 +661,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'maintainer.total_in': { zh: '共入', en: 'Total In' },
   'maintainer.add_deposit': { zh: '添加存款', en: 'Add Deposit' },
   'maintainer.role_frontdesk': { zh: '前台', en: 'Frontdesk' },
-  'maintainer.role_opener': { zh: '开单', en: 'Opener' },
+  'maintainer.role_opener_legacy': { zh: '开单', en: 'Opener' },
   'maintainer.role_newbie': { zh: '小白', en: 'Newbie' },
-  'maintainer.role_hype': { zh: '炒群', en: 'Hype' },
-  'maintainer.role_cs': { zh: '客服', en: 'CS' },
-  'maintainer.role_mt': { zh: '维护', en: 'Maintenance' },
+  'maintainer.role_group_hype': { zh: '炒群', en: 'Hype' },
+  'maintainer.role_customer_service': { zh: '客服', en: 'CS' },
+  'maintainer.role_maintenance': { zh: '维护', en: 'Maintenance' },
   'maintainer.client_id': { zh: '客户ID', en: 'Client ID' },
 
   // Phase 22: CS Financial
@@ -862,9 +862,9 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // Role types
   'role_type.frontdesk': { zh: '前台', en: 'Frontdesk' },
-  'role_type.maintainer': { zh: '维护', en: 'Maintainer' },
+  'role_type.maintenance': { zh: '维护', en: 'Maintainer' },
   'role_type.group_hype': { zh: '炒群', en: 'Group Hype' },
-  'role_type.newbie_actor': { zh: '小白', en: 'Newbie Actor' },
+  'role_type.newbie': { zh: '小白', en: 'Newbie Actor' },
   'role_type.customer_service': { zh: '客服', en: 'Customer Service' },
   'role_type.opener_legacy': { zh: '开单', en: 'Opener (Legacy)' },
   'role_type.full_line': { zh: '全线', en: 'Full Line' },
@@ -925,7 +925,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'gi.save': { zh: '保存', en: 'Save' },
   'gi.cancel': { zh: '取消', en: 'Cancel' },
   'gi.no_data': { zh: '暂无记录', en: 'No records found' },
-  'gi.newbie_actor': { zh: '小白', en: 'Newbie Actor' },
+  'gi.newbie': { zh: '小白', en: 'Newbie' },
   'gi.group_hype': { zh: '炒群', en: 'Group Hype' },
 
   // Organization hierarchy

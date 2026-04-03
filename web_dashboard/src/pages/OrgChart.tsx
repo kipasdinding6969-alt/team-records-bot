@@ -4,32 +4,7 @@ import { api, getRole } from '../api'
 import { useTheme } from '../ThemeContext'
 import { t, getLang } from '../i18n'
 import { StaffDetailModal } from '../components/StaffDetailModal'
-
-interface StaffNode {
-  id: number
-  display_name: string
-  role: string
-  team: string
-  active_clients: number
-  override_count: number
-  last_active_at: string | null
-  tg_username: string | null
-  daily_target?: number
-}
-
-interface TeamNode {
-  team: string
-  leader: StaffNode | null
-  members: StaffNode[]
-  member_count: number
-  total_clients: number
-  total_deposit?: number
-}
-
-interface OrgData {
-  teams: TeamNode[]
-  unassigned: StaffNode[]
-}
+import type { OrgChartResult, OrgChartTeam, OrgChartStaff } from '../types'
 
 const ROLE_BADGE: Record<string, string> = {
   admin: 'role-admin',
@@ -46,7 +21,7 @@ export default function OrgChart() {
   const { theme } = useTheme()
   const lang = getLang()
   const nav = useNavigate()
-  const [data, setData] = useState<OrgData | null>(null)
+  const [data, setData] = useState<OrgChartResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
@@ -82,7 +57,7 @@ export default function OrgChart() {
   const totalStaff = data.teams.reduce((sum, tm) => sum + tm.member_count + (tm.leader ? 1 : 0), 0) + data.unassigned.length
   const totalClients = data.teams.reduce((sum, tm) => sum + tm.total_clients, 0)
 
-  const filterStaff = (staffList: StaffNode[]) => {
+  const filterStaff = (staffList: OrgChartStaff[]) => {
     if (!search) return staffList
     const lower = search.toLowerCase()
     return staffList.filter(s =>

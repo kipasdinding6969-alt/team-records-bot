@@ -1,13 +1,13 @@
-"""Tests for command handlers."""
+"""Tests for command handlers.
+
+Note: V1 schema (team_members) deprecated test classes removed:
+  TestReportingHandlers, TestFinanceHandlers, TestPerformanceHandlers, TestReminderHandlers
+"""
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
 
 from handlers.registration import handle_start_command, handle_profile_command
-from handlers.reporting import handle_report_command
 from handlers.dashboard import handle_dashboard_command, handle_status_command
-from handlers.finance import handle_finance_command
-from handlers.performance import handle_performance_command
-from handlers.reminders import handle_remind_command
 
 from models import TeamMember
 
@@ -82,56 +82,6 @@ class TestRegistrationHandlers:
             assert 'reply_markup' in kwargs
 
 
-@pytest.mark.skip(reason="V1 schema (team_members) — deprecated")
-class TestReportingHandlers:
-    """Test reporting-related handlers."""
-
-    @pytest.mark.asyncio
-    async def test_report_command_unauthorized(self, mock_telegram_handler, temp_db):
-        """Test /report command for unauthorized user."""
-        task_data = {
-            'user_id': 999999,  # Non-existent user
-            'chat_id': 999999,
-            'args': []
-        }
-
-        with patch('handlers.reporting.database', temp_db), \
-             patch('handlers.reporting.telegram_handler', mock_telegram_handler):
-
-            await handle_report_command(task_data)
-
-            # Should send unauthorized message
-            mock_telegram_handler.send_message.assert_called_once()
-            args, kwargs = mock_telegram_handler.send_message.call_args
-            chat_id, message = args[:2]
-
-            assert chat_id == task_data['chat_id']
-            assert '仅限前台员工' in message or 'only for frontdesk' in message
-
-    @pytest.mark.asyncio
-    async def test_report_command_authorized(self, mock_telegram_handler, populated_db):
-        """Test /report command for authorized user."""
-        task_data = {
-            'user_id': 123456,  # User from populated_db
-            'chat_id': 123456,
-            'args': []
-        }
-
-        with patch('handlers.reporting.database', populated_db), \
-             patch('handlers.reporting.telegram_handler', mock_telegram_handler):
-
-            await handle_report_command(task_data)
-
-            # Should send report wizard
-            mock_telegram_handler.send_message.assert_called_once()
-            args, kwargs = mock_telegram_handler.send_message.call_args
-            chat_id, message = args[:2]
-
-            assert chat_id == task_data['chat_id']
-            assert '客户记录提交' in message or 'Client Record' in message
-            assert 'reply_markup' in kwargs
-
-
 class TestDashboardHandlers:
     """Test dashboard-related handlers."""
 
@@ -194,175 +144,6 @@ class TestDashboardHandlers:
 
             assert chat_id == task_data['chat_id']
             assert '个人统计' in message or 'Personal Statistics' in message
-
-
-@pytest.mark.skip(reason="V1 schema (team_members) — deprecated")
-class TestFinanceHandlers:
-    """Test finance-related handlers."""
-
-    @pytest.mark.asyncio
-    async def test_finance_command_unauthorized(self, mock_telegram_handler, temp_db):
-        """Test /finance command for unauthorized user."""
-        # Create frontdesk user (not manager/admin)
-        frontdesk_member = TeamMember(
-            user_id=123456,
-            chat_id=123456,
-            role="frontdesk"
-        )
-        await temp_db.create_team_member(frontdesk_member)
-
-        task_data = {
-            'user_id': 123456,
-            'chat_id': 123456,
-            'args': []
-        }
-
-        with patch('handlers.finance.database', temp_db), \
-             patch('handlers.finance.telegram_handler', mock_telegram_handler):
-
-            await handle_finance_command(task_data)
-
-            # Should send unauthorized message
-            mock_telegram_handler.send_message.assert_called_once()
-            args, kwargs = mock_telegram_handler.send_message.call_args
-            chat_id, message = args[:2]
-
-            assert chat_id == task_data['chat_id']
-            assert '仅限管理员' in message or 'managers and admins' in message
-
-    @pytest.mark.asyncio
-    async def test_finance_command_invalid_date(self, mock_telegram_handler, temp_db):
-        """Test /finance command with invalid date."""
-        # Create admin user
-        admin_member = TeamMember(
-            user_id=123456,
-            chat_id=123456,
-            role="admin"
-        )
-        await temp_db.create_team_member(admin_member)
-
-        task_data = {
-            'user_id': 123456,
-            'chat_id': 123456,
-            'args': ['invalid-date']
-        }
-
-        with patch('handlers.finance.database', temp_db), \
-             patch('handlers.finance.telegram_handler', mock_telegram_handler):
-
-            await handle_finance_command(task_data)
-
-            # Should send date format error
-            mock_telegram_handler.send_message.assert_called_once()
-            args, kwargs = mock_telegram_handler.send_message.call_args
-            chat_id, message = args[:2]
-
-            assert chat_id == task_data['chat_id']
-            assert '日期格式错误' in message or 'Invalid date format' in message
-
-
-@pytest.mark.skip(reason="V1 schema (team_members) — deprecated")
-class TestPerformanceHandlers:
-    """Test performance-related handlers."""
-
-    @pytest.mark.asyncio
-    async def test_performance_command_no_args(self, mock_telegram_handler, temp_db):
-        """Test /performance command without arguments."""
-        # Create admin user
-        admin_member = TeamMember(
-            user_id=123456,
-            chat_id=123456,
-            role="admin"
-        )
-        await temp_db.create_team_member(admin_member)
-
-        task_data = {
-            'user_id': 123456,
-            'chat_id': 123456,
-            'args': []
-        }
-
-        with patch('handlers.performance.database', temp_db), \
-             patch('handlers.performance.telegram_handler', mock_telegram_handler), \
-             patch('handlers.performance.get_available_frontdesk_members') as mock_get_members:
-
-            mock_get_members.return_value = ["阿YIM", "阿俊"]
-
-            await handle_performance_command(task_data)
-
-            # Should send available members list
-            mock_telegram_handler.send_message.assert_called_once()
-            args, kwargs = mock_telegram_handler.send_message.call_args
-            chat_id, message = args[:2]
-
-            assert chat_id == task_data['chat_id']
-            assert '可用成员' in message or 'Available members' in message
-
-
-@pytest.mark.skip(reason="V1 schema (team_members) — deprecated")
-class TestReminderHandlers:
-    """Test reminder-related handlers."""
-
-    @pytest.mark.asyncio
-    async def test_remind_command_unauthorized(self, mock_telegram_handler, temp_db):
-        """Test /remind command for unauthorized user."""
-        # Create manager user (only admins can use remind)
-        manager_member = TeamMember(
-            user_id=123456,
-            chat_id=123456,
-            role="manager"
-        )
-        await temp_db.create_team_member(manager_member)
-
-        task_data = {
-            'user_id': 123456,
-            'chat_id': 123456,
-            'args': []
-        }
-
-        with patch('handlers.reminders.database', temp_db), \
-             patch('handlers.reminders.telegram_handler', mock_telegram_handler):
-
-            await handle_remind_command(task_data)
-
-            # Should send unauthorized message
-            mock_telegram_handler.send_message.assert_called_once()
-            args, kwargs = mock_telegram_handler.send_message.call_args
-            chat_id, message = args[:2]
-
-            assert chat_id == task_data['chat_id']
-            assert '仅限管理员' in message or 'only for administrators' in message
-
-    @pytest.mark.asyncio
-    async def test_remind_command_no_args(self, mock_telegram_handler, temp_db):
-        """Test /remind command without arguments."""
-        # Create admin user
-        admin_member = TeamMember(
-            user_id=123456,
-            chat_id=123456,
-            role="admin"
-        )
-        await temp_db.create_team_member(admin_member)
-
-        task_data = {
-            'user_id': 123456,
-            'chat_id': 123456,
-            'args': []
-        }
-
-        with patch('handlers.reminders.database', temp_db), \
-             patch('handlers.reminders.telegram_handler', mock_telegram_handler):
-
-            await handle_remind_command(task_data)
-
-            # Should send usage instructions
-            mock_telegram_handler.send_message.assert_called_once()
-            args, kwargs = mock_telegram_handler.send_message.call_args
-            chat_id, message = args[:2]
-
-            assert chat_id == task_data['chat_id']
-            assert '提醒管理' in message or 'Reminder Management' in message
-            assert '使用方法' in message or 'Usage' in message
 
 
 class TestHandlerErrorHandling:

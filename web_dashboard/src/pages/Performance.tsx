@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, getAuthState } from '../api'
 import { getLang, t } from '../i18n'
 import { useTheme } from '../ThemeContext'
+import type { OrgChartTeam, PerformanceDailyStaffRow, TeamTarget, PerformanceSummaryResult } from '../types'
 
 interface StaffPerf {
   staff_id: number
@@ -62,7 +63,7 @@ export default function Performance() {
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0])
   const [team, setTeam] = useState('all')
   const [data, setData] = useState<{ staff: StaffPerf[]; totals: Record<string, number> } | null>(null)
-  const [targets, setTargets] = useState<any[]>([])
+  const [targets, setTargets] = useState<TeamTarget[]>([])
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState<{ msg: string, type: 'success' | 'error' | 'info' } | null>(null)
   const [recalculating, setRecalculating] = useState(false)
@@ -72,16 +73,25 @@ export default function Performance() {
     const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]
   })
   const [summaryTo, setSummaryTo] = useState(() => new Date().toISOString().split('T')[0])
-  const [summaryData, setSummaryData] = useState<any>(null)
+  const [summaryData, setSummaryData] = useState<PerformanceSummaryResult | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [teamsList, setTeamsList] = useState<{ key: string, label: string }[]>([])
+
+  let summaryTotals = null;
+  if (summaryData && summaryData.staff) {
+    summaryTotals = {
+      new_leads: summaryData.staff.reduce((acc, s) => acc + (s.new_leads || 0), 0),
+      new_orders: summaryData.staff.reduce((acc, s) => acc + (s.new_orders || 0), 0),
+      total_deposit: summaryData.staff.reduce((acc, s) => acc + (s.total_deposit || 0), 0),
+    };
+  }
 
   useEffect(() => {
     api.orgChart()
       .then(orgData => {
         const dynamicTeams = [{ key: 'all', label: lang === 'zh' ? '全线' : 'All Teams' }]
         if (orgData && orgData.teams) {
-          orgData.teams.forEach((entry: any) => {
+          orgData.teams.forEach((entry: OrgChartTeam) => {
             dynamicTeams.push({ key: entry.team, label: entry.team })
           })
         }
@@ -104,7 +114,7 @@ export default function Performance() {
     ])
       .then(([res, trendsData, targetsData]) => {
         if (res && res.staff) {
-          res.staff = res.staff.map((s: any) => ({
+          res.staff = res.staff.map((s: PerformanceDailyStaffRow) => ({
             ...s,
             trend: trendsData[s.staff_id] || []
           }))
@@ -158,7 +168,7 @@ export default function Performance() {
                 api.performanceDaily(selectedDate, team).then(async res => {
                   const trendsData = await api.trendsBatch(team, 7)
                   if (res && res.staff) {
-                    res.staff = res.staff.map((s: any) => ({ ...s, trend: trendsData[s.staff_id] || [] }))
+                    res.staff = res.staff.map((s: PerformanceDailyStaffRow) => ({ ...s, trend: trendsData[s.staff_id] || [] }))
                   }
                   setData(res)
                 }).finally(() => setLoading(false))
@@ -316,7 +326,7 @@ export default function Performance() {
             {summaryLoading && <div className="empty-state">{t('common.loading', lang)}</div>}
             {summaryData && !summaryLoading && (
               <div className="flex-col gap-12">
-                {(summaryData.staff || []).map((s: any) => (
+                {(summaryData.staff || []).map((s: PerformanceDailyStaffRow) => (
                   <div key={s.staff_id || s.display_name} className="card">
                     <div className="heading-md mb-4">{s.display_name}</div>
                     <div className="label-section text-secondary mb-20">
@@ -331,15 +341,15 @@ export default function Performance() {
                     </div>
                   </div>
                 ))}
-                {summaryData.totals && (
+                {summaryTotals && (
                   <div className="card border-accent">
                     <div className="label-section text-accent mb-20">
                       {t('perf.team_total', lang)} ({summaryFrom} ~ {summaryTo})
                     </div>
                     <div className="grid-4">
-                      <MetricBox label={t('perf.new_powder', lang)} value={summaryData.totals.new_leads || 0} colorClass="text-accent" />
-                      <MetricBox label={t('perf.new_order', lang)} value={summaryData.totals.new_orders || 0} colorClass="text-success" />
-                      <MetricBox label={t('perf.deposit', lang)} value={`$${(summaryData.totals.total_deposit || 0).toLocaleString()}`} colorClass="text-success" />
+                      <MetricBox label={t('perf.new_powder', lang)} value={summaryTotals.new_leads || 0} colorClass="text-accent" />
+                      <MetricBox label={t('perf.new_order', lang)} value={summaryTotals.new_orders || 0} colorClass="text-success" />
+                      <MetricBox label={t('perf.deposit', lang)} value={`${(summaryTotals.total_deposit || 0).toLocaleString()}`} colorClass="text-success" />
                     </div>
                   </div>
                 )}

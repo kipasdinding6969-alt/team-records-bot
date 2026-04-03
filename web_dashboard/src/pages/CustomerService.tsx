@@ -3,6 +3,7 @@ import { api } from '../api'
 import { useTheme } from '../ThemeContext'
 import { t, getLang } from '../i18n'
 import { PageHeader, Spinner, Empty } from '../components/SharedUI'
+import type { Client, ClientDetail, ClientNote } from '../types'
 
 export default function CustomerService() {
   const { theme } = useTheme()
@@ -10,8 +11,8 @@ export default function CustomerService() {
   const lang = getLang()
 
   const [search, setSearch] = useState('')
-  const [clients, setClients] = useState<any[]>([])
-  const [selectedClient, setSelectedClient] = useState<any>(null)
+  const [clients, setClients] = useState<Client[]>([])
+  const [selectedClient, setSelectedClient] = useState<ClientDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [noteContent, setNoteContent] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
@@ -136,7 +137,7 @@ export default function CustomerService() {
               <h3 className="section-title mb-12">{t('cs.recent_interactions', lang)}</h3>
               {selectedClient.notes && selectedClient.notes.length > 0 ? (
                 <div className="d-flex flex-col gap-12">
-                  {selectedClient.notes.map((n: any) => (
+                  {selectedClient.notes.map((n: ClientNote) => (
                     <div key={n.id} className="note-card">
                       <div className="d-flex justify-between mb-8">
                          <span className="label-sm">{n.staff_name || 'System'}</span>

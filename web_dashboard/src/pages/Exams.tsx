@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, getAuthState } from '../api'
 import { getLang, t } from '../i18n'
 import { useTheme } from '../ThemeContext'
-import type { Exam, ExamResultRow } from '../types'
+import type { Exam, ExamResultRow, AllStaffMember } from '../types'
 
 export default function Exams() {
   const { theme } = useTheme()
@@ -38,8 +38,9 @@ export default function Exams() {
   useEffect(() => {
     load()
     api.allStaff().then(staff => {
-      const uniqueTeams = [...new Set(staff.map((s: any) => s.team).filter(Boolean))]
-      setTeams(uniqueTeams.map(t => ({ key: t, label: t })))
+      const teamNames = staff.map((s: AllStaffMember) => s.team).filter((t): t is string => !!t);
+      const uniqueTeams = [...new Set(teamNames)];
+      setTeams(uniqueTeams.map(name => ({ key: name, label: name })))
     }).catch(() => { setError(t('common.error', lang)); setTimeout(() => setError(''), 3000) })
   }, [])
 
@@ -53,7 +54,7 @@ export default function Exams() {
       setResultsLoading(prev => ({ ...prev, [examId]: true }))
       try {
         const data = await api.examResults(examId)
-        setResults(prev => ({ ...prev, [examId]: data.results || data }))
+        setResults(prev => ({ ...prev, [examId]: data.results }))
       } catch {
         setError(t('exams.results_failed', lang)); setTimeout(() => setError(''), 3000)
       } finally {

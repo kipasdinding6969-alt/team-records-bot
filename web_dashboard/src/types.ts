@@ -108,7 +108,7 @@ export interface DashboardUser {
   role: 'owner' | 'admin' | 'member'
   staff_id: number | null
   team_scope: string | null
-  is_active: boolean
+  is_active: number
   last_login: string | null
   created_at: string
 }
@@ -163,7 +163,7 @@ export const ROLE_COLORS: Record<string, string> = {
 
 // Phase 22: Lead categories
 export type LeadCategory = 'UK表单粉' | 'CA表单粉' | 'AU表单粉' | 'EU表单粉' | '飞机筛选' | 'RCS筛选'
-export type DayStatus = '注册' | '不注册' | 'pending'
+export type DayStatus = 'register' | 'no_register' | 'pending'
 
 export const LEAD_CATEGORIES: LeadCategory[] = ['UK表单粉', 'CA表单粉', 'AU表单粉', 'EU表单粉', '飞机筛选', 'RCS筛选']
 
@@ -245,27 +245,23 @@ export interface ExamResultRow {
 }
 
 // Phase 22: Maintainer deposits
-export type MaintainerRole = 'frontdesk' | 'opener' | 'newbie' | 'group_chat' | 'cs' | 'maintenance'
+export type MaintainerRole = 'frontdesk' | 'opener_legacy' | 'newbie' | 'group_hype' | 'customer_service' | 'maintenance'
 
 export interface MaintainerDeposit {
   id: number
   client_id: number
   phone: string
   amount: number
-  knife_number: number | null
-  role_type: string | null
   pressure_amount: number
   total_in: number
   deposit_group_id: number | null
   platform: string | null
   deposit_date: string
-  note: string | null
-  frontdesk_name: string
-  team: string
   group_number: string | null
   total_pressure: number | null
   total_collected: number | null
   cut_count: number | null
+  frontdesk_name: string | null
 }
 
 // Phase 22: Crypto transactions
@@ -274,8 +270,8 @@ export interface CryptoTransaction {
   txn_type: 'in' | 'out'
   client_name: string
   client_number: string | null
-  maintainer_id: number | null
-  maintainer_name: string | null
+  maintenance_id: number | null
+  maintenance_name: string | null
   country: string | null
   amount_usdt: number
   situation: string | null
@@ -327,11 +323,37 @@ export interface AuditLogEntry {
 }
 
 // Phase 22: Group comparison
+export interface GroupCompareRow {
+  staff_id: number
+  display_name: string
+  powder_count: number
+  reply_rate: number
+  completed_registration: number
+  completed_training: number
+  withdrawal: number
+  new_order: number
+  conversion_rate: number
+}
+
 export interface GroupCompareData {
   team: string
   leader: string | null
-  today: GranularPerfRow[]
-  cumulative: Record<string, number>[]
+  today: GroupCompareRow[]
+  cumulative: GroupCompareRow[]
+  totals: {
+    total_clients: number
+    new_leads: number
+    registered: number
+    training: number
+    withdrew: number
+    orders: number
+    killed: number
+  }
+}
+
+export interface GroupCompareResult {
+  date: string
+  groups: GroupCompareData[]
 }
 
 // ─── Phase 26: Domain Model ────────────────────────────────────────────────
@@ -364,7 +386,7 @@ export interface ClientRoleAssignment {
   id: number
   client_id: number
   staff_id: number
-  role_type: 'frontdesk' | 'maintainer' | 'group_hype' | 'newbie_actor' | 'customer_service' | 'opener_legacy' | 'full_line'
+  role_type: 'frontdesk' | 'maintenance' | 'group_hype' | 'newbie' | 'customer_service' | 'opener_legacy' | 'full_line'
   assigned_at: string
   ended_at: string | null
   handoff_reason: string | null
@@ -379,17 +401,8 @@ export interface KnifeDeposit {
   amount: number
   deposit_day: number | null
   platform: string | null
-  maintainer_id: number | null
+  maintenance_id: number | null
   notes: string | null
-  created_at: string
-}
-
-export interface CrossRoleNote {
-  id: number
-  client_id: number
-  from_role: string
-  from_staff_id: number | null
-  content: string
   created_at: string
 }
 
@@ -398,7 +411,7 @@ export interface GroupInteraction {
   client_id: number
   group_id: string | null
   actor_staff_id: number | null
-  actor_role: 'newbie_actor' | 'group_hype' | 'passerby'
+  actor_role: 'newbie' | 'group_hype' | 'passerby'
   day_number: number | null
   script_completed: number
   client_read_messages: number
@@ -416,19 +429,6 @@ export interface GroupInteraction {
   frontdesk_name?: string | null
 }
 
-export interface OrgUnit {
-  id: number
-  name: string
-  unit_type: 'organization' | 'branch' | 'group' | 'subgroup'
-  parent_id: number | null
-  leader_staff_id: number | null
-  leader_name?: string
-  is_active: number
-  children?: OrgUnit[]
-}
-
-export type KillType = 'register_kill' | 'new_order_kill' | 'pressure_kill' | 'salary_kill'
-
 export const KILL_LABELS: Record<string, Record<string, string>> = {
   register_kill: { zh: '注册杀', en: 'Register Kill' },
   new_order_kill: { zh: '新单杀', en: 'New Order Kill' },
@@ -438,10 +438,463 @@ export const KILL_LABELS: Record<string, Record<string, string>> = {
 
 export const ROLE_TYPE_LABELS: Record<string, Record<string, string>> = {
   frontdesk: { zh: '前台', en: 'Frontdesk' },
-  maintainer: { zh: '维护', en: 'Maintainer' },
+  maintenance: { zh: '维护', en: 'Maintenance' },
   group_hype: { zh: '炒群', en: 'Group Hype' },
-  newbie_actor: { zh: '小白', en: 'Newbie Actor' },
+  newbie: { zh: '小白', en: 'Newbie' },
   customer_service: { zh: '客服', en: 'Customer Service' },
   opener_legacy: { zh: '开单', en: 'Opener (Legacy)' },
   full_line: { zh: '全线', en: 'Full Line' },
+}
+
+// ─── API Response Types ────────────────────────────────────────────────────
+
+// Auth
+export interface LoginResponse {
+  access_token: string
+  token_type: string
+  username: string
+  display_name: string
+  role: AuthState['role']
+  team_scope: string | null
+  staff_id: number | null
+  staff_role: string | null
+  user_id: number
+}
+
+export interface VerifyResponse {
+  ok: boolean
+  username: string
+  role: AuthState['role']
+  team_scope: string | null
+  display_name: string
+  staff_id: number | null
+  staff_role: string | null
+  user_id: number
+}
+
+// Phone Registry
+export interface PhoneRegistryEntry {
+  found: true
+  id?: number
+  phone: string
+  phone_normalized: string
+  submitter_name: string
+  submitter_staff_id: number | null
+  source: string
+  submitted_at: string | null
+  created_at?: string
+  linked_clients: { id: number; phone: string; status: string; frontdesk_id: number | null; frontdesk_name: string | null }[]
+  log: PhoneRegistryLogEntry[]
+  history?: PhoneRegistryLogEntry[]
+  duplicate_flagged?: boolean
+  message_count?: number
+}
+
+export interface PhoneRegistryNotFound {
+  found: false
+  phone: string
+}
+
+export type PhoneRegistryLookupResult = PhoneRegistryEntry | PhoneRegistryNotFound
+
+export interface PhoneRegistryLogEntry {
+  id: number
+  action: string
+  actor_name: string
+  details: string | null
+  created_at: string
+}
+
+export interface PhoneRegistryStatsResult {
+  total: number
+  total_registered: number
+  duplicates_blocked: number
+  by_source: Record<string, number>
+  chat_export_phones: number
+  chat_export_duplicates: number
+}
+
+export interface PhoneCheckResult {
+  phone: string
+  normalized: string
+  status: 'available' | 'own' | 'taken'
+  owner?: string
+  submitted_at?: string
+  category?: string
+  team_name?: string
+  editable?: boolean
+  client_id?: number
+  client_status?: string
+  client_owner?: string
+  is_own_client?: boolean
+  source?: string
+  duplicate_flagged?: boolean
+}
+
+export interface PhoneRegistrySearchResult {
+  total: number
+  page: number
+  per_page: number
+  results: {
+    id: number
+    phone: string
+    phone_normalized: string
+    submitter_name: string
+    submitter_staff_id: number | null
+    source: string
+    submitted_at: string
+  }[]
+}
+
+export interface PhoneRegistryDuplicatesResult {
+  total: number
+  page: number
+  per_page: number
+  results: {
+    phone_normalized: string
+    phone: string
+    submitter_count: number
+    submitters: string
+    earliest: string
+    latest: string
+  }[]
+}
+
+export interface PhoneRegistryHistoryResult {
+  phone: string
+  normalized: string
+  entries: Record<string, unknown>[]
+}
+
+export interface BulkCheckResponse {
+  total: number
+  found: number
+  results: {
+    phone: string
+    phone_input: string
+    normalized: string
+    found: boolean
+    submitter_name?: string
+    submitted_at?: string
+    source_table?: string
+  }[]
+}
+
+export interface PhoneRegistryByStaffResult {
+  total: number
+  page: number
+  per_page: number
+  results: {
+    id: number
+    phone: string
+    phone_normalized: string
+    submitter_name: string
+    source: string
+    submitted_at: string
+    created_at: string
+  }[]
+}
+
+// Client Links
+export interface ClientLink {
+  id: number
+  client_id_a: number
+  client_id_b: number
+  link_type: string
+  note: string | null
+  created_at: string
+  phone_a: string
+  phone_b: string
+  status_a: string
+  status_b: string
+  name_a: string | null
+  name_b: string | null
+}
+
+// Permissions
+export interface StaffPermissionOverride {
+  id: number
+  command: string
+  allowed: number
+  reason: string | null
+  created_at?: string
+  updated_at?: string
+  granted_by_name?: string | null
+}
+
+export interface StaffPermissionsResult {
+  staff: { id: number; display_name: string; role: string; team: string | null }
+  overrides: StaffPermissionOverride[]
+}
+
+export interface AllPermissionsStaffEntry {
+  id: number
+  display_name: string
+  role: string
+  team: string | null
+  overrides: { id: number; command: string; allowed: number; reason: string | null }[]
+}
+
+// Client Notes (enhanced from backend)
+export interface ClientNoteEntry {
+  id: number
+  note_type: string
+  old_status: string | null
+  new_status: string | null
+  content: string | null
+  author_name: string | null
+  phone_normalized: string | null
+  created_at: string
+  staff_name: string | null
+}
+
+// Timeline
+export interface TimelineItem {
+  id: number
+  client_id?: number
+  timeline_type: 'note' | 'deposit' | 'link'
+  note_type?: string
+  content: string | null
+  created_at: string
+  author_name?: string | null
+  staff_name?: string | null
+  client_phone?: string | null
+  old_status?: string | null
+  new_status?: string | null
+  phone_a?: string
+  phone_b?: string
+  amount?: number
+  currency?: string
+  platform?: string
+}
+
+// Performance
+export interface PerformanceDailyStaffRow {
+  staff_id: number
+  display_name: string
+  team: string | null
+  new_leads: number
+  contacted: number
+  replied: number
+  registered: number
+  training: number
+  withdrew: number
+  new_orders: number
+  ghosted: number
+  dead: number
+  total_deposit: number
+  reply_rate: number
+  registration_rate: number
+  training_rate: number
+  conversion_rate: number
+}
+
+export interface PerformanceDailyResult {
+  date: string
+  team: string
+  staff: PerformanceDailyStaffRow[]
+  totals: Record<string, number>
+}
+
+export interface PerformanceSummaryResult {
+  from: string
+  to: string
+  team: string
+  staff: PerformanceDailyStaffRow[]
+  totals: Record<string, number>
+}
+
+export interface PerformanceTrendPoint {
+  stat_date: string
+  new_leads: number
+  contacted: number
+  replied: number
+  registered: number
+  training: number
+  withdrew: number
+  new_orders: number
+  ghosted: number
+  dead: number
+  total_deposit: number
+  reply_rate: number
+  conversion_rate: number
+}
+
+// Team Performance
+export interface TeamPerformanceMember {
+  id: number
+  display_name: string
+  role: string
+  today_leads: number
+  today_orders: number
+  today_deposit: number
+}
+
+export interface TeamPerformanceResult {
+  team: string
+  members: TeamPerformanceMember[]
+  totals: { today_leads: number; today_orders: number; today_deposit: number }
+}
+
+// Org Chart
+export interface OrgChartStaff {
+  id: number
+  display_name: string
+  role: string
+  team: string | null
+  maintenance_id: number | null
+  tg_username: string | null
+  daily_target: number | null
+  last_active_at: string | null
+  active_clients: number
+  override_count: number
+}
+
+export interface OrgChartTeam {
+  team: string
+  leader: OrgChartStaff | null
+  members: OrgChartStaff[]
+  member_count: number
+  total_clients: number
+  total_deposit?: number
+}
+
+export interface OrgChartResult {
+  teams: OrgChartTeam[]
+  unassigned: OrgChartStaff[]
+}
+
+// Linked Timeline
+export interface LinkedTimelineResult {
+  client_id: number
+  linked_client_ids: number[]
+  timeline: TimelineItem[]
+}
+
+// All Staff (management view)
+export interface AllStaffMember {
+  id: number
+  display_name: string
+  role: string
+  team: string | null
+  tg_username: string | null
+  daily_target: number | null
+  is_active: number
+  phone: string | null
+  language: string | null
+  client_count: number
+}
+
+// Targets
+export interface TeamTarget {
+  id: number
+  team: string
+  period_type: string
+  period_start: string
+  period_end: string
+  target_leads: number | null
+  target_registers: number | null
+  target_orders: number | null
+  target_deposit: number | null
+  created_by_name: string | null
+  created_at: string
+}
+
+// Commissions
+export interface CommissionEntry {
+  id: number
+  staff_id: number
+  trigger_type: string
+  amount: number
+  status: string
+  period: string
+  created_at: string
+  staff_name: string
+  team: string | null
+}
+
+export interface CommissionSummaryEntry {
+  staff_id: number
+  display_name: string
+  team: string | null
+  approved_total: number
+  pending_total: number
+  total_entries: number
+}
+
+// Templates
+export interface MessageTemplate {
+  id: number
+  name: string
+  content: string
+  category: string
+  is_default: number
+  created_at: string
+  created_by_name: string | null
+}
+
+// Contests
+export interface ContestEntry {
+  id: number
+  title: string
+  metric: string
+  target: number
+  team: string | null
+  start_date: string
+  end_date: string
+  status: string
+  created_at: string
+  winner_name: string | null
+  created_by_name: string | null
+}
+
+export interface ContestScore {
+  staff_id: number
+  score: number
+  updated_at: string
+  display_name: string
+  team: string | null
+}
+
+// Gamification
+export interface StaffGamificationResult {
+  staff_id: number
+  total_xp: number
+  streak: { current_streak: number; longest_streak: number; last_action_date?: string }
+  badges: { name: string; emoji: string; description: string; earned_at: string }[]
+  recent_xp: { action: string; xp_amount: number; created_at: string }[]
+}
+
+// Audit Log
+export interface AuditLogResult {
+  total: number
+  page: number
+  per_page: number
+  entries: AuditLogEntry[]
+}
+
+// Org Units
+export interface OrgUnit {
+  id: number
+  name: string
+  unit_type: string
+  parent_id: number | null
+  leader_staff_id: number | null
+  is_active: number
+  leader_name: string | null
+  children: OrgUnit[]
+}
+
+export interface CrossRoleNote {
+  id: number;
+  client_id: number;
+  from_role: string;
+  from_staff_id: number | null;
+  content: string | null;
+  created_at: string;
+  staff_name: string | null;
+}
+export interface ExamResultsResponse {
+  exam: Exam
+  results: ExamResultRow[]
 }

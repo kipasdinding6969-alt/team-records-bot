@@ -19,7 +19,7 @@ interface FormData {
 const INITIAL_FORM: FormData = {
   client_id: '',
   group_id: '',
-  actor_role: 'newbie_actor',
+  actor_role: 'newbie',
   day_number: '1',
   script_completed: false,
   client_left_group: false,
@@ -209,8 +209,8 @@ export default function GroupInteractions() {
                     </span>
                   </td>
                   <td>
-                    {row.actor_role === 'newbie_actor'
-                      ? (row.actor_name || t('gi.newbie_actor', lang))
+                    {row.actor_role === 'newbie'
+                      ? (row.actor_name || t('gi.newbie', lang))
                       : t('gi.not_joined', lang)}
                   </td>
                   <td>
@@ -282,7 +282,7 @@ export default function GroupInteractions() {
                   value={form.actor_role}
                   onChange={e => setForm({ ...form, actor_role: e.target.value })}
                 >
-                  <option value="newbie_actor">{t('gi.newbie_actor', lang)}</option>
+                  <option value="newbie">{t('gi.newbie', lang)}</option>
                   <option value="group_hype">{t('gi.group_hype', lang)}</option>
                   <option value="passerby">{t('gi.passerby', lang)}</option>
                 </select>

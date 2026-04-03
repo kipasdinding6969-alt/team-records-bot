@@ -149,3 +149,5 @@ web_dashboard/update_*.cjs
 # Phase prompt/spec docs (not code)
 PHASE*_*.md
 GEMINI_*.md
+local_rag/embeddings.jsonl
+*.bak

@@ -3,32 +3,9 @@ import { api, getAuthState } from '../api'
 import { getLang, t } from '../i18n'
 import { useTheme } from '../ThemeContext'
 
-interface LookupResult {
-  found: boolean
-  phone?: string
-  phone_normalized?: string
-  submitter_name?: string
-  submitter_staff_id?: number
-  source?: string
-  submitted_at?: string
-  log?: Array<{
-    action: string
-    actor_name: string
-    created_at: string
-    details: string | null
-  }>
-  linked_clients?: Array<{
-    id: number
-    phone: string
-    status: string
-    frontdesk_name: string
-  }>
-}
+import type { PhoneRegistryLookupResult, PhoneRegistryStatsResult } from '../types'
 
-interface PhoneStats {
-  total_registered: number
-  duplicates_blocked: number
-}
+type LookupResult = PhoneRegistryLookupResult
 
 function NoteForm({ clientId, lang }: { clientId: number; lang: 'en' | 'zh' }) {
   const { theme } = useTheme()
@@ -85,7 +62,7 @@ export default function NumberLookup() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<LookupResult | null>(null)
   const [error, setError] = useState('')
-  const [stats, setStats] = useState<PhoneStats | null>(null)
+  const [stats, setStats] = useState<PhoneRegistryStatsResult | null>(null)
   const [overrideMode, setOverrideMode] = useState(false)
   const [overrideSubmitter, setOverrideSubmitter] = useState('')
   const [overrideStaffId, setOverrideStaffId] = useState('')
@@ -142,7 +119,7 @@ export default function NumberLookup() {
     return new Date(iso).toLocaleString()
   }
 
-  const isOwnedByMe = result?.submitter_staff_id === auth?.staff_id;
+  const isOwnedByMe = result?.found === true && result.submitter_staff_id === auth?.staff_id;
 
   return (
     <div className="page-container">
@@ -273,7 +250,7 @@ export default function NumberLookup() {
                   </div>
                 ) : (
                   <div className="d-flex flex-col">
-                    {result.linked_clients.map((c: any, i: number) => (
+                    {result.linked_clients.map((c, i: number) => (
                       <div key={c.id} className={`d-flex gap-12 p-12-0 align-center subtitle ${i === result.linked_clients!.length - 1 ? '' : 'border-bottom'}`}>
                         <a
                           href={`/clients/${c.id}`}
@@ -330,11 +307,11 @@ export default function NumberLookup() {
           <div className="grid-2col gap-12">
             <div className="metric-card">
               <div className="metric-label">{t('phone.total_numbers', lang)}</div>
-              <div className="metric-value">{stats.total_registered.toLocaleString() ?? 0}</div>
+              <div className="metric-value">{(stats.total_registered ?? 0).toLocaleString()}</div>
             </div>
             <div className="metric-card">
               <div className="metric-label">{t('phone.duplicates_blocked', lang)}</div>
-              <div className="metric-value">{stats.duplicates_blocked.toLocaleString() ?? 0}</div>
+              <div className="metric-value">{(stats.duplicates_blocked ?? 0).toLocaleString()}</div>
             </div>
           </div>
         </div>

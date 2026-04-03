@@ -35,7 +35,7 @@ export default function PerformanceDetail() {
 
   useEffect(() => {
     api.allStaff().then(staff => {
-      const uniqueTeams = [...new Set(staff.map((s: any) => s.team).filter(Boolean))]
+      const uniqueTeams = [...new Set(staff.map(s => s.team).filter((t): t is string => !!t))]
       setTeams(uniqueTeams.map(t => ({ key: t, label: t })))
     }).catch((e) => { if (import.meta.env?.DEV) console.warn('api call failed:', e) })
   }, [])
@@ -91,7 +91,15 @@ export default function PerformanceDetail() {
   }
 
   function handleAddBlown() {
-    api.addBlownAccount({ ...blownForm, blown_date: selectedDate })
+    api.addBlownAccount({
+        staff_id: blownForm.staff_id ?? 0,
+        blown_date: selectedDate,
+        account_type: blownForm.account_type ?? undefined,
+        phone_number: blownForm.phone_number ?? undefined,
+        account_identifier: blownForm.account_identifier ?? undefined,
+        reason: blownForm.reason ?? undefined,
+        category: blownForm.category ?? undefined,
+      })
       .then(() => {
         setBlownForm({ display_name: '', team: '', account_identifier: '', blown_date: selectedDate, reason: '' })
         api.blownAccounts(selectedDate, team === 'all' ? undefined : team)

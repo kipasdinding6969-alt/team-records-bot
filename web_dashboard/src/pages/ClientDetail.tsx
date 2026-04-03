@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api, getAuthState } from '../api'
-import type { ClientDetail as TClientDetail, ClientComment } from '../types'
+import type { ClientDetail as TClientDetail, ClientComment, ClientLink, TimelineItem, LinkedTimelineResult, KnifeDeposit, ClientPipelineStatus, CrossRoleNote, ClientRoleAssignment, AllStaffMember, AuthState } from '../types'
 import { STATUS_COLORS, STATUS_LABELS } from '../types'
-import { getLang, t } from '../i18n'
+import { getLang, t, type Lang } from '../i18n'
 import { useTheme } from '../ThemeContext'
+import type { Theme } from '../theme'
 import { Spinner } from '../components/SharedUI'
 
 const MILESTONES = [
@@ -33,9 +34,9 @@ const KILL_TYPES = [
 
 const ROLE_TYPES = [
   { value: 'frontdesk', label: 'role_type.frontdesk' },
-  { value: 'maintainer', label: 'role_type.maintainer' },
+  { value: 'maintenance', label: 'role_type.maintenance' },
   { value: 'group_hype', label: 'role_type.group_hype' },
-  { value: 'newbie_actor', label: 'role_type.newbie_actor' },
+  { value: 'newbie', label: 'role_type.newbie' },
   { value: 'customer_service', label: 'role_type.customer_service' },
   { value: 'opener_legacy', label: 'role_type.opener_legacy' },
   { value: 'full_line', label: 'role_type.full_line' },
@@ -43,11 +44,11 @@ const ROLE_TYPES = [
 
 const CROSS_ROLE_OPTIONS = [
   { value: 'frontdesk', label: 'maintainer.role_frontdesk' },
-  { value: 'opener', label: 'maintainer.role_opener' },
+  { value: 'opener_legacy', label: 'maintainer.role_opener_legacy' },
   { value: 'newbie', label: 'maintainer.role_newbie' },
-  { value: 'hype', label: 'maintainer.role_hype' },
-  { value: 'cs', label: 'maintainer.role_cs' },
-  { value: 'maintenance', label: 'maintainer.role_mt' },
+  { value: 'group_hype', label: 'maintainer.role_group_hype' },
+  { value: 'customer_service', label: 'maintainer.role_customer_service' },
+  { value: 'maintenance', label: 'maintainer.role_maintenance' },
 ] as const
 
 function Field({ label, value, accent }: { label: string; value: string | number | null | undefined; accent?: string }) {
@@ -62,16 +63,16 @@ function Field({ label, value, accent }: { label: string; value: string | number
 export default function ClientDetail() {
   const { theme } = useTheme()
   const { id } = useParams<{ id: string }>()
-  const lang = getLang()
+  const lang = getLang() as Lang
   const [client, setClient] = useState<TClientDetail | null>(null)
-  const [links, setLinks] = useState<any[]>([])
-  const [timeline, setTimeline] = useState<any[]>([])
+  const [links, setLinks] = useState<ClientLink[]>([])
+  const [timeline, setTimeline] = useState<TimelineItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const nav = useNavigate()
 
-  const [linkedTimeline, setLinkedTimeline] = useState<any>(null)
+  const [linkedTimeline, setLinkedTimeline] = useState<LinkedTimelineResult | null>(null)
   const [showLinked, setShowLinked] = useState(false)
 
   const [noteContent, setNoteContent] = useState('')
@@ -92,14 +93,14 @@ export default function ClientDetail() {
   const [editContent, setEditContent] = useState('')
 
   // Knife Deposits state
-  const [knives, setKnives] = useState<any[]>([])
+  const [knives, setKnives] = useState<KnifeDeposit[]>([])
   const [knivesLoading, setKnivesLoading] = useState(false)
   const [showKnifeModal, setShowKnifeModal] = useState(false)
   const [knifeForm, setKnifeForm] = useState({ knife_number: '1', amount: '', deposit_day: '', platform: 'MT5', notes: '' })
   const [knifeSubmitting, setKnifeSubmitting] = useState(false)
 
   // Pipeline state
-  const [pipelineData, setPipelineData] = useState<any>(null)
+  const [pipelineData, setPipelineData] = useState<ClientPipelineStatus | null>(null)
   const [pipelineLoading, setPipelineLoading] = useState(false)
   const [showKillModal, setShowKillModal] = useState(false)
   const [killForm, setKillForm] = useState({ kill_type: 'register_kill', kill_knife: '' })
@@ -109,18 +110,18 @@ export default function ClientDetail() {
   const [unkillSubmitting, setUnkillSubmitting] = useState(false)
 
   // Cross-Role Notes state
-  const [roleNotes, setRoleNotes] = useState<any[]>([])
+  const [roleNotes, setRoleNotes] = useState<CrossRoleNote[]>([])
   const [roleNotesLoading, setRoleNotesLoading] = useState(false)
   const [roleNoteForm, setRoleNoteForm] = useState({ from_role: 'frontdesk', content: '' })
   const [roleNoteSaving, setRoleNoteSaving] = useState(false)
 
   // Role Assignments state
-  const [clientRoles, setClientRoles] = useState<any[]>([])
+  const [clientRoles, setClientRoles] = useState<ClientRoleAssignment[]>([])
   const [clientRolesLoading, setClientRolesLoading] = useState(false)
   const [showAssignRoleModal, setShowAssignRoleModal] = useState(false)
   const [assignRoleForm, setAssignRoleForm] = useState({ staff_id: '', role_type: 'frontdesk' })
   const [assignRoleSubmitting, setAssignRoleSubmitting] = useState(false)
-  const [allStaff, setAllStaff] = useState<any[]>([])
+  const [allStaff, setAllStaff] = useState<AllStaffMember[]>([])
 
   const auth = getAuthState()
   const clientId = id ? parseInt(id, 10) : 0
@@ -143,7 +144,7 @@ export default function ClientDetail() {
     setKnivesLoading(true)
     try {
       const data = await api.clientKnives(clientId)
-      setKnives(Array.isArray(data) ? data : data?.knives || [])
+      setKnives(data || [])
     } catch { setKnives([]); showMsg(t('common.error', lang)) }
     setKnivesLoading(false)
   }, [clientId])
@@ -163,7 +164,7 @@ export default function ClientDetail() {
     setRoleNotesLoading(true)
     try {
       const data = await api.clientRoleNotes(clientId)
-      setRoleNotes(Array.isArray(data) ? data : data?.notes || [])
+      setRoleNotes(data || [])
     } catch { setRoleNotes([]); showMsg(t('common.error', lang)) }
     setRoleNotesLoading(false)
   }, [clientId])
@@ -173,7 +174,7 @@ export default function ClientDetail() {
     setClientRolesLoading(true)
     try {
       const data = await api.clientRoles(clientId)
-      setClientRoles(Array.isArray(data) ? data : data?.roles || [])
+      setClientRoles(data || [])
     } catch { setClientRoles([]); showMsg(t('common.error', lang)) }
     setClientRolesLoading(false)
   }, [clientId])
@@ -388,7 +389,7 @@ export default function ClientDetail() {
   const totalDeposits = client.deposits.reduce((s, d) => s + d.amount, 0)
   const knifeTotal = knives.reduce((s, k) => s + (k.amount || 0), 0)
 
-  const isKilled = pipelineData?.kill_type || pipelineData?.killed_at
+  const isKilled = pipelineData?.kill_type || pipelineData?.kill_at
   const canUnkill = isKilled && pipelineData?.kill_knife && pipelineData.kill_knife <= 2
 
   return (
@@ -441,7 +442,7 @@ export default function ClientDetail() {
             <h3 className="section-title">{t('detail.milestones', lang)}</h3>
             <div className="milestone-row">
               {MILESTONES.map((m, i) => {
-                const val = (client as any)[m.key]
+                const val = client[m.key as keyof TClientDetail] as string | null
                 const isActive = !!val
                 return (
                   <div key={m.key} className="milestone-step">
@@ -522,7 +523,7 @@ export default function ClientDetail() {
                       ))}
                     </div>
                   )}
-                  {(linkedTimeline.timeline || []).map((item: any, i: number) => (
+                  {(linkedTimeline.timeline || []).map((item: TimelineItem, i: number) => (
                     <div key={`lt-${i}`} className="timeline-entry">
                       <span className={`timeline-dot ${item.timeline_type === 'deposit' ? 'timeline-dot-deposit'
                           : item.timeline_type === 'link' ? 'timeline-dot-link'
@@ -753,7 +754,7 @@ export default function ClientDetail() {
                     </tr>
                   </thead>
                   <tbody>
-                    {knives.map((k: any, idx: number) => {
+                    {knives.map((k: KnifeDeposit, idx: number) => {
                       const amt = k.amount || 0
                       return (
                         <tr key={k.id || idx}>
@@ -794,7 +795,16 @@ export default function ClientDetail() {
                 {/* Pipeline milestone steps */}
                 <div className="d-flex flex-wrap gap-8">
                   {PIPELINE_STEPS.map(step => {
-                    const reached = pipelineData?.steps?.[step.key] || pipelineData?.[step.key]
+                    const stepFieldMap: Record<string, string> = {
+                      contacted: 'contacted_at',
+                      replied: 'replied_at',
+                      registered: 'registered_at',
+                      training_completed: 'training_completed_at',
+                      bonus_withdrew: 'bonus_withdrew_at',
+                      new_order: 'new_order_at',
+                    }
+                    const backendField = stepFieldMap[step.key]
+                    const reached = pipelineData?.[backendField as keyof ClientPipelineStatus]
                     return (
                       <span
                         key={step.key}
@@ -825,21 +835,18 @@ export default function ClientDetail() {
                         </span>
                       )}
                     </div>
-                    {pipelineData?.killed_at && (
+                    {pipelineData?.kill_at && (
                       <div className="fs-12 text-secondary">
-                        {new Date(pipelineData.killed_at).toLocaleString()}
+                        {new Date(pipelineData.kill_at).toLocaleString()}
                       </div>
                     )}
                   </div>
                 )}
 
                 {/* Unkill status */}
-                {pipelineData?.unkilled_at && (
+                {pipelineData?.is_unkilled && (
                   <div className="d-flex items-center gap-8">
                     <span className="pill-badge badge-success fs-12 fw-700">{t('kill.unkill', lang)}</span>
-                    <span className="fs-12 text-secondary">
-                      {new Date(pipelineData.unkilled_at).toLocaleString()}
-                    </span>
                     {pipelineData?.unkill_reason && (
                       <span className="fs-12 text-primary">{pipelineData.unkill_reason}</span>
                     )}
@@ -879,15 +886,15 @@ export default function ClientDetail() {
               <div className="text-secondary fs-14 mb-12">{t('role_notes.empty', lang) !== 'role_notes.empty' ? t('role_notes.empty', lang) : 'No role notes'}</div>
             ) : (
               <div className="flex-col gap-8 mb-12">
-                {roleNotes.map((note: any, idx: number) => (
+                {roleNotes.map((note: CrossRoleNote, idx: number) => (
                   <div key={note.id || idx} className="d-flex gap-8 items-start">
                     <span className="pill-badge badge-accent fs-11 fw-700 nowrap">
-                      {t(`role_notes.from`, lang)}: {t(`maintainer.role_${note.from_role === 'maintenance' ? 'mt' : note.from_role}`, lang) !== `maintainer.role_${note.from_role === 'maintenance' ? 'mt' : note.from_role}` ? t(`maintainer.role_${note.from_role === 'maintenance' ? 'mt' : note.from_role}`, lang) : note.from_role}
+                    {t(`role_notes.from`, lang)}: {t(`maintainer.role_${note.from_role}`, lang) !== `maintainer.role_${note.from_role}` ? t(`maintainer.role_${note.from_role}`, lang) : note.from_role}
                     </span>
                     <div className="flex-1">
                       <div className="fs-13 text-primary">{note.content}</div>
                       <div className="fs-11 text-secondary">
-                        {note.staff_name || note.author_name || ''}
+                        {note.staff_name || ''}
                         {note.created_at ? ` — ${new Date(note.created_at).toLocaleString()}` : ''}
                       </div>
                     </div>
@@ -943,8 +950,8 @@ export default function ClientDetail() {
               <div className="text-secondary fs-14">{t('maintainer.no_roles', lang) !== 'maintainer.no_roles' ? t('maintainer.no_roles', lang) : 'No roles assigned'}</div>
             ) : (
               <div className="flex-col gap-8">
-                {clientRoles.map((role: any, idx: number) => {
-                  const isActive = role.is_active !== false && !role.ended_at
+                {clientRoles.map((role: ClientRoleAssignment, idx: number) => {
+                  const isActive = role.is_active === 1 && !role.ended_at
                   return (
                     <div key={role.id || idx} className="d-flex items-center gap-8 flex-wrap">
                       <span className={`pill-badge ${isActive ? 'badge-success' : 'badge-danger'} fs-12 fw-700`}>
@@ -957,8 +964,8 @@ export default function ClientDetail() {
                       {role.assigned_at && (
                         <span className="fs-11 text-secondary">{new Date(role.assigned_at).toLocaleDateString()}</span>
                       )}
-                      {!isActive && role.end_reason && (
-                        <span className="fs-11 text-warning">{role.end_reason}</span>
+                      {!isActive && role.handoff_reason && (
+                        <span className="fs-11 text-warning">{role.handoff_reason}</span>
                       )}
                     </div>
                   )
@@ -1228,9 +1235,9 @@ function CommentItem({
   indent,
 }: {
   comment: ClientComment
-  theme: any
-  lang: any
-  auth: any
+  theme: Theme
+  lang: Lang
+  auth: AuthState | null
   editingComment: number | null
   editContent: string
   onReply: () => void

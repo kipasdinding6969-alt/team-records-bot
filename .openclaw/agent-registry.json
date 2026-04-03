@@ -1,0 +1,157 @@
+{
+  "version": "2026-04-03",
+  "project": "team-records-bot-v2",
+  "description": "Active agency-agents selected for this project. 18 of 104 activated.",
+
+  "active": {
+    "engineering": [
+      {
+        "id": "backend-architect",
+        "role": "Python/FastAPI API design, schema decisions, scalability",
+        "model_tier": "claude-opus",
+        "use_when": "API endpoint design, database schema changes, system design decisions"
+      },
+      {
+        "id": "frontend-developer",
+        "role": "React/TypeScript dashboard, component design",
+        "model_tier": "claude-opus",
+        "use_when": "Dashboard pages, React components, TypeScript types"
+      },
+      {
+        "id": "senior-developer",
+        "role": "Complex cross-cutting concerns, refactoring",
+        "model_tier": "claude-opus",
+        "use_when": "Cross-module changes, complex business logic, role isolation"
+      },
+      {
+        "id": "code-reviewer",
+        "role": "PR review, quality gates, anti-pattern detection",
+        "model_tier": "claude-opus",
+        "use_when": "Post-implementation review, before merge decisions"
+      },
+      {
+        "id": "database-optimizer",
+        "role": "SQLite query optimization, index strategy, schema design",
+        "model_tier": "claude-opus",
+        "use_when": "Slow queries, schema migrations, new table design"
+      },
+      {
+        "id": "security-engineer",
+        "role": "SQL injection prevention, auth hardening, input validation",
+        "model_tier": "claude-opus",
+        "use_when": "Security review, new auth flows, user input handling"
+      },
+      {
+        "id": "software-architect",
+        "role": "Domain modeling, role isolation design, system boundaries",
+        "model_tier": "gemini",
+        "use_when": "Architecture decisions, domain model changes, new subsystem design"
+      },
+      {
+        "id": "devops-automator",
+        "role": "CI/CD pipeline, GitHub Actions, deployment automation",
+        "model_tier": "gemini",
+        "use_when": "CI pipeline changes, deployment scripts, build optimization"
+      }
+    ],
+
+    "testing": [
+      {
+        "id": "qa-engineer",
+        "role": "Test strategy, pytest framework, coverage analysis",
+        "model_tier": "claude-opus",
+        "use_when": "New test suites, test strategy, coverage gaps"
+      },
+      {
+        "id": "automation-engineer",
+        "role": "Test automation, CI integration, regression suites",
+        "model_tier": "gemini",
+        "use_when": "Automating manual tests, CI test integration"
+      },
+      {
+        "id": "api-tester",
+        "role": "FastAPI endpoint validation, contract testing",
+        "model_tier": "claude-opus",
+        "use_when": "API contract verification, endpoint testing"
+      },
+      {
+        "id": "evidence-collector",
+        "role": "Screenshot-based UI verification, visual regression",
+        "model_tier": "gemini",
+        "use_when": "UI verification, visual diff, dashboard audits"
+      },
+      {
+        "id": "test-results-analyzer",
+        "role": "Interpreting test failures, root cause analysis",
+        "model_tier": "ollama",
+        "use_when": "Batch test failure analysis, flaky test diagnosis"
+      }
+    ],
+
+    "operations": [
+      {
+        "id": "multi-ai-coordinator",
+        "role": "Agent handoff protocol, cross-AI workflow management",
+        "model_tier": "gemini",
+        "use_when": "Multi-agent pipeline coordination, handoff design"
+      },
+      {
+        "id": "telegram-operations-specialist",
+        "role": "Bot commands, Telethon integration, message handling",
+        "model_tier": "claude-opus",
+        "use_when": "Telegram bot features, command handlers, bot API"
+      },
+      {
+        "id": "docker-infrastructure-manager",
+        "role": "Container orchestration, Docker Compose, networking",
+        "model_tier": "gemini",
+        "use_when": "Dockerization, container networking, deployment"
+      }
+    ],
+
+    "specialized": [
+      {
+        "id": "agents-orchestrator",
+        "role": "Pipeline coordination, quality gates, retry logic",
+        "model_tier": "gemini",
+        "use_when": "Feature pipeline execution, multi-step workflows"
+      },
+      {
+        "id": "mcp-builder",
+        "role": "MCP server integration, tool protocol design",
+        "model_tier": "gemini",
+        "use_when": "New MCP tool integration, protocol extensions"
+      }
+    ]
+  },
+
+  "inactive_divisions": [
+    "marketing (13 agents) — not relevant to CRM backend development",
+    "design (8 agents) — UI is functional, no visual design work needed",
+    "product (4 agents) — product decisions made by human",
+    "project-management (6 agents) — overkill for single-repo project",
+    "support (6 agents) — not needed for development phase",
+    "specialized (15 of 23) — niche domains not applicable"
+  ],
+
+  "model_tiers": {
+    "claude-opus": {
+      "provider": "anthropic",
+      "model": "claude-opus-4-6",
+      "cost": "$$$",
+      "use_for": "Code writing, security review, complex reasoning"
+    },
+    "gemini": {
+      "provider": "google-gemini-cli",
+      "model": "gemini-3.1-pro-preview",
+      "cost": "free",
+      "use_for": "Research, planning, architecture, coordination"
+    },
+    "ollama": {
+      "provider": "ollama",
+      "model": "goonsai/josiefied-qwen2.5-7b-abliterated-v2",
+      "cost": "free/local",
+      "use_for": "Quick checks, test analysis, offline fallback"
+    }
+  }
+}

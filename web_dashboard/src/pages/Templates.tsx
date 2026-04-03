@@ -8,8 +8,9 @@ interface Template {
   name: string
   content: string
   category: string
-  is_default: boolean
-  created_by_name: string
+  is_default: number
+  created_at: string
+  created_by_name: string | null
 }
 
 export default function Templates() {

@@ -18,7 +18,7 @@ interface Contest {
 interface LeaderboardEntry {
   staff_id: number
   display_name: string
-  team: string
+  team: string | null
   score: number
 }
 

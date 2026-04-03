@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, debug } from '../api'
-import type { Client, ClientList } from '../types'
+import type { Client, ClientList, PhoneCheckResult } from '../types'
 import { Empty, PageHeader, Spinner } from '../components/SharedUI'
 import { DataGrid, StatusBadge, formatPhone, Column } from '../components/DataGrid'
 import { useTheme } from '../ThemeContext'
@@ -31,8 +31,8 @@ export default function Clients() {
   const [addPlatform, setAddPlatform] = useState('')
   const [addError, setAddError] = useState('')
   const [addSuccess, setAddSuccess] = useState('')
-  const [phoneStatus, setPhoneStatus] = useState<any>(null)
-  const [checkTimer, setCheckTimer] = useState<any>(null)
+  const [phoneStatus, setPhoneStatus] = useState<PhoneCheckResult | null>(null)
+  const [checkTimer, setCheckTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
   const [addSubmitting, setAddSubmitting] = useState(false)
 
   const status = params.get('status') || ''
@@ -220,7 +220,7 @@ export default function Clients() {
                   )}
                   {phoneStatus.status === 'taken' && (
                     <span className="fw-600">
-                      {t('clients.phone_taken', getLang()).replace('{owner}', phoneStatus.owner)} ({phoneStatus.submitted_at?.split('T')[0]})
+                      {t('clients.phone_taken', getLang()).replace('{owner}', phoneStatus.owner || '')} ({phoneStatus.submitted_at?.split('T')[0]})
                     </span>
                   )}
                 </div>

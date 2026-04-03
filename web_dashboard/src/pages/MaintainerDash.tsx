@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, getAuthState, debug } from '../api'
 import { useTheme } from '../ThemeContext'
 import { t, getLang } from '../i18n'
+import type { AllStaffMember, MaintainerDeposit } from '../types'
 import { PageHeader, Spinner, Empty } from '../components/SharedUI'
 
 export default function MaintainerDash() {
@@ -11,7 +12,7 @@ export default function MaintainerDash() {
 
   const [activeTab, setActiveTab] = useState<'team' | 'reassign' | 'targets' | 'sla' | 'deposits'>('team')
   const [loading, setLoading] = useState(true)
-  const [staff, setStaff] = useState<any[]>([])
+  const [staff, setStaff] = useState<AllStaffMember[]>([])
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const [reassignFrom, setReassignFrom] = useState('')
@@ -19,18 +20,15 @@ export default function MaintainerDash() {
 
 
   const [depositGroupFilter, setDepositGroupFilter] = useState('')
-  const [deposits, setDeposits] = useState<any[]>([])
+  const [deposits, setDeposits] = useState<MaintainerDeposit[]>([])
   const [depositsLoading, setDepositsLoading] = useState(false)
   const [showDepositModal, setShowDepositModal] = useState(false)
   const [depositForm, setDepositForm] = useState({
     client_id: '',
     group_number: '',
-    knife_number: '1',
     amount: '',
     pressure_amount: '',
     platform: 'MT5',
-    role_type: 'frontdesk',
-    note: '',
   })
   const [depositSubmitting, setDepositSubmitting] = useState(false)
 
@@ -65,7 +63,7 @@ export default function MaintainerDash() {
     }
   }, [activeTab])
 
-  const handleUpdateStaff = async (id: number, updates: any) => {
+  const handleUpdateStaff = async (id: number, updates: Parameters<typeof api.updateStaff>[1]) => {
     try {
       await api.updateStaff(id, updates)
       loadData()
@@ -95,15 +93,12 @@ export default function MaintainerDash() {
       await api.createMaintainerDeposit({
         client_id: Number(depositForm.client_id),
         group_number: depositForm.group_number,
-        knife_number: Number(depositForm.knife_number),
         amount: parseFloat(depositForm.amount),
         pressure_amount: depositForm.pressure_amount ? parseFloat(depositForm.pressure_amount) : 0,
         platform: depositForm.platform,
-        role_type: depositForm.role_type,
-        note: depositForm.note || undefined,
       })
       setShowDepositModal(false)
-      setDepositForm({ client_id: '', group_number: '', knife_number: '1', amount: '', pressure_amount: '', platform: 'MT5', role_type: 'frontdesk', note: '' })
+      setDepositForm({ client_id: '', group_number: '', amount: '', pressure_amount: '', platform: 'MT5' })
       loadDeposits(depositGroupFilter)
       showMessage('success', t('maintainer.add_deposit', lang) + ' OK')
     } catch (err: unknown) {
@@ -191,7 +186,7 @@ export default function MaintainerDash() {
                         <td className="cell-center">
                            <button
                              className={`${s.is_active ? 'badge-success' : 'badge-danger'} pointer fs-12 fw-700 rounded-8 p-4-12`}
-                             onClick={() => handleUpdateStaff(s.id, { is_active: !s.is_active })}
+                             onClick={() => handleUpdateStaff(s.id, { is_active: s.is_active ? false : true })}
                            >
                              {s.is_active ? t('maintainer.active', lang) : t('maintainer.inactive', lang)}
                            </button>
@@ -247,7 +242,7 @@ export default function MaintainerDash() {
                        <input
                          className="input text-center fw-700 w-80"
                          type="number"
-                         defaultValue={s.daily_target}
+                         defaultValue={s.daily_target ?? ''}
                          onBlur={e => handleUpdateStaff(s.id, { daily_target: parseInt(e.target.value) || 0 })}
                        />
                     </div>
@@ -321,16 +316,16 @@ export default function MaintainerDash() {
                     </tr>
                   </thead>
                   <tbody>
-                    {deposits.map((d: any, idx: number) => (
+                    {deposits.map((d: MaintainerDeposit, idx: number) => (
                       <tr key={d.id || idx}>
                         <td className="cell-mono fw-600">{d.phone || d.client_id}</td>
                         <td>{d.platform || '-'}</td>
-                        <td>{d.knife_number || '-'}</td>
+                        <td>{d.cut_count || '-'}</td>
                         <td className="cell-mono-right text-success fw-600">${(d.amount || 0).toLocaleString()}</td>
                         <td className="cell-mono-right text-warning">${(d.pressure_amount || 0).toLocaleString()}</td>
                         <td className="cell-mono-right text-accent fw-700">${(d.total_in || d.amount || 0).toLocaleString()}</td>
-                        <td>{d.frontdesk_name || d.role_type || '-'}</td>
-                        <td className="fs-12 text-secondary">{d.created_at?.slice(0, 10) || '-'}</td>
+                        <td>{d.frontdesk_name || '-'}</td>
+                        <td className="fs-12 text-secondary">{d.deposit_date?.slice(0, 10) || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -370,12 +365,6 @@ export default function MaintainerDash() {
 
               <div className="form-grid-2col">
                 <label>
-                  <span className="field-label">{t('maintainer.cut', lang)} # (1-8) *</span>
-                  <select className="input" value={depositForm.knife_number} onChange={e => setDepositForm(prev => ({ ...prev, knife_number: e.target.value }))}>
-                    {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}</option>)}
-                  </select>
-                </label>
-                <label>
                   <span className="field-label">{t('detail.platform', lang)}</span>
                   <select className="input" value={depositForm.platform} onChange={e => setDepositForm(prev => ({ ...prev, platform: e.target.value }))}>
                     {['MT5', 'MT4', 'cTrader', 'Other'].map(p => <option key={p} value={p}>{p}</option>)}
@@ -393,23 +382,6 @@ export default function MaintainerDash() {
                   <input className="input" type="number" step="0.01" value={depositForm.pressure_amount} onChange={e => setDepositForm(prev => ({ ...prev, pressure_amount: e.target.value }))} />
                 </label>
               </div>
-
-              <label>
-                <span className="field-label">{t('maintainer.role', lang)}</span>
-                <select className="input" value={depositForm.role_type} onChange={e => setDepositForm(prev => ({ ...prev, role_type: e.target.value }))}>
-                  <option value="frontdesk">{t('maintainer.role_frontdesk', lang)}</option>
-                  <option value="opener">{t('maintainer.role_opener', lang)}</option>
-                  <option value="newbie">{t('maintainer.role_newbie', lang)}</option>
-                  <option value="hype">{t('maintainer.role_hype', lang)}</option>
-                  <option value="cs">{t('maintainer.role_cs', lang)}</option>
-                  <option value="maintenance">{t('maintainer.role_mt', lang)}</option>
-                </select>
-              </label>
-
-              <label>
-                <span className="field-label">{t('detail.link_note', lang)}</span>
-                <textarea className="input textarea-resize min-h-60 h-auto" value={depositForm.note} onChange={e => setDepositForm(prev => ({ ...prev, note: e.target.value }))} />
-              </label>
 
               <div className="modal-actions">
                 <button className="btn-secondary flex-1" onClick={() => setShowDepositModal(false)}>

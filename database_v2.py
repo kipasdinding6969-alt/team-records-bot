@@ -719,7 +719,7 @@ class DatabaseV2:
                     txn_type        TEXT NOT NULL CHECK(txn_type IN ('in', 'out')),
                     client_name     TEXT NOT NULL,
                     client_number   TEXT,
-                    maintainer_id   INTEGER REFERENCES staff(id),
+                    maintenance_id   INTEGER REFERENCES staff(id),
                     country         TEXT,
                     amount_usdt     REAL NOT NULL,
                     situation       TEXT,
@@ -803,7 +803,7 @@ class DatabaseV2:
                     client_id INTEGER NOT NULL REFERENCES clients(id),
                     staff_id INTEGER NOT NULL REFERENCES staff(id),
                     role_type TEXT NOT NULL CHECK(role_type IN (
-                        'frontdesk', 'maintainer', 'group_hype', 'newbie_actor',
+                        'frontdesk', 'maintenance', 'group_hype', 'newbie',
                         'customer_service', 'opener_legacy', 'full_line'
                     )),
                     assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -851,7 +851,7 @@ class DatabaseV2:
                     amount REAL NOT NULL,
                     deposit_day INTEGER,
                     platform TEXT,
-                    maintainer_id INTEGER REFERENCES staff(id),
+                    maintenance_id INTEGER REFERENCES staff(id),
                     notes TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(client_id, knife_number)
@@ -876,7 +876,7 @@ class DatabaseV2:
                     client_id INTEGER NOT NULL REFERENCES clients(id),
                     group_id TEXT,
                     actor_staff_id INTEGER REFERENCES staff(id),
-                    actor_role TEXT CHECK(actor_role IN ('newbie_actor', 'group_hype', 'passerby')),
+                    actor_role TEXT CHECK(actor_role IN ('newbie', 'group_hype', 'passerby')),
                     day_number INTEGER,
                     script_completed INTEGER DEFAULT 0,
                     client_read_messages INTEGER DEFAULT 0,
@@ -931,6 +931,9 @@ class DatabaseV2:
             ('phone_registry', 'ALTER TABLE phone_registry ADD COLUMN last_seen_at TEXT'),
             # Phase 26: Staff org unit reference
             ('staff', 'ALTER TABLE staff ADD COLUMN org_unit_id INTEGER REFERENCES organization_units(id)'),
+            # Phase 38: Standardize maintainer_id → maintenance_id for consistency
+            ('knife_deposits', 'ALTER TABLE knife_deposits RENAME COLUMN maintainer_id TO maintenance_id'),
+            ('crypto_transactions', 'ALTER TABLE crypto_transactions RENAME COLUMN maintainer_id TO maintenance_id'),
         ]
         async with self.get_connection() as db:
             for _tbl, sql in migrations:
