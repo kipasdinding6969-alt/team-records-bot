@@ -114,14 +114,14 @@ export default function GroupOverview() {
 
   // Grand totals from API response (team-level totals)
   const grandTotals = groups.reduce((acc, g) => {
-    const t = g.totals || {}
-    acc.new_leads += t.new_leads || 0
-    acc.registered += t.registered || 0
-    acc.training += t.training || 0
-    acc.withdrew += t.withdrew || 0
-    acc.orders += t.orders || 0
-    acc.killed += t.killed || 0
-    acc.total += t.total_clients || 0
+    const gt = g.totals || {}
+    acc.new_leads += gt.new_leads || 0
+    acc.registered += gt.registered || 0
+    acc.training += gt.training || 0
+    acc.withdrew += gt.withdrew || 0
+    acc.orders += gt.orders || 0
+    acc.killed += gt.killed || 0
+    acc.total += gt.total_clients || 0
     return acc
   }, { new_leads: 0, registered: 0, training: 0, withdrew: 0, orders: 0, killed: 0, total: 0 })
 

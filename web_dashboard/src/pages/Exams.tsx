@@ -38,7 +38,7 @@ export default function Exams() {
   useEffect(() => {
     load()
     api.allStaff().then(staff => {
-      const teamNames = staff.map((s: AllStaffMember) => s.team).filter((t): t is string => !!t);
+      const teamNames = staff.map((s: AllStaffMember) => s.team).filter((v): v is string => !!v);
       const uniqueTeams = [...new Set(teamNames)];
       setTeams(uniqueTeams.map(name => ({ key: name, label: name })))
     }).catch(() => { setError(t('common.error', lang)); setTimeout(() => setError(''), 3000) })

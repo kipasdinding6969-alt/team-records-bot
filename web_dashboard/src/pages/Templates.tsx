@@ -68,7 +68,7 @@ export default function Templates() {
     }
   }
 
-  const filtered = filterCat === 'all' ? templates : templates.filter(t => t.category === filterCat)
+  const filtered = filterCat === 'all' ? templates : templates.filter(tpl => tpl.category === filterCat)
 
   return (
     <div className="page-container">
@@ -101,6 +101,9 @@ export default function Templates() {
         <div className="empty-state">{t('common.loading', lang)}</div>
       ) : (
         <div className="template-grid">
+          {filtered.length === 0 && (
+            <div className="empty-state">{t('common.no_data', lang)}</div>
+          )}
           {filtered.map(tpl => (
             <div key={tpl.id} className="card template-card">
               <div className="template-card-header">

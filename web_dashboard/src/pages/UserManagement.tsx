@@ -198,6 +198,9 @@ export default function UserManagement() {
               </tr>
             </thead>
             <tbody>
+              {users.length === 0 && (
+                <tr><td colSpan={7} className="text-center p-24 text-secondary">{t('common.no_data', getLang())}</td></tr>
+              )}
               {users.map(u => (
                 <tr key={u.id} className={u.is_active ? '' : 'row-inactive'}>
                   <td>{u.display_name}</td>

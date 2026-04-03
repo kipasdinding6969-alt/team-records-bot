@@ -35,8 +35,8 @@ export default function PerformanceDetail() {
 
   useEffect(() => {
     api.allStaff().then(staff => {
-      const uniqueTeams = [...new Set(staff.map(s => s.team).filter((t): t is string => !!t))]
-      setTeams(uniqueTeams.map(t => ({ key: t, label: t })))
+      const uniqueTeams = [...new Set(staff.map(s => s.team).filter((v): v is string => !!v))]
+      setTeams(uniqueTeams.map(name => ({ key: name, label: name })))
     }).catch((e) => { if (import.meta.env?.DEV) console.warn('api call failed:', e) })
   }, [])
 
@@ -263,8 +263,8 @@ export default function PerformanceDetail() {
             <div className="drawer-footer">
               <h3 className="section-title mb-12">{t('perf_detail.add_blown', lang)}</h3>
               <div className="form-grid-2col gap-8">
+                <input className="input" type="number" placeholder="Staff ID *" value={blownForm.staff_id ?? ''} onChange={e => setBlownForm(p => ({ ...p, staff_id: e.target.value ? Number(e.target.value) : undefined }))} />
                 <input className="input" placeholder={t('perf.name', lang)} value={blownForm.display_name || ''} onChange={e => setBlownForm(p => ({ ...p, display_name: e.target.value }))} />
-                <input className="input" placeholder={t('perf.team', lang)} value={blownForm.team || ''} onChange={e => setBlownForm(p => ({ ...p, team: e.target.value }))} />
                 <input className="input" placeholder={t('perf_detail.account_name', lang)} value={blownForm.account_identifier || ''} onChange={e => setBlownForm(p => ({ ...p, account_identifier: e.target.value }))} />
                 <input className="input" placeholder={t('detail.link_note', lang)} value={blownForm.reason || ''} onChange={e => setBlownForm(p => ({ ...p, reason: e.target.value }))} />
               </div>

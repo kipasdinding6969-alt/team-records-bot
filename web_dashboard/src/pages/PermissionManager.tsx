@@ -3,7 +3,7 @@ import { api, getAuthState, debug } from '../api'
 import { getLang, t } from '../i18n'
 import { useTheme } from '../ThemeContext'
 import { PageHeader, Spinner, Empty } from '../components/SharedUI'
-import type { AllPermissionsStaffEntry, StaffPermissionOverride } from '../types'
+import type { AllPermissionsStaffEntry } from '../types'
 
 const PERM_SECTIONS = [
   {
@@ -98,7 +98,7 @@ export default function PermissionManager() {
     const perms: Record<string, boolean> = {}
     for (const section of PERM_SECTIONS) {
       for (const p of section.permissions) {
-        const ov = selectedStaff.overrides?.find((o: StaffPermissionOverride) => o.command === p.cmd)
+        const ov = selectedStaff.overrides?.find((o) => o.command === p.cmd)
         perms[p.cmd] = ov ? !!ov.allowed : true
       }
     }
