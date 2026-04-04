@@ -16,7 +16,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 OLLAMA_URL="http://localhost:11434"
 EMBED_MODEL="nomic-embed-text"
 OUTPUT="$SCRIPT_DIR/embeddings.jsonl"
-CHUNK_SIZE=3000
+CHUNK_SIZE=2000
 OVERLAP=500
 
 # ── Preflight ──────────────────────────────────────────────────────────────
