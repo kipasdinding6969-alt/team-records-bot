@@ -1,7 +1,7 @@
 #!/bin/bash
 # query.sh — Semantic search over team-records-bot-v2 codebase
 #
-# Uses nomic-embed-text for query embedding, cosine similarity for ranking,
+# Uses mxbai-embed-large for query embedding, cosine similarity for ranking,
 # then optionally feeds results to josiefied-qwen2.5-7b for answer generation.
 #
 # Usage:
