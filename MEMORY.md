@@ -42,6 +42,7 @@ Google Sheets → `sheet_sync_v2.py` → SQLite → Dashboard API → React fron
 - **120s minimum timeout** for any cron job that uses exec tools
 - **Service Sentinel** every 30min is enough (was 15min, caused 10 consecutive timeouts)
 - **Stagger schedules** — don't overlap jobs, max 4 concurrent agents
+- **NEVER restart the gateway from a cron job** — it kills the job's own session + all other in-flight work (GatewayDrainingError). Token Refresh should only update env files, not restart.
 
 ### RAG/Embeddings
 - **nomic-embed-text** (768-dim): handles up to ~4000 chars per prompt safely
@@ -63,7 +64,7 @@ Google Sheets → `sheet_sync_v2.py` → SQLite → Dashboard API → React fron
 - ✅ Dashboard running (PID 5929, :8501)
 - ✅ Ollama running (nomic-embed-text + mxbai-embed-large available)
 - ✅ OpenClaw Gateway running
-- 🔄 RAG index rebuilding (was corrupted — 768-dim index queried with 1024-dim model)
+- ✅ RAG index rebuilt — 2,432 chunks, 0 errors, nomic-embed-text (768-dim), search verified
 - ⚠️ knife_deposits and cross_role_notes still empty (account_id matching issue)
 
 ## Cron Fleet (7 jobs, cleaned 2026-04-04)
