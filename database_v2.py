@@ -122,6 +122,10 @@ class DatabaseV2:
             self._conn.row_factory = aiosqlite.Row
             await self._conn.execute('PRAGMA foreign_keys = ON')
             await self._conn.execute('PRAGMA journal_mode = WAL')
+            await self._conn.execute('PRAGMA synchronous = NORMAL')
+            await self._conn.execute('PRAGMA cache_size = -64000')
+            await self._conn.execute('PRAGMA mmap_size = 268435456')
+            await self._conn.execute('PRAGMA temp_store = MEMORY')
 
     async def close(self):
         """Close the persistent connection."""
@@ -141,6 +145,10 @@ class DatabaseV2:
             try:
                 await conn.execute('PRAGMA foreign_keys = ON')
                 await conn.execute('PRAGMA journal_mode = WAL')
+                await conn.execute('PRAGMA synchronous = NORMAL')
+                await conn.execute('PRAGMA cache_size = -64000')
+                await conn.execute('PRAGMA mmap_size = 268435456')
+                await conn.execute('PRAGMA temp_store = MEMORY')
                 yield conn
             finally:
                 await conn.close()
