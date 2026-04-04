@@ -67,11 +67,13 @@ Google Sheets → `sheet_sync_v2.py` → SQLite → Dashboard API → React fron
 - ✅ RAG index rebuilt — 2,432 chunks, 0 errors, nomic-embed-text (768-dim), search verified
 - ⚠️ knife_deposits and cross_role_notes still empty (account_id matching issue)
 
-## Cron Fleet (7 jobs, cleaned 2026-04-04)
-1. 🔑 Token Refresh — every 6h, Gemini Flash
-2. 🔍 Service Sentinel — every 30min, Sonnet
-3. ☀️ Morning Briefing — daily 08:00, Gemini Flash
-4. 🙏 Self-Critique — daily 22:00, Sonnet
-5. 📓 Dev Journal — daily 23:00, Sonnet
-6. 🦁 Hunt & Improve — daily 02:00, Sonnet
-7. 📊 Weekly Analysis — Mon 10:00, Sonnet
+## Cron Fleet (7 pipeline-engineer jobs + 4 others, as of 2026-04-04)
+1. 🔑 Token Refresh — every 6h, Gemini Flash (structural: runs token_refresh_only.sh, cannot restart gateway)
+2. 🔍 Service Sentinel — every 30min, Sonnet — **verified working** (19s, reported healthy)
+3. ☀️ Morning Briefing — daily 08:00, Gemini Flash — not yet run since rebuild
+4. 🙏 Self-Critique — daily 22:00, Gemini Flash — not yet run since rebuild
+5. 📓 Dev Journal — daily 23:00, Gemini Flash — not yet run since rebuild
+6. 🦁 Hunt & Improve — daily 02:00, Gemini Flash — not yet run since rebuild
+7. 📊 Weekly Analysis — Mon 10:00, Gemini Flash — not yet run since rebuild
+
+Also running (not my jobs): 3 shark-engineer jobs, 1 pipeline-verifier audit job.
