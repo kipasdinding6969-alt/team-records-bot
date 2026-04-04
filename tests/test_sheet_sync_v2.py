@@ -24,6 +24,7 @@ from models_v2 import Client, Staff, StaffRole, ClientStatus, Deposit
 from engines.sheet_sync_v2 import (
     SheetSyncV2,
     _parse_money,
+    _normalize_account_id,
     _CROSS_ROLE_COLUMNS,
     _KILL_PATTERNS,
 )
@@ -2542,3 +2543,342 @@ class TestCascadingClientMatch:
         conn.close()
 
         assert result[0] == "ACC001"  # unchanged
+
+
+# ─── Phase 6: Tests for real sheet format parsers ─────────────────────────────
+
+
+class TestNormalizeAccountId:
+    """Test _normalize_account_id handles real 維護數據 account_id formats."""
+
+    def test_plain_id(self):
+        assert _normalize_account_id("123456") == "123456"
+
+    def test_slash_format(self):
+        assert _normalize_account_id("123456 / 789012") == "123456"
+
+    def test_slash_format_with_spaces(self):
+        assert _normalize_account_id("  123456 / 789012  ") == "123456"
+
+    def test_empty_string(self):
+        assert _normalize_account_id("") == ""
+
+    def test_none_value(self):
+        assert _normalize_account_id(None) == ""  # type: ignore[arg-type]
+
+    def test_acc_prefixed(self):
+        assert _normalize_account_id("ACC123456") == "ACC123456"
+
+    def test_slash_with_acc_prefix(self):
+        assert _normalize_account_id("ACC123 / ACC456") == "ACC123"
+
+    def test_single_value_no_slash(self):
+        assert _normalize_account_id("ABCDEF") == "ABCDEF"
+
+
+class TestPerformanceSheetRealFormat:
+    """Test import_performance_sheet with real 3月-前台数据 sheet format.
+
+    Real format has group headers with embedded dates, column headers,
+    data rows with empty row[0], and SUM rows.
+    """
+
+    @pytest.fixture
+    def mock_writer(self):
+        writer = Mock()
+        writer.spreadsheet = Mock()
+        return writer
+
+    @pytest.mark.asyncio
+    async def test_real_format_group_header_date_extraction(
+        self, populated_v2_db, mock_writer
+    ):
+        """Test group headers with 'MAO UK 3/1' format are parsed correctly."""
+        mock_ws = Mock()
+        mock_ws.get_all_values.return_value = [
+            # Group header: row[0] = "1", row[1] = "MAO UK 3/1"
+            ["1", "MAO UK 3/1", "", "", "", "", "", ""],
+            # Column header: row[1] = "名字" — should be skipped
+            ["", "名字", "类别", "粉量", "开头不回复", "回复率", "卡解释", "拉黑/来玩"],
+            # Data row: row[0] empty, row[1] = staff name
+            ["", "阿YIM", "UK表单粉", "50", "5", "80%", "3", "2"],
+            # SUM row — should be skipped
+            ["", "SUM", "", "50", "5", "", "3", "2"],
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+
+        with (
+            patch("engines.sheet_sync_v2.database_v2", populated_v2_db),
+            patch("engines.sheet_sync_v2.SHEET_MAP", {"3月-前台数据": "test"}),
+        ):
+            count = await sync.import_performance_sheet()
+
+        assert count == 1
+
+        staff1_id = populated_v2_db._test_staff1_id
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT stat_date, category, powder_count, no_reply_start, reply_rate,"
+            " stuck_explanation, blocked_playing"
+            f" FROM daily_performance WHERE staff_id={staff1_id}"
+        )
+        result = c.fetchone()
+        conn.close()
+
+        assert result is not None
+        assert result[0] == "2026-03-01"  # extracted from "MAO UK 3/1"
+        assert result[1] == "UK表单粉"
+        assert result[2] == 50   # powder_count
+        assert result[3] == 5    # no_reply_start
+        assert result[4] == 80.0  # reply_rate
+        assert result[5] == 3    # stuck_explanation
+        assert result[6] == 2    # blocked_playing
+
+    @pytest.mark.asyncio
+    async def test_real_format_multiple_groups(self, populated_v2_db, mock_writer):
+        """Test multiple group headers with different dates."""
+        mock_ws = Mock()
+        mock_ws.get_all_values.return_value = [
+            # Group 1: 3/1
+            ["1", "MAO UK 3/1", "", "", "", "", "", ""],
+            ["", "名字", "类别", "粉量", "开头不回复", "回复率", "卡解释", "拉黑/来玩"],
+            ["", "阿YIM", "UK表单粉", "50", "5", "80%", "3", "2"],
+            ["", "SUM", "", "50", "5", "", "3", "2"],
+            # Group 2: 3/2
+            ["2", "MAO UK 3/2", "", "", "", "", "", ""],
+            ["", "名字", "类别", "粉量", "开头不回复", "回复率", "卡解释", "拉黑/来玩"],
+            ["", "阿YIM", "UK表单粉", "60", "4", "90%", "1", "0"],
+            ["", "SUM", "", "60", "4", "", "1", "0"],
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+
+        with (
+            patch("engines.sheet_sync_v2.database_v2", populated_v2_db),
+            patch("engines.sheet_sync_v2.SHEET_MAP", {"3月-前台数据": "test"}),
+        ):
+            count = await sync.import_performance_sheet()
+
+        assert count == 2
+
+        staff1_id = populated_v2_db._test_staff1_id
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT stat_date, powder_count FROM daily_performance"
+            f" WHERE staff_id={staff1_id} ORDER BY stat_date"
+        )
+        results = c.fetchall()
+        conn.close()
+
+        assert len(results) == 2
+        assert results[0][0] == "2026-03-01"
+        assert results[0][1] == 50
+        assert results[1][0] == "2026-03-02"
+        assert results[1][1] == 60
+
+    @pytest.mark.asyncio
+    async def test_real_format_skips_sum_rows(self, populated_v2_db, mock_writer):
+        """Test SUM rows are skipped and not inserted."""
+        mock_ws = Mock()
+        mock_ws.get_all_values.return_value = [
+            ["1", "MAO UK 3/1", "", "", "", "", "", ""],
+            ["", "名字", "类别", "粉量", "开头不回复", "回复率", "卡解释", "拉黑/来玩"],
+            ["", "阿YIM", "UK表单粉", "50", "5", "80%", "3", "2"],
+            ["", "SUM", "", "50", "5", "", "3", "2"],
+            ["", "SUM总计", "", "100", "10", "", "6", "4"],
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+
+        with (
+            patch("engines.sheet_sync_v2.database_v2", populated_v2_db),
+            patch("engines.sheet_sync_v2.SHEET_MAP", {"3月-前台数据": "test"}),
+        ):
+            count = await sync.import_performance_sheet()
+
+        assert count == 1  # only the data row, not SUM rows
+
+    @pytest.mark.asyncio
+    async def test_real_format_name_alias_resolution(
+        self, populated_v2_db, mock_writer
+    ):
+        """Test NAME_ALIASES resolves names in real format."""
+        mock_ws = Mock()
+        mock_ws.get_all_values.return_value = [
+            ["1", "MAO UK 3/1", "", "", "", "", "", ""],
+            ["", "名字", "类别", "粉量", "开头不回复", "回复率", "卡解释", "拉黑/来玩"],
+            ["", "Ah YIM", "UK表单粉", "50", "5", "80%", "3", "2"],
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+
+        with (
+            patch("engines.sheet_sync_v2.database_v2", populated_v2_db),
+            patch("engines.sheet_sync_v2.SHEET_MAP", {"3月-前台数据": "test"}),
+        ):
+            count = await sync.import_performance_sheet()
+
+        # "Ah YIM" should resolve to "阿YIM" via NAME_ALIASES
+        assert count == 1
+
+    @pytest.mark.asyncio
+    async def test_real_format_data_rows_without_group_header_skipped(
+        self, populated_v2_db, mock_writer
+    ):
+        """Test data rows before any group header are skipped (no date)."""
+        mock_ws = Mock()
+        mock_ws.get_all_values.return_value = [
+            # Data row with no preceding group header
+            ["", "阿YIM", "UK表单粉", "50", "5", "80%", "3", "2"],
+            # Then a group header appears
+            ["1", "MAO UK 3/1", "", "", "", "", "", ""],
+            ["", "名字", "类别", "粉量", "开头不回复", "回复率", "卡解释", "拉黑/来玩"],
+            ["", "阿YIM", "UK表单粉", "60", "4", "90%", "1", "0"],
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+
+        with (
+            patch("engines.sheet_sync_v2.database_v2", populated_v2_db),
+            patch("engines.sheet_sync_v2.SHEET_MAP", {"3月-前台数据": "test"}),
+        ):
+            count = await sync.import_performance_sheet()
+
+        # Only the second data row (after group header) should be imported
+        assert count == 1
+
+
+class TestExtractDateFromGroupHeader:
+    """Test _extract_date_from_group_header static method."""
+
+    def test_mao_uk_format(self):
+        result = SheetSyncV2._extract_date_from_group_header("MAO UK 3/1")
+        assert result == f"{date.today().year}-03-01"
+
+    def test_double_digit_date(self):
+        result = SheetSyncV2._extract_date_from_group_header("MAO UK 12/25")
+        assert result == f"{date.today().year}-12-25"
+
+    def test_no_date_in_title(self):
+        result = SheetSyncV2._extract_date_from_group_header("MAO UK")
+        assert result is None
+
+    def test_invalid_date(self):
+        result = SheetSyncV2._extract_date_from_group_header("MAO UK 13/32")
+        assert result is None
+
+    def test_date_only(self):
+        result = SheetSyncV2._extract_date_from_group_header("3/15")
+        assert result == f"{date.today().year}-03-15"
+
+
+class TestFinancialSheetAccountIdNormalization:
+    """Test import_financial_sheet handles '123456 / 123456' account_id format."""
+
+    @pytest.fixture
+    def mock_writer(self):
+        writer = Mock()
+        writer.spreadsheet = Mock()
+        return writer
+
+    @pytest.mark.asyncio
+    async def test_slash_format_account_id_matches(
+        self, populated_v2_db, mock_writer
+    ):
+        """Test '123456 / 789012' format is normalized to '123456' for matching."""
+        # Insert a client with plain account_id
+        staff1_id = populated_v2_db._test_staff1_id
+        async with populated_v2_db.get_connection() as db:
+            cur = await db.execute(
+                "INSERT INTO clients (frontdesk_id, phone, source, status, account_id)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (staff1_id, "+8617700009999", "飞机筛选", "registered", "999888"),
+            )
+            new_client_id = cur.lastrowid
+            await db.commit()
+
+        mock_ws = Mock()
+        mock_ws.get_all_values.return_value = [
+            ["日期"] + [""] * 18,
+            [
+                "04/01/2026",
+                "999888 / 999888",  # slash format
+                "group",
+                "阿YIM",
+                "小王",
+                "+8617700009999",
+                "Iconnect",
+                "1000",
+                "0",
+                "no kill",
+                "", "", "", "", "", "", "", "",
+                "1000",
+            ],
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+        with patch("engines.sheet_sync_v2.database_v2", populated_v2_db):
+            count = await sync.import_financial_sheet()
+
+        assert count >= 1
+
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT COUNT(*) FROM client_pipeline_status WHERE client_id=?",
+            (new_client_id,),
+        )
+        assert c.fetchone()[0] >= 1
+        conn.close()
+
+    @pytest.mark.asyncio
+    async def test_acc_prefix_fallback_matches(
+        self, populated_v2_db, mock_writer
+    ):
+        """Test sheet account_id '123456' matches DB 'ACC123456' via prefix fallback."""
+        # Client ACC001 is already in populated_v2_db
+        client_id = populated_v2_db._test_client1_id
+
+        mock_ws = Mock()
+        mock_ws.get_all_values.return_value = [
+            ["日期"] + [""] * 18,
+            [
+                "04/01/2026",
+                "001",  # DB has "ACC001"; this should match via ACC prefix
+                "group",
+                "阿YIM",
+                "小王",
+                "+8613800138000",
+                "Iconnect",
+                "1000",
+                "0",
+                "no kill",
+                "", "", "", "", "", "", "", "",
+                "1000",
+            ],
+        ]
+        mock_writer.spreadsheet.worksheet.return_value = mock_ws
+
+        sync = SheetSyncV2(mock_writer)
+        with patch("engines.sheet_sync_v2.database_v2", populated_v2_db):
+            count = await sync.import_financial_sheet()
+
+        assert count >= 1
+
+        conn = sqlite3.connect(populated_v2_db.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT COUNT(*) FROM client_pipeline_status WHERE client_id=?",
+            (client_id,),
+        )
+        assert c.fetchone()[0] >= 1
+        conn.close()

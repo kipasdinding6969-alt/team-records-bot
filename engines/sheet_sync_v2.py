@@ -87,6 +87,20 @@ def _map_status_to_days(status: ClientStatus) -> Tuple[str, str]:
     return ('', '')
 
 
+def _normalize_account_id(raw: str) -> str:
+    """Extract clean account ID from sheet formats like '123456 / 123456'.
+
+    Real 維護數據 sheets sometimes have account IDs in 'XXXXXX / XXXXXX'
+    format. We split on ' / ' and take the first part.
+    """
+    if not raw:
+        return ''
+    raw = raw.strip()
+    if ' / ' in raw:
+        raw = raw.split(' / ')[0].strip()
+    return raw
+
+
 def _synthetic_tg_id(name: str) -> int:
     """Deterministic negative tg_user_id for sheet-imported staff (no real TG account)."""
     h = int(hashlib.md5(name.encode()).hexdigest()[:8], 16)
@@ -393,7 +407,8 @@ class SheetSyncV2:
                 continue
             try:
                 frontdesk_name = row[3].strip() if len(row) > 3 else ''
-                account_id = row[1].strip() if len(row) > 1 else ''
+                raw_account_id = row[1].strip() if len(row) > 1 else ''
+                account_id = _normalize_account_id(raw_account_id)
                 maintenance_name = row[4].strip() if len(row) > 4 else ''
                 note = row[9].strip() if len(row) > 9 else ''
 
@@ -406,14 +421,14 @@ class SheetSyncV2:
                     continue
 
                 # Cascading client match strategy:
-                # 1. Primary: frontdesk_id + account_id
-                # 2. Fallback 1: account_id alone (globally unique)
+                # 1. Primary: frontdesk_id + account_id (exact or ACC-prefix stripped)
+                # 2. Fallback 1: account_id alone (globally unique, with ACC-prefix fallback)
                 # 3. Fallback 2: frontdesk_id + phone (column F, index 5)
                 client = None
                 match_method = None
                 if account_id:
                     async with database_v2.get_connection() as db:
-                        # Primary: frontdesk_id + account_id
+                        # Primary: frontdesk_id + account_id (exact match)
                         cur = await db.execute(
                             'SELECT id, frontdesk_id, phone, account_id, status FROM clients '
                             'WHERE frontdesk_id=? AND account_id=? LIMIT 1',
@@ -424,12 +439,24 @@ class SheetSyncV2:
                             client = dict(row_data)
                             match_method = 'primary'
 
+                        # Primary with ACC prefix: DB might store "ACC123456"
+                        if not client:
+                            cur = await db.execute(
+                                'SELECT id, frontdesk_id, phone, account_id, status FROM clients '
+                                "WHERE frontdesk_id=? AND (account_id=? OR account_id=?) LIMIT 1",
+                                (staff.id, 'ACC' + account_id, account_id.lstrip('ACC'))
+                            )
+                            row_data = await cur.fetchone()
+                            if row_data:
+                                client = dict(row_data)
+                                match_method = 'primary'
+
                         # Fallback 1: account_id alone across all clients
                         if not client:
                             cur = await db.execute(
                                 'SELECT id, frontdesk_id, phone, account_id, status FROM clients '
-                                'WHERE account_id=? LIMIT 1',
-                                (account_id,)
+                                "WHERE account_id=? OR account_id=? OR account_id=? LIMIT 1",
+                                (account_id, 'ACC' + account_id, account_id.lstrip('ACC'))
                             )
                             row_data = await cur.fetchone()
                             if row_data:
@@ -542,8 +569,38 @@ class SheetSyncV2:
         )
         return count
 
+    @staticmethod
+    def _extract_date_from_group_header(title: str) -> Optional[str]:
+        """Extract M/D date from group header title like 'MAO UK 3/1'.
+
+        Returns ISO date string (YYYY-MM-DD) or None if no date found.
+        Prepends current year to the extracted month/day.
+        """
+        import re
+        match = re.search(r'(\d{1,2})/(\d{1,2})', title)
+        if not match:
+            return None
+        month = int(match.group(1))
+        day = int(match.group(2))
+        year = date.today().year
+        try:
+            return date(year, month, day).isoformat()
+        except ValueError:
+            return None
+
     async def import_performance_sheet(self) -> int:
-        """Import 前台数据 sheet into daily_performance table."""
+        """Import 前台数据 sheet into daily_performance table.
+
+        Real sheet format (3月-前台数据):
+        - Group headers: row[0] = number, row[1] = "MAO UK 3/1" (date embedded)
+        - Column headers: row[1] = "名字", row[2] = "类别", ...
+        - Data rows: row[0] = EMPTY, row[1] = staff name, row[2] = category,
+          row[3] = powder_count, row[4] = no_reply_count, row[5] = reply_rate,
+          row[6] = stuck_explanation, row[7] = blocked_playing
+        - SUM rows: row[1] contains "SUM" — skip these
+
+        Also supports legacy flat format where row[0] = date string directly.
+        """
         loop = asyncio.get_event_loop()
         try:
             # Try current month sheet name
@@ -566,60 +623,133 @@ class SheetSyncV2:
         if len(all_rows) < 3:
             return 0
 
-        # Header row expected at row 1 or 2 — detect columns dynamically
-        header = all_rows[0] if all_rows[0] and any(c.strip() for c in all_rows[0]) else all_rows[1]
-
         count = 0
-        for i, row in enumerate(all_rows[2:], start=3):
-            if len(row) < 5 or not row[0].strip():
+        current_group_date: Optional[str] = None
+
+        for i, row in enumerate(all_rows, start=1):
+            if len(row) < 2:
                 continue
-            if row[0].strip() in ('日期', 'DATE', 'X月X日'):
+
+            col0 = row[0].strip() if row[0] else ''
+            col1 = row[1].strip() if len(row) > 1 and row[1] else ''
+
+            # Skip column header rows
+            if col1 in ('名字', '姓名', 'NAME'):
                 continue
 
-            try:
-                date_str = row[0].strip()
-                staff_name = row[1].strip() if len(row) > 1 else ''
-                category = row[2].strip() if len(row) > 2 else ''
-                if not staff_name:
-                    continue
+            # Skip SUM rows
+            if col1.upper().startswith('SUM'):
+                continue
 
-                staff_name = NAME_ALIASES.get(staff_name, staff_name)
-                staff = await database_v2.get_staff_by_display_name(staff_name)
-                if not staff:
-                    continue
+            # Detect group header: row[0] is non-empty and numeric-ish,
+            # row[1] contains a date like M/D
+            if col0 and col0.replace('.', '').replace('-', '').isdigit() and '/' in col1:
+                extracted = self._extract_date_from_group_header(col1)
+                if extracted:
+                    current_group_date = extracted
+                continue
 
-                # Parse date
+            # Legacy flat format: row[0] is a date string (MM/DD/YYYY or YYYY-MM-DD)
+            if col0 and not col0.isdigit() and col0 not in ('日期', 'DATE', 'X月X日'):
+                legacy_date = None
                 try:
-                    stat_date = datetime.strptime(date_str, '%m/%d/%Y').strftime('%Y-%m-%d')
+                    legacy_date = datetime.strptime(col0, '%m/%d/%Y').strftime('%Y-%m-%d')
                 except ValueError:
                     try:
-                        stat_date = datetime.strptime(date_str, '%Y-%m-%d').strftime('%Y-%m-%d')
+                        legacy_date = datetime.strptime(col0, '%Y-%m-%d').strftime('%Y-%m-%d')
                     except ValueError:
+                        pass
+                if legacy_date:
+                    # Legacy format: row[0]=date, row[1]=name, row[2]=category, row[3..]=values
+                    staff_name = col1
+                    if not staff_name:
                         continue
+                    staff_name = NAME_ALIASES.get(staff_name, staff_name)
+                    staff = await database_v2.get_staff_by_display_name(staff_name)
+                    if not staff:
+                        continue
+                    category = row[2].strip() if len(row) > 2 else ''
+                    powder = int(row[3]) if len(row) > 3 and row[3].strip().isdigit() else 0
+                    reply_rate_val = float(row[4].replace('%', '')) if len(row) > 4 and row[4].strip() else 0.0
+                    reg = int(row[5]) if len(row) > 5 and row[5].strip().isdigit() else 0
+                    training = int(row[6]) if len(row) > 6 and row[6].strip().isdigit() else 0
+                    withdrawal = int(row[7]) if len(row) > 7 and row[7].strip().isdigit() else 0
+                    new_order = int(row[8]) if len(row) > 8 and row[8].strip().isdigit() else 0
+                    conversion = float(row[9].replace('%', '')) if len(row) > 9 and row[9].strip() else 0.0
+                    try:
+                        async with database_v2.get_connection() as db:
+                            await db.execute(
+                                '''INSERT INTO daily_performance (staff_id, stat_date, category, powder_count, reply_rate,
+                                     completed_registration, completed_training, withdrawal, new_order, conversion_rate)
+                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   ON CONFLICT(staff_id, stat_date, category) DO UPDATE SET
+                                     powder_count=excluded.powder_count, reply_rate=excluded.reply_rate,
+                                     completed_registration=excluded.completed_registration,
+                                     completed_training=excluded.completed_training,
+                                     withdrawal=excluded.withdrawal, new_order=excluded.new_order,
+                                     conversion_rate=excluded.conversion_rate, updated_at=CURRENT_TIMESTAMP''',
+                                (staff.id, legacy_date, category or 'default', powder, reply_rate_val,
+                                 reg, training, withdrawal, new_order, conversion)
+                            )
+                            await db.commit()
+                        count += 1
+                    except Exception as e:
+                        logger.debug(f'import_performance_sheet row {i} (legacy): {e}')
+                    await asyncio.sleep(0)
+                    continue
 
-                # Parse numeric columns — positions may vary but typically:
-                # powder_count, reply_rate, completed_registration, completed_training, withdrawal, new_order
-                powder = int(row[3]) if len(row) > 3 and row[3].strip().isdigit() else 0
-                reply_rate = float(row[4].replace('%', '')) if len(row) > 4 and row[4].strip() else 0.0
-                reg = int(row[5]) if len(row) > 5 and row[5].strip().isdigit() else 0
-                training = int(row[6]) if len(row) > 6 and row[6].strip().isdigit() else 0
-                withdrawal = int(row[7]) if len(row) > 7 and row[7].strip().isdigit() else 0
-                new_order = int(row[8]) if len(row) > 8 and row[8].strip().isdigit() else 0
-                conversion = float(row[9].replace('%', '')) if len(row) > 9 and row[9].strip() else 0.0
+            # Skip rows with non-empty col0 that aren't handled above (headers, etc.)
+            if col0:
+                continue
 
+            # Data row: row[0] empty, row[1] = staff name, row[2] = category
+            staff_name = col1
+            if not staff_name:
+                continue
+
+            # Need a group date for data rows
+            if not current_group_date:
+                continue
+
+            staff_name = NAME_ALIASES.get(staff_name, staff_name)
+            staff = await database_v2.get_staff_by_display_name(staff_name)
+            if not staff:
+                continue
+
+            category = row[2].strip() if len(row) > 2 else ''
+
+            # Parse real-format columns:
+            # row[3] = powder_count (粉量)
+            # row[4] = no_reply_start (开头不回复)
+            # row[5] = reply_rate (回复率, strip %)
+            # row[6] = stuck_explanation (卡解释)
+            # row[7] = blocked_playing (拉黑/来玩)
+            powder = int(row[3]) if len(row) > 3 and row[3].strip().isdigit() else 0
+            no_reply = int(row[4]) if len(row) > 4 and row[4].strip().isdigit() else 0
+            reply_rate_val = 0.0
+            if len(row) > 5 and row[5].strip():
+                try:
+                    reply_rate_val = float(row[5].strip().replace('%', ''))
+                except ValueError:
+                    pass
+            stuck = int(row[6]) if len(row) > 6 and row[6].strip().isdigit() else 0
+            blocked = int(row[7]) if len(row) > 7 and row[7].strip().isdigit() else 0
+
+            try:
                 async with database_v2.get_connection() as db:
                     await db.execute(
-                        '''INSERT INTO daily_performance (staff_id, stat_date, category, powder_count, reply_rate,
-                             completed_registration, completed_training, withdrawal, new_order, conversion_rate)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        '''INSERT INTO daily_performance (staff_id, stat_date, category, powder_count,
+                             no_reply_start, reply_rate, stuck_explanation, blocked_playing)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                            ON CONFLICT(staff_id, stat_date, category) DO UPDATE SET
-                             powder_count=excluded.powder_count, reply_rate=excluded.reply_rate,
-                             completed_registration=excluded.completed_registration,
-                             completed_training=excluded.completed_training,
-                             withdrawal=excluded.withdrawal, new_order=excluded.new_order,
-                             conversion_rate=excluded.conversion_rate, updated_at=CURRENT_TIMESTAMP''',
-                        (staff.id, stat_date, category or 'default', powder, reply_rate,
-                         reg, training, withdrawal, new_order, conversion)
+                             powder_count=excluded.powder_count,
+                             no_reply_start=excluded.no_reply_start,
+                             reply_rate=excluded.reply_rate,
+                             stuck_explanation=excluded.stuck_explanation,
+                             blocked_playing=excluded.blocked_playing,
+                             updated_at=CURRENT_TIMESTAMP''',
+                        (staff.id, current_group_date, category or 'default', powder,
+                         no_reply, reply_rate_val, stuck, blocked)
                     )
                     await db.commit()
                 count += 1
