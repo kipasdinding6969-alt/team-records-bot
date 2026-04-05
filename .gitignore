@@ -151,3 +151,4 @@ PHASE*_*.md
 GEMINI_*.md
 local_rag/embeddings.jsonl
 *.bak
+*.pid
