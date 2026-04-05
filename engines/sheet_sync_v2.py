@@ -91,13 +91,13 @@ def _normalize_account_id(raw: str) -> str:
     """Extract clean account ID from sheet formats like '123456 / 123456'.
 
     Real 維護數據 sheets sometimes have account IDs in 'XXXXXX / XXXXXX'
-    format. We split on ' / ' and take the first part.
+    format. We split on '/' and take the first part.
     """
     if not raw:
         return ''
     raw = raw.strip()
-    if ' / ' in raw:
-        raw = raw.split(' / ')[0].strip()
+    if '/' in raw:
+        raw = raw.split('/')[0].strip()
     return raw
 
 
@@ -418,6 +418,7 @@ class SheetSyncV2:
                 frontdesk_name = NAME_ALIASES.get(frontdesk_name, frontdesk_name)
                 staff = await database_v2.get_staff_by_display_name(frontdesk_name)
                 if not staff:
+                    logger.warning(f'import_financial_sheet: staff "{frontdesk_name}" not found in DB, skipping row {i}')
                     continue
 
                 # Cascading client match strategy:

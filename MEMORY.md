@@ -1,6 +1,6 @@
 # MEMORY.md — Long-Term Memory
 
-*Last updated: 2026-04-04*
+*Last updated: 2026-04-05*
 
 ## Who I Am
 - **Agent**: pipeline-engineer
@@ -59,15 +59,32 @@ Google Sheets → `sheet_sync_v2.py` → SQLite → Dashboard API → React fron
 - Anthropic OAuth token (Google subscription) can have intermittent timeouts
 - Always have a fallback model chain configured
 
-## Current State (2026-04-04)
+## Current State (2026-04-05)
 - ✅ Bot running (PID 5927)
 - ✅ Dashboard running (PID 5929, :8501)
 - ✅ Ollama running (nomic-embed-text + mxbai-embed-large available)
 - ✅ OpenClaw Gateway running
 - ✅ RAG index rebuilt — 2,432 chunks, 0 errors, nomic-embed-text (768-dim), search verified
-- ⚠️ knife_deposits and cross_role_notes still empty (account_id matching issue)
+- ✅ knife_deposits and cross_role_notes now populate correctly for valid rows (see below)
 
-## Cron Fleet (7 pipeline-engineer jobs + 4 others, as of 2026-04-04)
+## Lessons Learned (from debugging knife_deposits/cross_role_notes)
+- **GSheetWriter Initialization**: Ensure `writer.initialize()` is explicitly called when using `GSheetWriter` in standalone scripts.
+- **Account ID Normalization**: The `_normalize_account_id` function in `engines/sheet_sync_v2.py` needed to be more robust to handle `account_id` formats like `'123456 / 123456'`. Changed `raw.split(' / ')` to `raw.split('/')`.
+- **Silent Row Skipping**: `import_financial_sheet` was silently skipping rows if the `frontdesk_name` from the sheet was not found in the `staff` table. Added a `logger.warning` for this case to improve visibility.
+- **Test Data Realism**: Initial debug efforts were misled by placeholder rows (e.g., `'X月XX日'` and `'XXXXXX'`) in the `维护数据` Google Sheet. These rows are correctly skipped by existing logic. Real data rows with valid `frontdesk_name` and `account_id` were successfully processed once `frontdesk_name` was added to the `staff` table.
+
+## Fixes Implemented:
+1.  **`engines/sheet_sync_v2.py`**:
+    *   Updated `_normalize_account_id` to split on `/` instead of ` / ` to correctly parse account IDs.
+    *   Added `logger.warning` when `staff` is not found, so rows are no longer silently skipped.
+    *   Removed temporary debugging `logger.debug` statements.
+
+## Next Steps (Updated 2026-04-05)
+- Revert the `main.py` temporary change (full_sync then exit) and ensure it's restored to its normal operational state.
+- Focus on the test suite timeout issue.
+- Review and apply any other pending migrations or schema updates.
+
+## Cron Fleet (7 pipeline-engineer jobs + 4 others, as of 2026-04-05)
 1. 🔑 Token Refresh — every 6h, Gemini Flash (structural: runs token_refresh_only.sh, cannot restart gateway)
 2. 🔍 Service Sentinel — every 30min, Sonnet — **verified working** (19s, reported healthy)
 3. ☀️ Morning Briefing — daily 08:00, Gemini Flash — not yet run since rebuild
