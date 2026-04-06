@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 # Set env before importing app
-TEST_JWT_SECRET = 'test-jwt-secret-dashboard-2026'
+TEST_JWT_SECRET = 'test-jwt-secret-dashboard-2026-ok'
 TEST_USER = 'testadmin'
 TEST_PASS = 'testpass123'
 os.environ['DASHBOARD_USER'] = TEST_USER
