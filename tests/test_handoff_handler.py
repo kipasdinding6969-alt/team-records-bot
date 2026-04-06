@@ -1,7 +1,7 @@
 """Tests for handlers_v2/handoff_handler.py — shift handoff creation, accept, decline, list."""
 import json
 import pytest
-from datetime import datetime
+from datetime import timezone, datetime
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from handlers_v2.handoff_handler import (
@@ -22,7 +22,7 @@ def _staff(sid=1, chat_id=2001, name='阿YIM', role=StaffRole.FRONTDESK,
 
 def _client(cid=1, phone='12345', status=ClientStatus.CONTACTED, nickname=None):
     c = Client(frontdesk_id=1, phone=phone, source='test', id=cid, status=status,
-               nickname=nickname, updated_at=datetime.utcnow())
+               nickname=nickname, updated_at=datetime.now(timezone.utc))
     c.status_note = None
     return c
 
@@ -31,7 +31,7 @@ def _handoff(hid=1, from_id=1, to_id=2, status='pending', client_ids=None):
     return ShiftHandoff(
         from_staff_id=from_id, id=hid, to_staff_id=to_id, status=status,
         client_ids=json.dumps(client_ids or [1, 2]),
-        team='阿俊', created_at=datetime.utcnow(),
+        team='阿俊', created_at=datetime.now(timezone.utc),
     )
 
 

@@ -5,7 +5,7 @@ follow-up dashboard, quick add client.
 """
 import pytest
 import pytest_asyncio
-from datetime import datetime, timedelta
+from datetime import timezone, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from database_v2 import DatabaseV2
@@ -524,7 +524,7 @@ class TestFollowupDashboard:
     async def test_fu_start_shows_overdue_clients(self, db, staff, client_row):
         """Overdue client → shows client card with 3 action buttons."""
         await db.set_next_followup(
-            client_row.id, datetime.utcnow() - timedelta(hours=1))
+            client_row.id, datetime.now(timezone.utc) - timedelta(hours=1))
 
         captured_rows = []
         mock_tg = _mock_tg()
@@ -549,7 +549,7 @@ class TestFollowupDashboard:
     async def test_fu_ok_marks_contacted(self, db, staff, client_row):
         """fu:ok:{id} updates status to contacted."""
         await db.set_next_followup(
-            client_row.id, datetime.utcnow() - timedelta(hours=1))
+            client_row.id, datetime.now(timezone.utc) - timedelta(hours=1))
 
         mock_tg = _mock_tg()
         with (

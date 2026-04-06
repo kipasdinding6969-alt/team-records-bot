@@ -76,10 +76,10 @@ class TestMetricsGathering:
 
     @pytest.mark.asyncio
     async def test_sla_pct_calculated_from_events(self, db, staff, client):
-        from datetime import timedelta, datetime
+        from datetime import timezone, timedelta, datetime
         from handlers_v2.coaching import _gather_staff_metrics
         # One met SLA event
-        started = datetime.utcnow() - timedelta(minutes=15)
+        started = datetime.now(timezone.utc) - timedelta(minutes=15)
         sla_id = await db.start_sla_event(client.id, staff.id, 'first_response', 30, started)
         await db.complete_sla_event(sla_id)
         with patch('handlers_v2.coaching.database_v2', db):

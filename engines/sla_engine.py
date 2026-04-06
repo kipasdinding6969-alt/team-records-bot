@@ -1,6 +1,6 @@
 """Phase 9C: SLA Engine — Ralph Loop integration for SLA breach detection and XP awards."""
 import logging
-from datetime import datetime
+from datetime import timezone, datetime
 from typing import Optional, Set
 
 from database_v2 import database_v2
@@ -29,7 +29,7 @@ async def check_sla_breaches(telegram_handler=None, team_leader_chat_id: Optiona
     configs_list = await database_v2.get_sla_config()
     configs = {c['event_type']: c for c in configs_list}
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     for ev in open_events:
         ev_id = ev.get('id')

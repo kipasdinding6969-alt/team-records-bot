@@ -1,7 +1,7 @@
 """Tests for engines/sla_engine.py — SLA breach detection and XP awards."""
 import pytest
 from unittest.mock import AsyncMock, Mock, patch, MagicMock
-from datetime import datetime, timedelta
+from datetime import timezone, datetime, timedelta
 
 from engines.sla_engine import (
     check_sla_breaches,
@@ -41,7 +41,7 @@ class TestCheckSlaBreaches:
     @pytest.mark.asyncio
     async def test_no_telegram_handler_skips(self):
         """When telegram_handler is None, skip all notifications."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         events = [{
             'id': 1, 'event_type': 'first_response',
             'started_at': (now - timedelta(minutes=120)).isoformat(),
@@ -57,7 +57,7 @@ class TestCheckSlaBreaches:
 
     @pytest.mark.asyncio
     async def test_warning_notification(self):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         events = [{
             'id': 10, 'event_type': 'first_response',
             'started_at': (now - timedelta(minutes=35)).isoformat(),
@@ -77,7 +77,7 @@ class TestCheckSlaBreaches:
 
     @pytest.mark.asyncio
     async def test_critical_notification(self):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         events = [{
             'id': 20, 'event_type': 'first_response',
             'started_at': (now - timedelta(minutes=100)).isoformat(),
@@ -98,7 +98,7 @@ class TestCheckSlaBreaches:
     @pytest.mark.asyncio
     async def test_duplicate_notification_suppressed(self):
         """Second call for same event should not re-notify."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         events = [{
             'id': 30, 'event_type': 'first_response',
             'started_at': (now - timedelta(minutes=35)).isoformat(),
@@ -118,7 +118,7 @@ class TestCheckSlaBreaches:
 
     @pytest.mark.asyncio
     async def test_no_config_for_event_type(self):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         events = [{
             'id': 40, 'event_type': 'unknown_type',
             'started_at': (now - timedelta(minutes=100)).isoformat(),
@@ -154,7 +154,7 @@ class TestCheckSlaBreaches:
     @pytest.mark.asyncio
     async def test_critical_no_leader_chat(self):
         """Critical without leader chat should still notify staff."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         events = [{
             'id': 60, 'event_type': 'first_response',
             'started_at': (now - timedelta(minutes=100)).isoformat(),

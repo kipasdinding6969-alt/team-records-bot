@@ -3,8 +3,9 @@
 Note: V1 schema (team_members) deprecated test class removed: TestReminderEngine
 """
 import pytest
+import asyncio
 from datetime import date
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock
 
 from engines.report_engine import ReportEngine
 from engines.reminder_engine import ReminderEngine
@@ -146,7 +147,8 @@ class TestSheetSyncEngine:
     @pytest.mark.asyncio
     async def test_sync_all_data(self, sheet_sync_engine, populated_db):
         """Test full data synchronization."""
-        with patch('engines.sheet_sync.database', populated_db):
+        with patch('engines.sheet_sync.database', populated_db), \
+             patch('asyncio.sleep', new_callable=AsyncMock):
             sync_results = await sheet_sync_engine.sync_all_data()
 
             assert 'start_time' in sync_results
@@ -236,7 +238,8 @@ class TestSheetSyncEngine:
     async def test_sync_error_handling(self, sheet_sync_engine):
         """Test error handling in sync operations."""
         # Mock database that raises errors
-        with patch('engines.sheet_sync.database') as mock_db:
+        with patch('engines.sheet_sync.database') as mock_db, \
+             patch('asyncio.sleep', new_callable=AsyncMock):
             mock_db.get_connection.side_effect = Exception("Database error")
 
             sync_results = await sheet_sync_engine.sync_all_data()
@@ -280,7 +283,8 @@ class TestEngineIntegration:
         report_engine = ReportEngine()
 
         # Perform sync
-        with patch('engines.sheet_sync.database', populated_db):
+        with patch('engines.sheet_sync.database', populated_db), \
+             patch('asyncio.sleep', new_callable=AsyncMock):
             sync_results = await sync_engine.sync_all_data()
 
         # Generate report after sync

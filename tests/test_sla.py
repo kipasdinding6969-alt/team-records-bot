@@ -1,7 +1,7 @@
 """Tests for Phase 9C: SLA Tracking."""
 import pytest
 import pytest_asyncio
-from datetime import datetime, timedelta
+from datetime import timezone, datetime, timedelta
 
 from database_v2 import DatabaseV2
 from models_v2 import Staff, StaffRole, Client, ClientStatus
@@ -89,7 +89,7 @@ class TestSLAEvents:
 
     @pytest.mark.asyncio
     async def test_complete_sla_event_met(self, db, client, staff):
-        started = datetime.utcnow() - timedelta(minutes=15)
+        started = datetime.now(timezone.utc) - timedelta(minutes=15)
         sla_id = await db.start_sla_event(client.id, staff.id, 'first_response', 30, started)
         result = await db.complete_sla_event(sla_id)
         assert result is True
@@ -99,7 +99,7 @@ class TestSLAEvents:
 
     @pytest.mark.asyncio
     async def test_complete_sla_event_breach(self, db, client, staff):
-        started = datetime.utcnow() - timedelta(minutes=60)
+        started = datetime.now(timezone.utc) - timedelta(minutes=60)
         sla_id = await db.start_sla_event(client.id, staff.id, 'first_response', 30, started)
         await db.complete_sla_event(sla_id)
         async with db.get_connection() as conn:
@@ -117,11 +117,11 @@ class TestSLAEvents:
     @pytest.mark.asyncio
     async def test_sla_stats_aggregation(self, db, client, staff):
         # Met event (15 min, target 30)
-        s1 = datetime.utcnow() - timedelta(minutes=15)
+        s1 = datetime.now(timezone.utc) - timedelta(minutes=15)
         id1 = await db.start_sla_event(client.id, staff.id, 'first_response', 30, s1)
         await db.complete_sla_event(id1)
         # Breached event (50 min, target 30)
-        s2 = datetime.utcnow() - timedelta(minutes=50)
+        s2 = datetime.now(timezone.utc) - timedelta(minutes=50)
         id2 = await db.start_sla_event(client.id, staff.id, 'first_response', 30, s2)
         await db.complete_sla_event(id2)
 
@@ -133,7 +133,7 @@ class TestSLAEvents:
 
     @pytest.mark.asyncio
     async def test_staff_sla_summary(self, db, client, staff):
-        s1 = datetime.utcnow() - timedelta(minutes=10)
+        s1 = datetime.now(timezone.utc) - timedelta(minutes=10)
         id1 = await db.start_sla_event(client.id, staff.id, 'first_response', 30, s1)
         await db.complete_sla_event(id1)
         summary = await db.get_staff_sla_summary(days=1)

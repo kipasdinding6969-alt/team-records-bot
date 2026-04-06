@@ -1,6 +1,6 @@
 """Phase 10B: Advanced analytics & reports handler."""
 import logging
-from datetime import datetime, timedelta
+from datetime import timezone, datetime, timedelta
 from typing import Any, Dict, Optional
 
 from database_v2 import database_v2
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 def _week_range(dt: Optional[datetime] = None):
     """Return (start, end) date strings for the ISO week containing dt."""
     if dt is None:
-        dt = datetime.utcnow()
+        dt = datetime.now(timezone.utc)
     iso = dt.isocalendar()
     start = datetime.strptime(f'{iso[0]} {iso[1]} 1', '%G %V %u').date()
     end = start + timedelta(days=6)
@@ -24,7 +24,7 @@ def _week_range(dt: Optional[datetime] = None):
 def _month_range(dt: Optional[datetime] = None):
     """Return (start, end) date strings for the month containing dt."""
     if dt is None:
-        dt = datetime.utcnow()
+        dt = datetime.now(timezone.utc)
     start = dt.replace(day=1).date()
     if dt.month == 12:
         end = dt.replace(year=dt.year + 1, month=1, day=1).date() - timedelta(days=1)
@@ -35,7 +35,7 @@ def _month_range(dt: Optional[datetime] = None):
 
 def _last_week_range():
     """Return (start, end) for last week."""
-    return _week_range(datetime.utcnow() - timedelta(weeks=1))
+    return _week_range(datetime.now(timezone.utc) - timedelta(weeks=1))
 
 
 def _bar(value: int, max_value: int, width: int = 20) -> str:
@@ -74,7 +74,7 @@ async def handle_report(task_data: Dict[str, Any]):
 
 async def _report_weekly(chat_id: int, staff, team: Optional[str] = None):
     """Generate weekly report."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     period_start, period_end = _week_range(now)
     iso = now.isocalendar()
     week_label = f"Week {iso[1]} ({period_start} — {period_end})"
@@ -84,7 +84,7 @@ async def _report_weekly(chat_id: int, staff, team: Optional[str] = None):
 
 async def _report_monthly(chat_id: int, staff, team: Optional[str] = None):
     """Generate monthly report."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     period_start, period_end = _month_range(now)
     month_label = f"{now.strftime('%B %Y')} ({period_start} — {period_end})"
 

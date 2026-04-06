@@ -1,6 +1,6 @@
 """Phase 10A: Commission tracking handler — commands + callbacks."""
 import logging
-from datetime import datetime, timedelta
+from datetime import timezone, datetime, timedelta
 from typing import Any, Dict
 
 from database_v2 import database_v2
@@ -172,7 +172,7 @@ async def _approve_commissions(chat_id: int, staff, target_staff_id: int = None,
 
 def _commission_buttons(staff_id: int, period: str, is_manager: bool = False):
     """Build inline keyboard for commission display."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     month = f'{now.year}-{now.month:02d}'
     last_week_dt = now - timedelta(weeks=1)
     lw_iso = last_week_dt.isocalendar()

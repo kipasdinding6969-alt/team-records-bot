@@ -1,7 +1,7 @@
 """Gamification test suite — leaderboard, hot leads, templates, contests (30+ tests)."""
 import asyncio
 import os
-from datetime import datetime, timedelta
+from datetime import timezone, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -269,7 +269,7 @@ class TestTemplates:
 class TestContests:
     @pytest.mark.asyncio
     async def test_create_contest(self, db, manager):
-        end_date = datetime.utcnow() + timedelta(days=7)
+        end_date = datetime.now(timezone.utc) + timedelta(days=7)
         contest_id = await db.create_contest(
             title='Weekly Leads',
             metric='leads',
@@ -282,7 +282,7 @@ class TestContests:
 
     @pytest.mark.asyncio
     async def test_get_active_contest(self, db, manager):
-        end_date = datetime.utcnow() + timedelta(days=3)
+        end_date = datetime.now(timezone.utc) + timedelta(days=3)
         await db.create_contest('Test', 'orders', None, None, end_date, manager.id)
         contest = await db.get_active_contest()
         assert contest is not None
@@ -291,7 +291,7 @@ class TestContests:
 
     @pytest.mark.asyncio
     async def test_get_active_contest_team_filter(self, db, manager):
-        end_date = datetime.utcnow() + timedelta(days=3)
+        end_date = datetime.now(timezone.utc) + timedelta(days=3)
         await db.create_contest('Team A Contest', 'leads', None, 'A', end_date, manager.id)
         contest = await db.get_active_contest(team='A')
         assert contest is not None
@@ -306,7 +306,7 @@ class TestContests:
 
     @pytest.mark.asyncio
     async def test_end_contest_no_scores(self, db, manager):
-        end_date = datetime.utcnow() + timedelta(days=1)
+        end_date = datetime.now(timezone.utc) + timedelta(days=1)
         contest_id = await db.create_contest('End Test', 'orders', None, None, end_date, manager.id)
         winner = await db.end_contest(contest_id)
         assert winner is None
@@ -315,7 +315,7 @@ class TestContests:
 
     @pytest.mark.asyncio
     async def test_end_contest_with_winner(self, db, manager, frontdesk):
-        end_date = datetime.utcnow() + timedelta(days=1)
+        end_date = datetime.now(timezone.utc) + timedelta(days=1)
         contest_id = await db.create_contest('Winner Test', 'orders', None, None, end_date, manager.id)
         await db.upsert_contest_score(contest_id, frontdesk.id, 42.0)
         winner = await db.end_contest(contest_id)
@@ -325,7 +325,7 @@ class TestContests:
 
     @pytest.mark.asyncio
     async def test_upsert_contest_score(self, db, manager, frontdesk):
-        end_date = datetime.utcnow() + timedelta(days=1)
+        end_date = datetime.now(timezone.utc) + timedelta(days=1)
         contest_id = await db.create_contest('Score Test', 'leads', None, None, end_date, manager.id)
         await db.upsert_contest_score(contest_id, frontdesk.id, 10.0)
         scores = await db.get_contest_scores(contest_id)
@@ -334,7 +334,7 @@ class TestContests:
 
     @pytest.mark.asyncio
     async def test_upsert_contest_score_updates(self, db, manager, frontdesk):
-        end_date = datetime.utcnow() + timedelta(days=1)
+        end_date = datetime.now(timezone.utc) + timedelta(days=1)
         contest_id = await db.create_contest('Update Score', 'leads', None, None, end_date, manager.id)
         await db.upsert_contest_score(contest_id, frontdesk.id, 5.0)
         await db.upsert_contest_score(contest_id, frontdesk.id, 20.0)
@@ -346,7 +346,7 @@ class TestContests:
     async def test_get_contest_scores_sorted_desc(self, db, manager, frontdesk):
         s2 = Staff(tg_user_id=7777, tg_chat_id=8888, display_name='Staff2', role=StaffRole.FRONTDESK)
         s2.id = await db.create_staff(s2)
-        end_date = datetime.utcnow() + timedelta(days=1)
+        end_date = datetime.now(timezone.utc) + timedelta(days=1)
         contest_id = await db.create_contest('Multi Score', 'orders', None, None, end_date, manager.id)
         await db.upsert_contest_score(contest_id, frontdesk.id, 5.0)
         await db.upsert_contest_score(contest_id, s2.id, 15.0)
@@ -356,7 +356,7 @@ class TestContests:
     @pytest.mark.asyncio
     async def test_auto_end_expired_contests(self, db, manager):
         # Use UTC to match SQLite's CURRENT_TIMESTAMP
-        past_end = datetime.utcnow() - timedelta(hours=2)
+        past_end = datetime.now(timezone.utc) - timedelta(hours=2)
         contest_id = await db.create_contest('Expired', 'leads', None, None, past_end, manager.id)
         count = await db.auto_end_expired_contests()
         assert count >= 1
@@ -365,7 +365,7 @@ class TestContests:
 
     @pytest.mark.asyncio
     async def test_auto_end_does_not_end_future(self, db, manager):
-        future_end = datetime.utcnow() + timedelta(days=7)
+        future_end = datetime.now(timezone.utc) + timedelta(days=7)
         await db.create_contest('Future', 'leads', None, None, future_end, manager.id)
         count = await db.auto_end_expired_contests()
         assert count == 0
@@ -374,7 +374,7 @@ class TestContests:
 
     @pytest.mark.asyncio
     async def test_refresh_contest_scores_no_stats(self, db, manager, frontdesk):
-        end_date = datetime.utcnow() + timedelta(days=3)
+        end_date = datetime.now(timezone.utc) + timedelta(days=3)
         contest_id = await db.create_contest('Refresh', 'leads', None, None, end_date, manager.id)
         # Should run without error even with no daily_stats
         await db.refresh_contest_scores(contest_id)
