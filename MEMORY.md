@@ -1,6 +1,6 @@
 # MEMORY.md — Long-Term Memory
 
-*Last updated: 2026-04-05*
+*Last updated: 2026-04-06*
 
 ## Who I Am
 - **Agent**: pipeline-engineer
@@ -59,13 +59,14 @@ Google Sheets → `sheet_sync_v2.py` → SQLite → Dashboard API → React fron
 - Anthropic OAuth token (Google subscription) can have intermittent timeouts
 - Always have a fallback model chain configured
 
-## Current State (2026-04-05)
-- ✅ Bot running (PID 5927)
-- ✅ Dashboard running (PID 5929, :8501)
+## Current State (2026-04-06)
+- ✅ Bot running (PID 1200109)
+- ✅ Dashboard running (:8501, health OK)
+- ✅ Mini app API running (:8500, health OK)
 - ✅ Ollama running (nomic-embed-text + mxbai-embed-large available)
-- ✅ OpenClaw Gateway running
-- ✅ RAG index rebuilt — 2,432 chunks, 0 errors, nomic-embed-text (768-dim), search verified
-- ✅ knife_deposits and cross_role_notes now populate correctly for valid rows (see below)
+- ✅ 1902/1902 tests passing, 0 failures, warnings suppressed
+- ✅ All deprecated datetime.utcnow() replaced with timezone-aware calls
+- ✅ Cron fleet updated — simplified prompts, delivery.mode=none to prevent delivery errors
 
 ## Lessons Learned (from debugging knife_deposits/cross_role_notes)
 - **GSheetWriter Initialization**: Ensure `writer.initialize()` is explicitly called when using `GSheetWriter` in standalone scripts.
@@ -79,10 +80,11 @@ Google Sheets → `sheet_sync_v2.py` → SQLite → Dashboard API → React fron
     *   Added `logger.warning` when `staff` is not found, so rows are no longer silently skipped.
     *   Removed temporary debugging `logger.debug` statements.
 
-## Next Steps (Updated 2026-04-05)
-- Revert the `main.py` temporary change (full_sync then exit) and ensure it's restored to its normal operational state.
-- Focus on the test suite timeout issue.
-- Review and apply any other pending migrations or schema updates.
+## Next Steps (Updated 2026-04-06)
+- Monitor cron fleet after prompt simplification (next runs tonight)
+- Clean up stale venv/ directory (old, unused — .venv/ is active)
+- Review RAG index freshness
+- Address remaining cosmetic test warnings (RuntimeError: Event loop is closed in aiosqlite teardown)
 
 ## Cron Fleet (7 pipeline-engineer jobs + 4 others, as of 2026-04-05)
 1. 🔑 Token Refresh — every 6h, Gemini Flash (structural: runs token_refresh_only.sh, cannot restart gateway)
