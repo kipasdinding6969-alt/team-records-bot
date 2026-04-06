@@ -866,9 +866,18 @@ class RalphLoop:
             for reminder in pending_v2:
                 staff = await database_v2.get_staff_by_id(reminder.staff_id)
                 if staff:
-                    await telegram_handler.send_message(staff.tg_chat_id, reminder.message)
+                    try:
+                        await telegram_handler.send_message(staff.tg_chat_id, reminder.message)
+                        await database_v2.mark_reminder_sent(reminder.id)
+                        self.metrics['reminders_sent'] += 1
+                    except Exception as send_err:
+                        logger.warning(f'Reminder {reminder.id} send failed (staff_id={reminder.staff_id}, '
+                                       f'chat_id={staff.tg_chat_id}): {send_err}')
+                        # Mark as sent to prevent infinite retry loop on unresolvable entities
+                        await database_v2.mark_reminder_sent(reminder.id)
+                else:
+                    logger.warning(f'Reminder {reminder.id}: staff_id={reminder.staff_id} not found, marking sent')
                     await database_v2.mark_reminder_sent(reminder.id)
-                    self.metrics['reminders_sent'] += 1
         except Exception as e:
             logger.error(f'V2 reminder processing error: {e}')
 
