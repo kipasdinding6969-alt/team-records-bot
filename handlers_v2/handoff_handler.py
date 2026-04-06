@@ -84,7 +84,7 @@ async def _create_handoff(chat_id: int, staff, target_name: str = None):
         status_note = (c.status_note or '').replace('<', '&lt;').replace('>', '&gt;').replace('&', '&amp;')
         last_update = ''
         if c.updated_at:
-            delta = datetime.now(timezone.utc) - c.updated_at.replace(tzinfo=None)
+            delta = datetime.now(timezone.utc) - c.updated_at.replace(tzinfo=timezone.utc)
             hours = int(delta.total_seconds() / 3600)
             last_update = f"{hours}h ago" if hours < 48 else f"{hours // 24}d ago"
         text += f"{i}. {c.nickname or c.phone} ({c.phone}) — {c.status.value}\n"
@@ -190,7 +190,7 @@ async def _list_handoffs(chat_id: int, staff):
         client_ids = json.loads(h.client_ids) if h.client_ids else []
         age = ''
         if h.created_at:
-            delta = datetime.now(timezone.utc) - h.created_at.replace(tzinfo=None)
+            delta = datetime.now(timezone.utc) - h.created_at.replace(tzinfo=timezone.utc)
             hours = int(delta.total_seconds() / 3600)
             age = f" ({hours}h ago)" if hours < 48 else f" ({hours // 24}d ago)"
 

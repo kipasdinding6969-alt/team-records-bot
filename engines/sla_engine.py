@@ -41,6 +41,8 @@ async def check_sla_breaches(telegram_handler=None, team_leader_chat_id: Optiona
         started_str = ev.get('started_at', '')
         try:
             started = datetime.fromisoformat(started_str)
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=timezone.utc)
         except Exception:
             continue
 
