@@ -1,6 +1,7 @@
 """Team Records Bot - Main Ralph Loop Implementation."""
 import asyncio
 import logging
+from logging.handlers import RotatingFileHandler
 import signal
 import sys
 from typing import Dict, Any, Optional, Callable
@@ -56,7 +57,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('team_records_bot.log'),
+        RotatingFileHandler('team_records_bot.log', maxBytes=5*1024*1024, backupCount=3),
         logging.StreamHandler()
     ]
 )
