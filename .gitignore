@@ -152,3 +152,7 @@ GEMINI_*.md
 local_rag/embeddings.jsonl
 *.bak
 *.pid
+
+# Temp test outputs
+pytest_*.log
+pytest_output.txt
