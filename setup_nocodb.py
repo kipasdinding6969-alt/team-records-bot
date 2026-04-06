@@ -116,7 +116,7 @@ tables["team_targets"] = create_table("Team Targets", [
 print(f"\n🎉 Done!")
 config = {
     "url": NOCODB_URL,
-    "api_token": "l3Q8t5BYkLnrgz4hgFnYkl3C_ij-teaMy3UfiRx2",
+    "api_token": os.environ.get("NOCODB_TOKEN", "SET_ME"),
     "base_id": BASE_ID,
     "tables": {k: v["id"] if v else None for k, v in tables.items()}
 }
