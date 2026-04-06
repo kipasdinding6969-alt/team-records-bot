@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _fd, _TEST_DB = tempfile.mkstemp(suffix='.db')
 os.close(_fd)
 os.environ['DB_PATH'] = _TEST_DB
-os.environ['JWT_SECRET'] = 'test-secret-phase16-api'
+os.environ['JWT_SECRET'] = 'test-secret-phase16-api-padding1'
 
 try:
     import aiosqlite

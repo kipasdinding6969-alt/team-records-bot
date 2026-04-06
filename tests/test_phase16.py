@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 # ─── Env vars must be set BEFORE importing app ────────────────────────────────
-TEST_JWT_SECRET = 'test-phase16-jwt-secret'
+TEST_JWT_SECRET = 'test-phase16-jwt-secret-padding1'
 TEST_OWNER_USER = 'p16_owner'
 TEST_OWNER_PASS = 'ownerpass16'
 os.environ['JWT_SECRET'] = TEST_JWT_SECRET

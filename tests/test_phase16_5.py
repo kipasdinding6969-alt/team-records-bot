@@ -8,7 +8,7 @@ from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 
-TEST_JWT_SECRET = 'test-jwt-secret-phase165'
+TEST_JWT_SECRET = 'test-jwt-secret-phase165-padding'
 TEST_USER = 'testadmin165'
 TEST_PASS = 'testpass165'
 os.environ['DASHBOARD_USER'] = TEST_USER

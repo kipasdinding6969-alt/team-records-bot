@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 # Env vars must be set before importing the app
-TEST_JWT_SECRET = 'test-rbac-jwt-secret-2026'
+TEST_JWT_SECRET = 'test-rbac-jwt-secret-2026-padding'
 TEST_OWNER_USER = 'rbac_owner'
 TEST_OWNER_PASS = 'ownerpass123'
 os.environ['JWT_SECRET'] = TEST_JWT_SECRET
