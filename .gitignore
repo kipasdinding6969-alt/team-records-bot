@@ -156,3 +156,11 @@ local_rag/embeddings.jsonl
 # Temp test outputs
 pytest_*.log
 pytest_output.txt
+
+# Rotated logs
+*.log.[0-9]*
+*.log.*.gz
+
+# Test result artifacts
+pytest_results.txt
+pytest_run.log

@@ -585,7 +585,7 @@ class TelegramHandler:
 
             # Only post during working hours
             if not is_working_hours():
-                return {'success': False, 'message': 'Outside working hours, skipping channel post'}
+                return {'success': False, 'skip': True, 'message': 'Outside working hours, skipping channel post'}
 
             # Resolve broadcast channel: prefer team_config, then explicit arg, then fallback
             try:
@@ -598,7 +598,7 @@ class TelegramHandler:
 
             if not broadcast_id:
                 logger.warning("No broadcast channel ID configured")
-                return {'success': False, 'message': 'No channel ID configured'}
+                return {'success': False, 'skip': True, 'message': 'No channel ID configured'}
 
             # Fetch stats once and reuse across all summary generators.
             from datetime import date as _date

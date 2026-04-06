@@ -1490,6 +1490,18 @@ class DatabaseV2:
                 (reminder_id,))
             await db.commit()
 
+    async def has_recent_reminder(self, client_id: int, source: str, hours: int = 24) -> bool:
+        """Check if a reminder exists (sent or pending) for this client+source within the last N hours."""
+        async with self.get_connection() as db:
+            cur = await db.execute(
+                """SELECT 1 FROM reminders
+                   WHERE client_id=? AND source=?
+                     AND created_at >= datetime('now', ?)
+                   LIMIT 1""",
+                (client_id, source, f'-{hours} hours'))
+            return (await cur.fetchone()) is not None
+
+
     # ─── Team Targets ────────────────────────────────────────────────────────
 
     async def upsert_team_target(self, t: TeamTarget) -> int:

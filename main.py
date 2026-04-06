@@ -791,7 +791,15 @@ class RalphLoop:
 
             if action == 'post_summary':
                 results = await telegram_handler.post_channel_summary()
-                return results.get('success', False)
+                if results.get('success'):
+                    return True
+                # Non-retriable conditions (skip=True): treat as completed to
+                # avoid pointless retries on bot restart outside working hours
+                # or when no channel is configured.
+                if results.get('skip'):
+                    logger.info(f"Channel post skipped (non-retriable): {results.get('message', '')}")
+                    return True
+                return False
             else:
                 logger.warning(f"Unknown channel post action: {action}")
                 return False
@@ -892,12 +900,11 @@ class RalphLoop:
                     if stale:
                         logger.info(f'V2: {len(stale)} stale clients detected')
                         from models_v2 import Reminder as ReminderV2
-                        # Fetch all pending reminders once to avoid N+1 queries in the loop.
-                        existing = await database_v2.get_pending_reminders_v2()
                         for client in stale:
-                            already_reminded = any(
-                                r.client_id == client.id and r.source == 'auto_stale'
-                                for r in existing
+                            # Check both pending AND recently-sent reminders (24h window)
+                            # to avoid re-creating reminders for unresolvable chat IDs
+                            already_reminded = await database_v2.has_recent_reminder(
+                                client.id, 'auto_stale', hours=24
                             )
                             if not already_reminded:
                                 reminder = ReminderV2(
