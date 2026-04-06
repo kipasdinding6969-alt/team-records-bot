@@ -4,15 +4,15 @@ import logging
 from logging.handlers import RotatingFileHandler
 import signal
 import sys
-from typing import Dict, Any, Optional, Callable
-from datetime import datetime, timedelta
+from typing import Dict, Any, Optional
+from datetime import datetime
 import traceback
 import os
 
 from config import config
 from database_v2 import database_v2
 from telegram_handler import telegram_handler
-from models_v2 import BotTask, ReportTemplate
+from models_v2 import BotTask
 
 # Import V2 handlers
 from handlers_v2.quick_actions import QUICK_ACTIONS_COMMANDS, QUICK_ACTIONS_CALLBACKS, QUICK_ACTIONS_CONVERSATIONS
@@ -39,7 +39,7 @@ from handlers_v2.persistent_keyboard import (
 )
 from handlers_v2.commission_handler import (
     COMMISSION_COMMANDS, COMMISSION_CALLBACKS, COMMISSION_CONVERSATIONS,
-    auto_calculate_deposit_commission, auto_calculate_registration_commission,
+    auto_calculate_registration_commission,
 )
 from handlers_v2.report_handler import REPORT_COMMANDS, REPORT_CALLBACKS, REPORT_CONVERSATIONS
 from handlers_v2.handoff_handler import HANDOFF_COMMANDS, HANDOFF_CALLBACKS, HANDOFF_CONVERSATIONS

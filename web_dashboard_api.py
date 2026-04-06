@@ -741,9 +741,6 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
         ) as cur:
             by_status = {r["status"]: r["cnt"] for r in await cur.fetchall()}
 
-        deposit_where = client_where.replace(
-            "frontdesk_id", "client_id IN (SELECT id FROM clients WHERE frontdesk_id"
-        )
         # Simpler: just subquery for scoped deposits
         if user["role"] == "owner":
             dep_filter = ""
@@ -2172,7 +2169,6 @@ async def get_performance_summary(
         totals[key] = sum(d.get(key, 0) or 0 for d in rows)
     tnl = totals.get("new_leads", 0) or 0
     trp = totals.get("replied", 0) or 0
-    treg = totals.get("registered", 0) or 0
     tno = totals.get("new_orders", 0) or 0
     totals["reply_rate"] = round(trp / max(tnl, 1) * 100, 1)
     totals["conversion_rate"] = round(tno / max(tnl, 1) * 100, 1)

@@ -12,7 +12,7 @@ from urllib.parse import parse_qsl, unquote
 import aiosqlite
 from contextlib import asynccontextmanager as _acm
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Header, Request
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles

@@ -28,7 +28,7 @@ def _safe_json_loads(raw, default=None):
         return default if default is not None else {}
 
 
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import aiosqlite
 
