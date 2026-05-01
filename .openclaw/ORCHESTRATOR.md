@@ -8,7 +8,7 @@
 │  Role: Lead orchestrator, engineering authority           │
 │  Cron: morning briefing, dev journal, weekly analysis     │
 │  Memory: nomic-embed-text semantic search                 │
-│  MCP: filesystem, github, context7, obsidian-rest         │
+│  MCP: filesystem, github, context7, qh-research           │
 │  Agency: 18 active agents from 104-agent fleet            │
 │  Dispatch: backup-chain.sh (4-tier fallback)              │
 └──────────┬────────────────────────────────────────────────┘
