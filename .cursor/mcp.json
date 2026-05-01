@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "qh-research": {
+      "command": "/home/baiwan/Desktop/千万百万/Project/qianhub-research-mcp/.venv/bin/python3",
+      "args": [
+        "/home/baiwan/Desktop/千万百万/Project/qianhub-research-mcp/server.py",
+        "--mcp"
+      ]
+    },
+    "cdp-browser": {
+      "command": "/home/baiwan/Desktop/千万百万/Project/.claude/mcp-servers/cdp-browser-venv/bin/python3",
+      "args": [
+        "/home/baiwan/Desktop/千万百万/Project/.claude/mcp-servers/cdp-browser.py"
+      ]
+    }
+  }
+}
