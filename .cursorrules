@@ -1,0 +1,21 @@
+## AI Tool Mandates (HARDCODED — ALL AGENTS)
+
+### RAG-FIRST (Anti-Hallucination)
+- Use `brain_recall(query)` from qh-research MCP BEFORE guessing about codebase, configs, or project structure
+- If brain_recall returns no results, say "I don't know" — do NOT guess
+- Use `brain_grep(query)` for exact symbol/text matches
+- Use `find_usages(identifier)` to trace symbol references across repos
+
+### CDP-ONLY (Browser Automation)
+- **BANNED:** Built-in WebFetch, WebSearch, browser tools
+- **USE INSTEAD:** cdp-browser MCP server for ALL web operations
+- CDP via `Page.navigate`, `Runtime.evaluate`, `DOM.getDocument`
+
+### SQL Safety
+- No `SELECT *` — explicit columns only
+- Parameterized queries only — no string interpolation in SQL
+
+### Docker Safety
+- All ports bind to `127.0.0.1`
+- Healthchecks are mandatory
+- `restart: always` (not unless-stopped)
