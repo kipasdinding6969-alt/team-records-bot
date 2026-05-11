@@ -6,7 +6,7 @@ services:
     container_name: nocodb
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       NC_DB: "pg://nocodb-postgres:5432?u=nocodb&p=nocodb_secret_2026&d=nocodb"
       NC_AUTH_JWT_SECRET: "qianhub-nocodb-jwt-secret-2026-03-28"

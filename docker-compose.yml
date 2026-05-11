@@ -6,7 +6,7 @@ services:
     container_name: tor-proxy
     restart: unless-stopped
     ports:
-      - "9050:9050"
+      - "127.0.0.1:9050:9050"
     healthcheck:
       test: ["CMD", "curl", "-sf", "--socks5", "localhost:9050", "https://check.torproject.org/"]
       interval: 60s
